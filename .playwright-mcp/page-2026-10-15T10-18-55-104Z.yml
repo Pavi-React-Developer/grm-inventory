@@ -1,0 +1,1067 @@
+- generic [active] [ref=f7e1]:
+  - complementary [ref=f7e2]:
+    - generic [ref=f7e4]:
+      - generic [ref=f7e5]: chat
+      - generic [ref=f7e7]:
+        - heading "GRM CRM v2.5" [level=1] [ref=f7e8]:
+          - text: GRM CRM
+          - generic [ref=f7e9]: v2.5
+        - paragraph [ref=f7e10]: WhatsApp Business Hub
+    - generic "Click to configure WhatsApp Business Number" [ref=f7e12] [cursor=pointer]:
+      - generic [ref=f7e17]:
+        - paragraph [ref=f7e18]:
+          - text: Live WhatsApp
+          - generic [ref=f7e19]: tune
+        - paragraph [ref=f7e20]: +91 86680 07593
+      - button "add_circle Sim In" [ref=f7e21]:
+        - generic [ref=f7e22]: add_circle
+        - text: Sim In
+    - navigation [ref=f7e23]:
+      - generic [ref=f7e24]: Command Center
+      - button "dashboard Dashboard" [ref=f7e25] [cursor=pointer]:
+        - generic [ref=f7e26]:
+          - generic [ref=f7e27]: dashboard
+          - generic [ref=f7e28]: Dashboard
+      - button "inbox WhatsApp Inbox 8" [ref=f7e29] [cursor=pointer]:
+        - generic [ref=f7e30]:
+          - generic [ref=f7e31]: inbox
+          - generic [ref=f7e32]: WhatsApp Inbox
+        - generic [ref=f7e33]: "8"
+      - button "contact_support Customer Enquiries 2 New" [ref=f7e34] [cursor=pointer]:
+        - generic [ref=f7e35]:
+          - generic [ref=f7e36]: contact_support
+          - generic [ref=f7e37]: Customer Enquiries
+        - generic [ref=f7e38]: 2 New
+      - generic [ref=f7e39]: Sales & Operations
+      - button "schedule Follow-up Due 3 Today" [ref=f7e40] [cursor=pointer]:
+        - generic [ref=f7e41]:
+          - generic [ref=f7e42]: schedule
+          - generic [ref=f7e43]: Follow-up Due
+        - generic [ref=f7e44]: 3 Today
+      - button "inventory_2 Live Stock & Sharing" [ref=f7e45] [cursor=pointer]:
+        - generic [ref=f7e46]:
+          - generic [ref=f7e47]: inventory_2
+          - generic [ref=f7e48]: Live Stock & Sharing
+      - button "shopping_bag WhatsApp Orders 5" [ref=f7e49] [cursor=pointer]:
+        - generic [ref=f7e50]:
+          - generic [ref=f7e51]: shopping_bag
+          - generic [ref=f7e52]: WhatsApp Orders
+        - generic [ref=f7e53]: "5"
+      - button "groups Customer 360" [ref=f7e54] [cursor=pointer]:
+        - generic [ref=f7e55]:
+          - generic [ref=f7e56]: groups
+          - generic [ref=f7e57]: Customer 360
+      - button "do_not_disturb_on DND / Opt-Out List 0" [ref=f7e58] [cursor=pointer]:
+        - generic [ref=f7e59]:
+          - generic [ref=f7e60]: do_not_disturb_on
+          - generic [ref=f7e61]: DND / Opt-Out List
+        - generic [ref=f7e62]: "0"
+      - generic [ref=f7e63]: Settings & Admin
+      - button "settings_phone WhatsApp Settings" [ref=f7e64] [cursor=pointer]:
+        - generic [ref=f7e65]:
+          - generic [ref=f7e66]: settings_phone
+          - generic [ref=f7e67]: WhatsApp Settings
+      - button "cloud_sync Data Backup & Restore download" [ref=f7e69] [cursor=pointer]:
+        - generic [ref=f7e70]:
+          - generic [ref=f7e71]: cloud_sync
+          - generic [ref=f7e72]: Data Backup & Restore
+        - generic [ref=f7e73]: download
+      - button "badge Staff Management 3" [ref=f7e74] [cursor=pointer]:
+        - generic [ref=f7e75]:
+          - generic [ref=f7e76]: badge
+          - generic [ref=f7e77]: Staff Management
+        - generic [ref=f7e78]: "3"
+      - button "monitoring Staff KPI & Reports" [ref=f7e79] [cursor=pointer]:
+        - generic [ref=f7e80]:
+          - generic [ref=f7e81]: monitoring
+          - generic [ref=f7e82]: Staff KPI & Reports
+      - button "history Audit Trail & Security" [ref=f7e83] [cursor=pointer]:
+        - generic [ref=f7e84]:
+          - generic [ref=f7e85]: history
+          - generic [ref=f7e86]: Audit Trail & Security
+    - generic [ref=f7e88]:
+      - generic [ref=f7e89]:
+        - generic [ref=f7e90]: Logged In As
+        - generic [ref=f7e91]: Super Admin
+      - generic [ref=f7e92]:
+        - generic [ref=f7e93]:
+          - generic [ref=f7e94]: SA
+          - generic [ref=f7e95]:
+            - paragraph [ref=f7e96]: Super Admin
+            - paragraph [ref=f7e97]: Full Control Panel
+        - button "logout" [ref=f7e98] [cursor=pointer]
+      - paragraph [ref=f7e100]: Role-Based Access Protected
+  - generic [ref=f7e101]:
+    - banner [ref=f7e102]:
+      - generic:
+        - generic:
+          - heading "WhatsApp Inbox & Customer Queue" [level=2]
+          - paragraph: Live chats for +91 86680 07593 • Active line conversation management & order booking
+      - generic [ref=f7e107]:
+        - button "phone_android +91 86680 07593 expand_more" [ref=f7e109] [cursor=pointer]:
+          - generic [ref=f7e113]: phone_android
+          - generic [ref=f7e114]: +91 86680 07593
+          - generic [ref=f7e115]: expand_more
+        - 'button "lock Masking: OFF" [ref=f7e116] [cursor=pointer]':
+          - generic [ref=f7e117]: lock
+          - generic [ref=f7e118]: "Masking:"
+          - generic [ref=f7e119]: "OFF"
+        - button "smart_toy Stock Auto-Reply Bot" [ref=f7e120] [cursor=pointer]:
+          - generic [ref=f7e121]: smart_toy
+          - generic [ref=f7e122]: Stock Auto-Reply Bot
+        - button "campaign Broadcast Template" [ref=f7e123] [cursor=pointer]:
+          - generic [ref=f7e124]: campaign
+          - generic [ref=f7e125]: Broadcast Template
+        - button "restart_alt Reset Inbox" [ref=f7e126] [cursor=pointer]:
+          - generic [ref=f7e127]: restart_alt
+          - generic [ref=f7e128]: Reset Inbox
+        - button "logout Logout" [ref=f7e130] [cursor=pointer]:
+          - generic [ref=f7e131]: logout
+          - generic [ref=f7e132]: Logout
+    - main [ref=f7e133]:
+      - generic [ref=f7e134]:
+        - generic [ref=f7e135]:
+          - generic [ref=f7e136]:
+            - generic [ref=f7e137]:
+              - generic [ref=f7e138]: mark_chat_unread
+              - generic [ref=f7e139]: "Today's Received Messages:"
+            - generic [ref=f7e140]: 42 / 200 msgs (21%)
+          - generic [ref=f7e142]:
+            - button "hub All Inboxes 2" [ref=f7e984] [cursor=pointer]:
+              - generic [ref=f7e985]: hub
+              - generic [ref=f7e986]: All Inboxes
+              - generic [ref=f7e987]: "2"
+            - 'button "Line 1 (Central): +91 86680 07593 2" [ref=f7e988] [cursor=pointer]':
+              - generic [ref=f7e990]: "Line 1 (Central): +91 86680 07593"
+              - generic [ref=f7e991]: "2"
+            - 'button "Line 2 (Blue Berry): Line 2 0" [ref=f7e992] [cursor=pointer]':
+              - generic [ref=f7e994]: "Line 2 (Blue Berry): Line 2"
+              - generic [ref=f7e995]: "0"
+          - generic [ref=f7e155]:
+            - generic [ref=f7e156]:
+              - generic [ref=f7e157]: search
+              - textbox "Search customer, phone, SKU, Query ID..." [ref=f7e158]
+            - generic [ref=f7e159]:
+              - button "All (2)" [ref=f7e160] [cursor=pointer]
+              - button "Unassigned (2)" [ref=f7e161] [cursor=pointer]
+              - button "My Queue (2)" [ref=f7e162] [cursor=pointer]
+              - button "Urgent" [ref=f7e163] [cursor=pointer]
+              - button "restart_alt Reset" [ref=f7e164] [cursor=pointer]:
+                - generic [ref=f7e165]: restart_alt
+                - generic [ref=f7e166]: Reset
+          - generic [ref=f7e167]:
+            - generic [ref=f7e168] [cursor=pointer]:
+              - generic [ref=f7e169]: கு
+              - generic [ref=f7e174]:
+                - generic [ref=f7e175]:
+                  - heading "குரு.சச்சிதானந்தம்" [level=4] [ref=f7e176]
+                  - generic [ref=f7e177]: 03:42 pm
+                - paragraph [ref=f7e178]: "Staff: \"✨ *mekha* ✨ Hello *குரு.சச்சிதானந்தம்*...\""
+                - generic [ref=f7e179]:
+                  - generic [ref=f7e180]:
+                    - 'generic "Received on WhatsApp Line: +918668007593" [ref=f7e181]': 📱 Line 1
+                    - generic [ref=f7e182]: Q-2026-826753
+                    - generic [ref=f7e183]: HIGH
+                  - button "person_add Assign" [ref=f7e184]:
+                    - generic [ref=f7e185]: person_add
+                    - text: Assign
+            - generic [ref=f7e186] [cursor=pointer]:
+              - generic [ref=f7e187]: AB
+              - generic [ref=f7e192]:
+                - generic [ref=f7e193]:
+                  - heading "Abi prasath" [level=4] [ref=f7e194]
+                  - generic [ref=f7e195]: 03:28 PM
+                - paragraph [ref=f7e196]: "Staff: \"✨ *mekha* ✨ Hello *Abi*! 👋 Welcome to...\""
+                - generic [ref=f7e197]:
+                  - generic [ref=f7e198]:
+                    - 'generic "Received on WhatsApp Line: +918668007593" [ref=f7e199]': 📱 Line 1
+                    - generic [ref=f7e200]: Q-2026-805664
+                    - generic [ref=f7e201]: HIGH
+                  - button "person_add Assign" [ref=f7e202]:
+                    - generic [ref=f7e203]: person_add
+                    - text: Assign
+        - generic [ref=f7e204]:
+          - generic [ref=f7e205]:
+            - generic:
+              - generic [ref=f7e207]: கு
+              - generic:
+                - generic:
+                  - heading "குரு.சச்சிதானந்தம்" [level=3]
+                  - generic [ref=f7e210]: Live WhatsApp Lead
+                - generic:
+                  - generic: +91 95856 69799
+                  - generic [ref=f7e213]: •
+                  - generic [ref=f7e214]: Q-2026-826753
+            - generic [ref=f7e215]:
+              - button "person_add Assign" [ref=f7e216] [cursor=pointer]:
+                - generic [ref=f7e217]: person_add
+                - generic [ref=f7e218]: Assign
+              - button "call" [ref=f7e219] [cursor=pointer]
+              - link "open_in_new" [ref=f7e221] [cursor=pointer]:
+                - /url: https://wa.me/919585669799
+              - button "dock_to_right Hide Profile" [ref=f7e223] [cursor=pointer]:
+                - generic [ref=f7e996]: dock_to_right
+                - generic [ref=f7e997]: Hide Profile
+          - generic [ref=f7e227]:
+            - generic [ref=f7e229]:
+              - generic [ref=f7e230]: lock
+              - generic [ref=f7e231]:
+                - text: "Connected to Business Number:"
+                - strong [ref=f7e232]: "+918668007593"
+                - text: • GRM Central Record
+            - generic [ref=f7e234]:
+              - paragraph [ref=f7e236]: "[Video Attachment]"
+              - generic [ref=f7e237]: 03:30 pm
+            - generic [ref=f7e240]:
+              - generic [ref=f7e241]:
+                - generic [ref=f7e242]:
+                  - generic [ref=f7e243]: smart_toy
+                  - generic [ref=f7e244]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e245]: Stock Template
+                - generic [ref=f7e246]: Sent Auto
+              - generic [ref=f7e247]:
+                - paragraph [ref=f7e248]:
+                  - text: ✨
+                  - strong [ref=f7e249]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e250]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e251]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e252]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e253]: ₹1299 - ₹1450
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e254]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e255]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e256]: ₹7200 - ₹8500
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e257]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e258]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e259]:
+                  - generic [ref=f7e260]:
+                    - generic [ref=f7e261]:
+                      - generic [ref=f7e262]: touch_app
+                      - generic [ref=f7e263]: "Click any option to view ready stock:"
+                    - generic [ref=f7e264]: 1-Click View
+                  - generic [ref=f7e265]:
+                    - button "1 Baby Collection" [ref=f7e266] [cursor=pointer]:
+                      - generic [ref=f7e267]: "1"
+                      - generic [ref=f7e268]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e269] [cursor=pointer]:
+                      - generic [ref=f7e270]: "2"
+                      - generic [ref=f7e271]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e272] [cursor=pointer]:
+                      - generic [ref=f7e273]: "3"
+                      - generic [ref=f7e274]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e275] [cursor=pointer]:
+                      - generic [ref=f7e276]: "4"
+                      - generic [ref=f7e277]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e278] [cursor=pointer]:
+                      - generic [ref=f7e279]: "5"
+                      - generic [ref=f7e280]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e281] [cursor=pointer]:
+                      - generic [ref=f7e282]: "6"
+                      - generic [ref=f7e283]: Festive Silk Sets
+              - generic [ref=f7e284]:
+                - generic [ref=f7e285]: 03:30 PM
+                - generic [ref=f7e286]: done_all
+            - generic [ref=f7e288]:
+              - paragraph [ref=f7e290]: உங்களோட கருத்துக்களை கூறலாம் 👆
+              - generic [ref=f7e291]: 03:30 pm
+            - generic [ref=f7e294]:
+              - generic [ref=f7e295]:
+                - generic [ref=f7e296]:
+                  - generic [ref=f7e297]: smart_toy
+                  - generic [ref=f7e298]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e299]: Stock Template
+                - generic [ref=f7e300]: Sent Auto
+              - generic [ref=f7e301]:
+                - paragraph [ref=f7e302]:
+                  - text: ✨
+                  - strong [ref=f7e303]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e304]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e305]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e306]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e307]: ₹1299 - ₹1450
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e308]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e309]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e310]: ₹7200 - ₹8500
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e311]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e312]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e313]:
+                  - generic [ref=f7e314]:
+                    - generic [ref=f7e315]:
+                      - generic [ref=f7e316]: touch_app
+                      - generic [ref=f7e317]: "Click any option to view ready stock:"
+                    - generic [ref=f7e318]: 1-Click View
+                  - generic [ref=f7e319]:
+                    - button "1 Baby Collection" [ref=f7e320] [cursor=pointer]:
+                      - generic [ref=f7e321]: "1"
+                      - generic [ref=f7e322]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e323] [cursor=pointer]:
+                      - generic [ref=f7e324]: "2"
+                      - generic [ref=f7e325]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e326] [cursor=pointer]:
+                      - generic [ref=f7e327]: "3"
+                      - generic [ref=f7e328]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e329] [cursor=pointer]:
+                      - generic [ref=f7e330]: "4"
+                      - generic [ref=f7e331]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e332] [cursor=pointer]:
+                      - generic [ref=f7e333]: "5"
+                      - generic [ref=f7e334]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e335] [cursor=pointer]:
+                      - generic [ref=f7e336]: "6"
+                      - generic [ref=f7e337]: Festive Silk Sets
+              - generic [ref=f7e338]:
+                - generic [ref=f7e339]: 03:30 PM
+                - generic [ref=f7e340]: done_all
+            - generic [ref=f7e342]:
+              - paragraph [ref=f7e344]: வணக்கம் ஜி
+              - generic [ref=f7e345]: 03:41 pm
+            - generic [ref=f7e348]:
+              - generic [ref=f7e349]:
+                - generic [ref=f7e350]:
+                  - generic [ref=f7e351]: smart_toy
+                  - generic [ref=f7e352]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e353]: Stock Template
+                - generic [ref=f7e354]: Sent Auto
+              - generic [ref=f7e355]:
+                - paragraph [ref=f7e356]:
+                  - text: ✨
+                  - strong [ref=f7e357]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e358]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e359]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e360]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e361]: ₹1299 - ₹1450
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e362]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e363]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e364]: ₹7200 - ₹8500
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e365]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e366]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e367]:
+                  - generic [ref=f7e368]:
+                    - generic [ref=f7e369]:
+                      - generic [ref=f7e370]: touch_app
+                      - generic [ref=f7e371]: "Click any option to view ready stock:"
+                    - generic [ref=f7e372]: 1-Click View
+                  - generic [ref=f7e373]:
+                    - button "1 Baby Collection" [ref=f7e374] [cursor=pointer]:
+                      - generic [ref=f7e375]: "1"
+                      - generic [ref=f7e376]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e377] [cursor=pointer]:
+                      - generic [ref=f7e378]: "2"
+                      - generic [ref=f7e379]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e380] [cursor=pointer]:
+                      - generic [ref=f7e381]: "3"
+                      - generic [ref=f7e382]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e383] [cursor=pointer]:
+                      - generic [ref=f7e384]: "4"
+                      - generic [ref=f7e385]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e386] [cursor=pointer]:
+                      - generic [ref=f7e387]: "5"
+                      - generic [ref=f7e388]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e389] [cursor=pointer]:
+                      - generic [ref=f7e390]: "6"
+                      - generic [ref=f7e391]: Festive Silk Sets
+              - generic [ref=f7e392]:
+                - generic [ref=f7e393]: 03:41 PM
+                - generic [ref=f7e394]: done_all
+            - generic [ref=f7e396]:
+              - generic [ref=f7e397]:
+                - generic [ref=f7e398]:
+                  - generic [ref=f7e399]: smart_toy
+                  - generic [ref=f7e400]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e401]: Auto-Reply
+                - generic [ref=f7e402]: Sent Auto
+              - generic [ref=f7e403]:
+                - paragraph [ref=f7e404]:
+                  - text: ✨
+                  - strong [ref=f7e405]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e406]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e407]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e408]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e409]: ₹1,299
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e410]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e411]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e412]: ₹7,200
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e413]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e414]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e415]:
+                  - generic [ref=f7e416]:
+                    - generic [ref=f7e417]:
+                      - generic [ref=f7e418]: touch_app
+                      - generic [ref=f7e419]: "Click any option to view ready stock:"
+                    - generic [ref=f7e420]: 1-Click View
+                  - generic [ref=f7e421]:
+                    - button "1 Baby Collection" [ref=f7e422] [cursor=pointer]:
+                      - generic [ref=f7e423]: "1"
+                      - generic [ref=f7e424]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e425] [cursor=pointer]:
+                      - generic [ref=f7e426]: "2"
+                      - generic [ref=f7e427]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e428] [cursor=pointer]:
+                      - generic [ref=f7e429]: "3"
+                      - generic [ref=f7e430]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e431] [cursor=pointer]:
+                      - generic [ref=f7e432]: "4"
+                      - generic [ref=f7e433]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e434] [cursor=pointer]:
+                      - generic [ref=f7e435]: "5"
+                      - generic [ref=f7e436]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e437] [cursor=pointer]:
+                      - generic [ref=f7e438]: "6"
+                      - generic [ref=f7e439]: Festive Silk Sets
+              - generic [ref=f7e440]:
+                - generic [ref=f7e441]: 03:41 pm
+                - generic [ref=f7e442]: done_all
+            - generic [ref=f7e444]:
+              - paragraph [ref=f7e446]: வணக்கம் ஜி
+              - generic [ref=f7e447]: 03:42 pm
+            - generic [ref=f7e450]:
+              - generic [ref=f7e451]:
+                - generic [ref=f7e452]:
+                  - generic [ref=f7e453]: smart_toy
+                  - generic [ref=f7e454]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e455]: Stock Template
+                - generic [ref=f7e456]: Sent Auto
+              - generic [ref=f7e457]:
+                - paragraph [ref=f7e458]:
+                  - text: ✨
+                  - strong [ref=f7e459]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e460]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e461]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e462]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e463]: ₹1299 - ₹1450
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e464]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e465]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e466]: ₹7200 - ₹8500
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e467]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e468]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e469]:
+                  - generic [ref=f7e470]:
+                    - generic [ref=f7e471]:
+                      - generic [ref=f7e472]: touch_app
+                      - generic [ref=f7e473]: "Click any option to view ready stock:"
+                    - generic [ref=f7e474]: 1-Click View
+                  - generic [ref=f7e475]:
+                    - button "1 Baby Collection" [ref=f7e476] [cursor=pointer]:
+                      - generic [ref=f7e477]: "1"
+                      - generic [ref=f7e478]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e479] [cursor=pointer]:
+                      - generic [ref=f7e480]: "2"
+                      - generic [ref=f7e481]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e482] [cursor=pointer]:
+                      - generic [ref=f7e483]: "3"
+                      - generic [ref=f7e484]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e485] [cursor=pointer]:
+                      - generic [ref=f7e486]: "4"
+                      - generic [ref=f7e487]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e488] [cursor=pointer]:
+                      - generic [ref=f7e489]: "5"
+                      - generic [ref=f7e490]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e491] [cursor=pointer]:
+                      - generic [ref=f7e492]: "6"
+                      - generic [ref=f7e493]: Festive Silk Sets
+              - generic [ref=f7e494]:
+                - generic [ref=f7e495]: 03:42 PM
+                - generic [ref=f7e496]: done_all
+            - generic [ref=f7e498]:
+              - generic [ref=f7e499]:
+                - generic [ref=f7e500]:
+                  - generic [ref=f7e501]: smart_toy
+                  - generic [ref=f7e502]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e503]: Auto-Reply
+                - generic [ref=f7e504]: Sent Auto
+              - generic [ref=f7e505]:
+                - paragraph [ref=f7e506]:
+                  - text: ✨
+                  - strong [ref=f7e507]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e508]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e509]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e510]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e511]: ₹1,299
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e512]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e513]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e514]: ₹7,200
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e515]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e516]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e517]:
+                  - generic [ref=f7e518]:
+                    - generic [ref=f7e519]:
+                      - generic [ref=f7e520]: touch_app
+                      - generic [ref=f7e521]: "Click any option to view ready stock:"
+                    - generic [ref=f7e522]: 1-Click View
+                  - generic [ref=f7e523]:
+                    - button "1 Baby Collection" [ref=f7e524] [cursor=pointer]:
+                      - generic [ref=f7e525]: "1"
+                      - generic [ref=f7e526]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e527] [cursor=pointer]:
+                      - generic [ref=f7e528]: "2"
+                      - generic [ref=f7e529]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e530] [cursor=pointer]:
+                      - generic [ref=f7e531]: "3"
+                      - generic [ref=f7e532]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e533] [cursor=pointer]:
+                      - generic [ref=f7e534]: "4"
+                      - generic [ref=f7e535]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e536] [cursor=pointer]:
+                      - generic [ref=f7e537]: "5"
+                      - generic [ref=f7e538]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e539] [cursor=pointer]:
+                      - generic [ref=f7e540]: "6"
+                      - generic [ref=f7e541]: Festive Silk Sets
+              - generic [ref=f7e542]:
+                - generic [ref=f7e543]: 03:42 pm
+                - generic [ref=f7e544]: done_all
+            - generic [ref=f7e546]:
+              - paragraph [ref=f7e548]: வணக்கம் ஜி
+              - generic [ref=f7e549]: 03:42 pm
+            - generic [ref=f7e552]:
+              - generic [ref=f7e553]:
+                - generic [ref=f7e554]:
+                  - generic [ref=f7e555]: smart_toy
+                  - generic [ref=f7e556]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e557]: Stock Template
+                - generic [ref=f7e558]: Sent Auto
+              - generic [ref=f7e559]:
+                - paragraph [ref=f7e560]:
+                  - text: ✨
+                  - strong [ref=f7e561]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e562]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e563]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e564]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e565]: ₹1299 - ₹1450
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e566]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e567]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e568]: ₹7200 - ₹8500
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e569]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e570]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e571]:
+                  - generic [ref=f7e572]:
+                    - generic [ref=f7e573]:
+                      - generic [ref=f7e574]: touch_app
+                      - generic [ref=f7e575]: "Click any option to view ready stock:"
+                    - generic [ref=f7e576]: 1-Click View
+                  - generic [ref=f7e577]:
+                    - button "1 Baby Collection" [ref=f7e578] [cursor=pointer]:
+                      - generic [ref=f7e579]: "1"
+                      - generic [ref=f7e580]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e581] [cursor=pointer]:
+                      - generic [ref=f7e582]: "2"
+                      - generic [ref=f7e583]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e584] [cursor=pointer]:
+                      - generic [ref=f7e585]: "3"
+                      - generic [ref=f7e586]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e587] [cursor=pointer]:
+                      - generic [ref=f7e588]: "4"
+                      - generic [ref=f7e589]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e590] [cursor=pointer]:
+                      - generic [ref=f7e591]: "5"
+                      - generic [ref=f7e592]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e593] [cursor=pointer]:
+                      - generic [ref=f7e594]: "6"
+                      - generic [ref=f7e595]: Festive Silk Sets
+              - generic [ref=f7e596]:
+                - generic [ref=f7e597]: 03:42 PM
+                - generic [ref=f7e598]: done_all
+            - generic [ref=f7e600]:
+              - generic [ref=f7e601]:
+                - generic [ref=f7e602]:
+                  - generic [ref=f7e603]: smart_toy
+                  - generic [ref=f7e604]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e605]: Auto-Reply
+                - generic [ref=f7e606]: Sent Auto
+              - generic [ref=f7e607]:
+                - paragraph [ref=f7e608]:
+                  - text: ✨
+                  - strong [ref=f7e609]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e610]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e611]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e612]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e613]: ₹1,299
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e614]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e615]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e616]: ₹7,200
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e617]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e618]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e619]:
+                  - generic [ref=f7e620]:
+                    - generic [ref=f7e621]:
+                      - generic [ref=f7e622]: touch_app
+                      - generic [ref=f7e623]: "Click any option to view ready stock:"
+                    - generic [ref=f7e624]: 1-Click View
+                  - generic [ref=f7e625]:
+                    - button "1 Baby Collection" [ref=f7e626] [cursor=pointer]:
+                      - generic [ref=f7e627]: "1"
+                      - generic [ref=f7e628]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e629] [cursor=pointer]:
+                      - generic [ref=f7e630]: "2"
+                      - generic [ref=f7e631]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e632] [cursor=pointer]:
+                      - generic [ref=f7e633]: "3"
+                      - generic [ref=f7e634]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e635] [cursor=pointer]:
+                      - generic [ref=f7e636]: "4"
+                      - generic [ref=f7e637]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e638] [cursor=pointer]:
+                      - generic [ref=f7e639]: "5"
+                      - generic [ref=f7e640]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e641] [cursor=pointer]:
+                      - generic [ref=f7e642]: "6"
+                      - generic [ref=f7e643]: Festive Silk Sets
+              - generic [ref=f7e644]:
+                - generic [ref=f7e645]: 03:42 pm
+                - generic [ref=f7e646]: done_all
+            - generic [ref=f7e648]:
+              - paragraph [ref=f7e650]: வணக்கம் ஜி
+              - generic [ref=f7e651]: 03:42 pm
+            - generic [ref=f7e654]:
+              - generic [ref=f7e655]:
+                - generic [ref=f7e656]:
+                  - generic [ref=f7e657]: smart_toy
+                  - generic [ref=f7e658]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e659]: Stock Template
+                - generic [ref=f7e660]: Sent Auto
+              - generic [ref=f7e661]:
+                - paragraph [ref=f7e662]:
+                  - text: ✨
+                  - strong [ref=f7e663]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e664]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e665]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e666]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e667]: ₹1299 - ₹1450
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e668]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e669]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e670]: ₹7200 - ₹8500
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e671]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e672]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e673]:
+                  - generic [ref=f7e674]:
+                    - generic [ref=f7e675]:
+                      - generic [ref=f7e676]: touch_app
+                      - generic [ref=f7e677]: "Click any option to view ready stock:"
+                    - generic [ref=f7e678]: 1-Click View
+                  - generic [ref=f7e679]:
+                    - button "1 Baby Collection" [ref=f7e680] [cursor=pointer]:
+                      - generic [ref=f7e681]: "1"
+                      - generic [ref=f7e682]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e683] [cursor=pointer]:
+                      - generic [ref=f7e684]: "2"
+                      - generic [ref=f7e685]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e686] [cursor=pointer]:
+                      - generic [ref=f7e687]: "3"
+                      - generic [ref=f7e688]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e689] [cursor=pointer]:
+                      - generic [ref=f7e690]: "4"
+                      - generic [ref=f7e691]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e692] [cursor=pointer]:
+                      - generic [ref=f7e693]: "5"
+                      - generic [ref=f7e694]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e695] [cursor=pointer]:
+                      - generic [ref=f7e696]: "6"
+                      - generic [ref=f7e697]: Festive Silk Sets
+              - generic [ref=f7e698]:
+                - generic [ref=f7e699]: 03:42 PM
+                - generic [ref=f7e700]: done_all
+            - generic [ref=f7e702]:
+              - generic [ref=f7e703]:
+                - generic [ref=f7e704]:
+                  - generic [ref=f7e705]: smart_toy
+                  - generic [ref=f7e706]:
+                    - text: "Auto-Reply:"
+                    - strong [ref=f7e707]: Auto-Reply
+                - generic [ref=f7e708]: Sent Auto
+              - generic [ref=f7e709]:
+                - paragraph [ref=f7e710]:
+                  - text: ✨
+                  - strong [ref=f7e711]: mekha
+                  - text: ✨Hello
+                  - strong [ref=f7e712]: குரு.சச்சிதானந்தம்
+                  - text: "! 👋 Welcome to our store.👗"
+                  - strong [ref=f7e713]: "Ready-Stock Collections:"
+                  - text: 1️⃣ Baby Collection (0–3Y) —
+                  - strong [ref=f7e714]: ₹599
+                  - text: 2️⃣ Maternity & Feeding —
+                  - strong [ref=f7e715]: ₹1,299
+                  - text: 3️⃣ Newborn Gift Sets (0–6M) —
+                  - strong [ref=f7e716]: ₹799
+                  - text: 4️⃣ Kids Daily Wear (4–5Y) —
+                  - strong [ref=f7e717]: ₹450
+                  - text: 5️⃣ Wholesale Bundles —
+                  - strong [ref=f7e718]: ₹7,200
+                  - text: 6️⃣ Festive Silk Sets —
+                  - strong [ref=f7e719]: ₹899
+                  - text: 💬
+                  - strong [ref=f7e720]: Reply with 1 to 6
+                  - text: to see photos & sizes!
+                - generic [ref=f7e721]:
+                  - generic [ref=f7e722]:
+                    - generic [ref=f7e723]:
+                      - generic [ref=f7e724]: touch_app
+                      - generic [ref=f7e725]: "Click any option to view ready stock:"
+                    - generic [ref=f7e726]: 1-Click View
+                  - generic [ref=f7e727]:
+                    - button "1 Baby Collection" [ref=f7e728] [cursor=pointer]:
+                      - generic [ref=f7e729]: "1"
+                      - generic [ref=f7e730]: Baby Collection
+                    - button "2 Maternity Wear" [ref=f7e731] [cursor=pointer]:
+                      - generic [ref=f7e732]: "2"
+                      - generic [ref=f7e733]: Maternity Wear
+                    - button "3 Newborn Gift Sets" [ref=f7e734] [cursor=pointer]:
+                      - generic [ref=f7e735]: "3"
+                      - generic [ref=f7e736]: Newborn Gift Sets
+                    - button "4 Kids Everyday" [ref=f7e737] [cursor=pointer]:
+                      - generic [ref=f7e738]: "4"
+                      - generic [ref=f7e739]: Kids Everyday
+                    - button "5 Wholesale Bundles" [ref=f7e740] [cursor=pointer]:
+                      - generic [ref=f7e741]: "5"
+                      - generic [ref=f7e742]: Wholesale Bundles
+                    - button "6 Festive Silk Sets" [ref=f7e743] [cursor=pointer]:
+                      - generic [ref=f7e744]: "6"
+                      - generic [ref=f7e745]: Festive Silk Sets
+              - generic [ref=f7e746]:
+                - generic [ref=f7e747]: 03:42 pm
+                - generic [ref=f7e748]: done_all
+          - generic [ref=f7e749]:
+            - generic [ref=f7e750]: "Quick Actions:"
+            - button "category Share Stock Menu" [ref=f7e751] [cursor=pointer]:
+              - generic [ref=f7e752]: category
+              - text: Share Stock Menu
+            - button "inventory_2 Search Stock & Share" [ref=f7e753] [cursor=pointer]:
+              - generic [ref=f7e754]: inventory_2
+              - text: Search Stock & Share
+            - button "shopping_cart_checkout Convert to Order" [ref=f7e755] [cursor=pointer]:
+              - generic [ref=f7e756]: shopping_cart_checkout
+              - text: Convert to Order
+            - button "event Set Follow-up" [ref=f7e757] [cursor=pointer]:
+              - generic [ref=f7e758]: event
+              - text: Set Follow-up
+            - generic [ref=f7e759]:
+              - 'button "smart_toy Auto-Reply: ON" [ref=f7e760] [cursor=pointer]':
+                - generic [ref=f7e762]: smart_toy
+                - generic [ref=f7e763]: "Auto-Reply: ON"
+              - button "tune" [ref=f7e764] [cursor=pointer]
+            - button "psychology Q&A Templates (10)" [ref=f7e766] [cursor=pointer]:
+              - generic [ref=f7e767]: psychology
+              - generic [ref=f7e768]: Q&A Templates (10)
+            - button "campaign Auto-Broadcast" [ref=f7e769] [cursor=pointer]:
+              - generic [ref=f7e770]: campaign
+              - text: Auto-Broadcast
+            - combobox [ref=f7e771]:
+              - option "⚡ Quick Message Templates..." [selected]
+              - option "Price & Availability Enquiry"
+              - option "Stock Available - Size Confirm"
+              - option "Order Confirmed Successfully"
+              - option "Order Dispatched with Tracking"
+              - option "Payment UPI QR & Account Details"
+          - generic [ref=f7e772]:
+            - generic [ref=f7e773]:
+              - generic [ref=f7e774]: bolt
+              - text: "Quick Templates:"
+            - generic [ref=f7e775]:
+              - button "💬 enaku oru chocolate venum" [ref=f7e998] [cursor=pointer]:
+                - generic [ref=f7e999]: 💬
+                - generic [ref=f7e1000]: enaku oru chocolate venum
+              - button "🤰 Feeding Kurti & Maternity Wear" [ref=f7e1001] [cursor=pointer]:
+                - generic [ref=f7e1002]: 🤰
+                - generic [ref=f7e1003]: Feeding Kurti & Maternity Wear
+              - button "👗 Baby Frocks & Frocks (0-3Y)" [ref=f7e1004] [cursor=pointer]:
+                - generic [ref=f7e1005]: 👗
+                - generic [ref=f7e1006]: Baby Frocks & Frocks (0-3Y)
+              - button "🎁 Newborn Gift Sets (0-6M)" [ref=f7e1007] [cursor=pointer]:
+                - generic [ref=f7e1008]: 🎁
+                - generic [ref=f7e1009]: Newborn Gift Sets (0-6M)
+              - button "👕 Kids Everyday T-Shirts (4-5Y)" [ref=f7e1010] [cursor=pointer]:
+                - generic [ref=f7e1011]: 👕
+                - generic [ref=f7e1012]: Kids Everyday T-Shirts (4-5Y)
+              - button "📦 Wholesale & Bulk Orders" [ref=f7e1013] [cursor=pointer]:
+                - generic [ref=f7e1014]: 📦
+                - generic [ref=f7e1015]: Wholesale & Bulk Orders
+              - button "🥻 Festive & Silk Pattu Pavadai" [ref=f7e1016] [cursor=pointer]:
+                - generic [ref=f7e1017]: 🥻
+                - generic [ref=f7e1018]: Festive & Silk Pattu Pavadai
+              - button "💬 Store Address & Timings" [ref=f7e1019] [cursor=pointer]:
+                - generic [ref=f7e1020]: 💬
+                - generic [ref=f7e1021]: Store Address & Timings
+              - button "💬 Payment & UPI QR" [ref=f7e1022] [cursor=pointer]:
+                - generic [ref=f7e1023]: 💬
+                - generic [ref=f7e1024]: Payment & UPI QR
+              - button "💬 Shipping & Delivery Time" [ref=f7e1025] [cursor=pointer]:
+                - generic [ref=f7e1026]: 💬
+                - generic [ref=f7e1027]: Shipping & Delivery Time
+          - generic [ref=f7e807]:
+            - button "add_photo_alternate" [ref=f7e808] [cursor=pointer]
+            - textbox "Type a message or response to customer (Press Enter to send)..." [ref=f7e810]
+            - button "send" [ref=f7e811] [cursor=pointer]
+        - generic [ref=f7e813]:
+          - generic [ref=f7e814]:
+            - generic [ref=f7e815]:
+              - generic [ref=f7e816]: account_box
+              - generic [ref=f7e817]: Customer 360 Details
+            - button "Hide chevron_right" [ref=f7e818] [cursor=pointer]:
+              - generic [ref=f7e819]: Hide
+              - generic [ref=f7e820]: chevron_right
+          - generic [ref=f7e821]:
+            - generic [ref=f7e822]: கு
+            - heading "குரு.சச்சிதானந்தம்" [level=3] [ref=f7e823]
+            - paragraph [ref=f7e825]: +91 95856 69799
+            - generic [ref=f7e827]:
+              - generic [ref=f7e828]: person_alert
+              - generic [ref=f7e829]:
+                - text: "Handled by:"
+                - strong [ref=f7e830]: Unassigned
+            - generic [ref=f7e831]:
+              - generic [ref=f7e832]: Live WhatsApp
+              - generic [ref=f7e833]: Line 1 Lead
+          - generic [ref=f7e834]:
+            - generic [ref=f7e835]:
+              - text: Total Orders
+              - paragraph [ref=f7e836]: 0 Orders
+            - generic [ref=f7e837]:
+              - text: Lifetime Spend
+              - paragraph [ref=f7e838]: ₹0
+          - generic [ref=f7e839]:
+            - button "call Call via mekha (Masked Caller ID)" [ref=f7e840] [cursor=pointer]:
+              - generic [ref=f7e841]: call
+              - generic [ref=f7e842]: Call via mekha (Masked Caller ID)
+            - paragraph [ref=f7e843]:
+              - generic [ref=f7e844]: verified_user
+              - generic [ref=f7e845]:
+                - text: Customer sees only
+                - strong [ref=f7e846]: mekha
+                - text: • Staff SIM hidden
+          - generic [ref=f7e847]:
+            - generic [ref=f7e848]:
+              - generic [ref=f7e849]:
+                - generic [ref=f7e850]: person_pin
+                - generic [ref=f7e851]: Customer Profile Details
+              - generic [ref=f7e852]:
+                - generic [ref=f7e853]: lock
+                - text: Saved & Locked
+            - generic [ref=f7e854]:
+              - generic [ref=f7e855]:
+                - generic [ref=f7e856]: "Customer Name *:"
+                - textbox "Full Name" [disabled] [ref=f7e857]: குரு.சச்சிதானந்தம்
+              - generic [ref=f7e858]:
+                - generic [ref=f7e859]:
+                  - generic [ref=f7e860]: "WhatsApp Phone *:"
+                  - generic [ref=f7e861]: Auto-Fetched
+                - generic [ref=f7e863]:
+                  - generic [ref=f7e864]: call
+                  - textbox "+91 98765 43210" [disabled] [ref=f7e865]: +91 95856 69799
+              - generic [ref=f7e866]:
+                - generic [ref=f7e867]:
+                  - generic [ref=f7e868]: "Age:"
+                  - spinbutton "e.g. 28" [disabled] [ref=f7e869]
+                - generic [ref=f7e870]:
+                  - generic [ref=f7e871]: "Gender:"
+                  - combobox [disabled] [ref=f7e872]:
+                    - option "-- Select --" [selected]
+                    - option "Female"
+                    - option "Male"
+                    - option "Other"
+              - generic [ref=f7e873]:
+                - generic [ref=f7e874]: "Email (Optional):"
+                - textbox "customer@example.com" [disabled] [ref=f7e875]
+              - generic [ref=f7e876]:
+                - generic [ref=f7e877]: "Delivery Address:"
+                - textbox "Door No, Street, Landmark, City, Pincode" [disabled] [ref=f7e878]: Online WhatsApp Customer
+              - generic [ref=f7e879]:
+                - generic [ref=f7e880]:
+                  - generic [ref=f7e881]:
+                    - generic [ref=f7e882]: psychology
+                    - generic [ref=f7e883]: "Customer Mindset & Notes:"
+                  - generic [ref=f7e884]: Mindset Log
+                - textbox "Record customer mindset, fabric/size preferences, wholesale budget, buying behavior, or special instructions..." [disabled] [ref=f7e885]
+              - button "edit_note Edit Customer Details & Notes" [ref=f7e887] [cursor=pointer]:
+                - generic [ref=f7e888]: edit_note
+                - generic [ref=f7e889]: Edit Customer Details & Notes
+          - generic [ref=f7e890]:
+            - generic [ref=f7e891]:
+              - generic [ref=f7e892]:
+                - generic [ref=f7e893]: smart_toy
+                - generic [ref=f7e894]: Bot Automation & Chosen Products
+              - generic [ref=f7e895]:
+                - generic [ref=f7e896]: 1 Actions
+                - button "sync" [ref=f7e897] [cursor=pointer]
+            - generic [ref=f7e901]:
+              - generic [ref=f7e902]: category
+              - generic [ref=f7e904]:
+                - generic [ref=f7e905]:
+                  - heading "👗 Baby Collection (0–3 Years)" [level=5] [ref=f7e906]
+                  - generic [ref=f7e907]: 03:42 pm
+                - generic [ref=f7e908]:
+                  - generic [ref=f7e909]: CAT-1
+                  - generic [ref=f7e910]: 👗 Category Menu
+          - generic [ref=f7e911]:
+            - generic [ref=f7e912]:
+              - generic [ref=f7e913]:
+                - generic [ref=f7e914]: edit_note
+                - generic [ref=f7e915]: Admin & Staff Internal Notes
+              - generic [ref=f7e916]: 0 Notes
+            - generic [ref=f7e917]:
+              - textbox "Write an internal note about customer preference, wholesale inquiry, sizing..." [ref=f7e918]
+              - generic [ref=f7e919]:
+                - generic [ref=f7e920]: "Quick Tags:"
+                - button "+ Bulk Buyer" [ref=f7e921] [cursor=pointer]
+                - button "+ Premium" [ref=f7e922] [cursor=pointer]
+                - button "+ Price Sensitive" [ref=f7e923] [cursor=pointer]
+                - button "+ Ready to Ship" [ref=f7e924] [cursor=pointer]
+              - button "save Save Internal Note" [ref=f7e926] [cursor=pointer]:
+                - generic [ref=f7e927]: save
+                - generic [ref=f7e928]: Save Internal Note
+            - paragraph [ref=f7e930]: No admin notes logged yet. Type above to record custom notes.
+          - generic [ref=f7e931]:
+            - generic [ref=f7e932]:
+              - generic [ref=f7e933]:
+                - generic [ref=f7e934]: assignment
+                - generic [ref=f7e935]: Enquiry Status & State
+              - generic [ref=f7e936]: 🟢 NEW
+            - generic [ref=f7e938]:
+              - generic [ref=f7e939]: "Change Status:"
+              - generic [ref=f7e940]:
+                - combobox [ref=f7e941]:
+                  - option "🟢 New Lead" [selected]
+                  - option "🟡 Pending Action"
+                  - option "🔵 Follow-up Scheduled"
+                  - option "🟣 In Progress / Active"
+                  - option "✅ Resolved / Closed"
+                  - option "🏆 Converted to Sale"
+                  - option "🚫 DND / Not Interested (No Products Needed)"
+                - generic: expand_more
+              - button "save Save Status" [ref=f7e942] [cursor=pointer]:
+                - generic [ref=f7e943]: save
+                - generic [ref=f7e944]: Save Status
+            - generic [ref=f7e945]:
+              - generic [ref=f7e946]:
+                - generic [ref=f7e947]: "Query ID:"
+                - generic [ref=f7e948]: Q-2026-826753
+              - generic [ref=f7e949]:
+                - generic [ref=f7e950]: "Priority:"
+                - generic [ref=f7e951]: HIGH
+              - generic [ref=f7e952]:
+                - generic [ref=f7e953]: "Schedule Action:"
+                - button "calendar_add_on Set Follow-up" [ref=f7e954] [cursor=pointer]:
+                  - generic [ref=f7e955]: calendar_add_on
+                  - text: Set Follow-up
+          - generic [ref=f7e956]:
+            - generic [ref=f7e957]:
+              - generic [ref=f7e958]:
+                - generic [ref=f7e959]: support_agent
+                - generic [ref=f7e960]: Handling Staff Member
+              - button "edit Change" [ref=f7e961] [cursor=pointer]:
+                - generic [ref=f7e962]: edit
+                - text: Change
+            - generic [ref=f7e963]:
+              - generic [ref=f7e964]:
+                - generic [ref=f7e965]: "?"
+                - generic [ref=f7e966]:
+                  - heading "⚠️ Unassigned (In Queue)" [level=4] [ref=f7e967]
+                  - paragraph [ref=f7e968]: No staff member allocated yet
+              - generic [ref=f7e969]:
+                - generic [ref=f7e970]: "Quick Assign:"
+                - combobox [ref=f7e971]:
+                  - option "-- Unassigned --" [selected]
+                  - option "Priya Sharma (Baby Collection)"
+                  - option "Rahul Verma (Maternity & Kids)"
+                  - option "Sneha Patel (Order Fulfillment)"
+          - generic [ref=f7e972]:
+            - generic [ref=f7e973]:
+              - generic [ref=f7e974]: Past WhatsApp Orders (0)
+              - button "View All" [ref=f7e975] [cursor=pointer]
+            - paragraph [ref=f7e977]: No previous orders
