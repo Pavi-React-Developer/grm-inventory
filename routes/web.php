@@ -402,6 +402,8 @@ class Router {
         $this->post('production/expenses/update/{id}', 'ProductionController', 'updateExpense', ['AuthMiddleware', ['PermissionMiddleware', 'production_expenses', 'edit']]);
         $this->post('production/expenses/delete/{id}', 'ProductionController', 'deleteExpense', ['AuthMiddleware', ['PermissionMiddleware', 'production_expenses', 'delete']]);
         $this->get('production/expenses/receipt/{id}', 'ProductionController', 'expenseReceipt', ['AuthMiddleware', ['PermissionMiddleware', 'production_expenses', 'view']]);
+        $this->post('api/production/expenses/quick-add-item', 'ProductionController', 'ajaxQuickAddExpenseItem', ['AuthMiddleware']);
+        $this->get('api/production/expenses/items', 'ProductionController', 'ajaxGetExpenseItems', ['AuthMiddleware']);
 
         // Label
         $this->get('production/labels', 'ProductionController', 'labelList', ['AuthMiddleware', ['PermissionMiddleware', 'labels', 'view']]);
@@ -510,10 +512,22 @@ class Router {
         $this->post('warehouse/catalog/update/{id}', 'WarehouseController', 'updateCatalog', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'edit']]);
         $this->post('warehouse/catalog/delete/{id}', 'WarehouseController', 'deleteCatalog', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'delete']]);
 
+        // Warehouse Catalog Category & Attributes (AJAX)
+        $this->get('api/warehouse/catalog/category-tree', 'WarehouseController', 'ajaxGetCategoryTree', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'view']]);
+        $this->get('api/warehouse/catalog/attributes/{category_id}', 'WarehouseController', 'ajaxGetCategoryAttributes', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'view']]);
+        $this->post('api/warehouse/catalog/attributes/save', 'WarehouseController', 'ajaxSaveCategoryAttributes', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'edit']]);
+        $this->get('api/warehouse/catalog/default-products/{ssc_id}', 'WarehouseController', 'ajaxGetDefaultProducts', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'view']]);
+        $this->post('api/warehouse/catalog/default-products/save', 'WarehouseController', 'ajaxSaveDefaultProducts', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'edit']]);
+        $this->get('api/warehouse/catalog/products-by-category', 'WarehouseController', 'ajaxGetProductsByCategory', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'view']]);
+        $this->post('api/warehouse/catalog/create-full-hierarchy', 'WarehouseController', 'ajaxCreateFullHierarchy', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'create']]);
+
         // Warehouse Sellers & Third-Party Purchases
         $this->get('warehouse/sellers', 'WarehouseController', 'sellerList', ['AuthMiddleware', ['PermissionMiddleware', 'wh_sellers', 'view']]);
         $this->get('warehouse/sellers/create', 'WarehouseController', 'createSeller', ['AuthMiddleware', ['PermissionMiddleware', 'wh_sellers', 'create']]);
         $this->post('warehouse/sellers/store', 'WarehouseController', 'storeSeller', ['AuthMiddleware', ['PermissionMiddleware', 'wh_sellers', 'create']]);
+        $this->post('warehouse/sellers/store-phase1', 'WarehouseController', 'storeSellerPhase1', ['AuthMiddleware', ['PermissionMiddleware', 'wh_sellers', 'create']]);
+        $this->get('warehouse/sellers/{id}/add-products', 'WarehouseController', 'sellerAddProducts', ['AuthMiddleware', ['PermissionMiddleware', 'wh_sellers', 'create']]);
+        $this->post('warehouse/sellers/{id}/store-products', 'WarehouseController', 'storeSellerProducts', ['AuthMiddleware', ['PermissionMiddleware', 'wh_sellers', 'create']]);
         $this->get('warehouse/sellers/buy', 'WarehouseController', 'createThirdPartyPurchase', ['AuthMiddleware', ['PermissionMiddleware', 'purchases', 'create']]);
         $this->post('warehouse/sellers/store-buy', 'WarehouseController', 'storeThirdPartyPurchase', ['AuthMiddleware', ['PermissionMiddleware', 'purchases', 'create']]);
         $this->get('warehouse/sellers/view/{id}', 'WarehouseController', 'viewSeller', ['AuthMiddleware', ['PermissionMiddleware', 'wh_sellers', 'view']]);
@@ -551,8 +565,8 @@ class Router {
         $this->get('warehouse/labels', 'WarehouseController', 'labels', ['AuthMiddleware', ['PermissionMiddleware', 'wh_labels', 'view']]);
         $this->get('warehouse/labels/ajax-source/{type}/{id}', 'WarehouseController', 'ajaxLabelSourceData', ['AuthMiddleware', ['PermissionMiddleware', 'wh_labels', 'view']]);
         $this->post('warehouse/labels/generate', 'WarehouseController', 'generateLabels', ['AuthMiddleware', ['PermissionMiddleware', 'wh_labels', 'create']]);
-        $this->post('warehouse/labels/confirm-stickered-inward', 'WarehouseController', 'confirmStickeredInward', ['AuthMiddleware', ['PermissionMiddleware', 'inward', 'create']]);
-        $this->post('api/warehouse/labels/confirm-stickered-inward', 'WarehouseController', 'confirmStickeredInward', ['AuthMiddleware', ['PermissionMiddleware', 'inward', 'create']]);
+        $this->post('warehouse/labels/confirm-stickered-inward', 'WarehouseController', 'confirmStickeredInward', ['AuthMiddleware']);
+        $this->post('api/warehouse/labels/confirm-stickered-inward', 'WarehouseController', 'confirmStickeredInward', ['AuthMiddleware']);
 
         // Shop Requests, WhatsApp & Website Channel Orders
         $this->get('warehouse/shop-requests', 'WarehouseController', 'shopRequestList', ['AuthMiddleware', ['PermissionMiddleware', 'shop_requests', 'view']]);

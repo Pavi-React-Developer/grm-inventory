@@ -157,8 +157,8 @@ class WarehouseAllocation {
     public static function create(array $data): int {
         Database::execute(
             "INSERT INTO warehouse_allocations 
-             (allocation_number, warehouse_id, destination_type, destination_id, shop_id, channel_id, requested_by, status, notes)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             (allocation_number, warehouse_id, destination_type, destination_id, shop_id, channel_id, requested_by, approved_by, approved_at, status, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 $data['allocation_number'],
                 $data['warehouse_id'],
@@ -167,6 +167,8 @@ class WarehouseAllocation {
                 $data['shop_id'] ?? null,
                 $data['channel_id'] ?? null,
                 $data['requested_by'] ?? null,
+                $data['approved_by'] ?? null,
+                $data['approved_at'] ?? null,
                 $data['status'] ?? 'REQUESTED',
                 $data['notes'] ?? null
             ]
@@ -177,7 +179,7 @@ class WarehouseAllocation {
     public static function updateStatus(int $id, string $status, ?int $approvedBy = null): bool {
         if ($approvedBy) {
             return Database::execute(
-                "UPDATE warehouse_allocations SET status = ?, approved_by = ?, updated_at = NOW() WHERE id = ?",
+                "UPDATE warehouse_allocations SET status = ?, approved_by = ?, approved_at = NOW(), updated_at = NOW() WHERE id = ?",
                 [$status, $approvedBy, $id]
             );
         }
@@ -189,6 +191,22 @@ class WarehouseAllocation {
 
     public static function generateNumber(): string {
         $prefix = 'ALC-' . date('Ymd') . '-';
+        $last = Database::fetchOne(
+            "SELECT allocation_number FROM warehouse_allocations WHERE allocation_number LIKE ? ORDER BY id DESC LIMIT 1",
+            [$prefix . '%']
+        );
+
+        if ($last) {
+            $num = (int)substr($last['allocation_number'], -4) + 1;
+        } else {
+            $num = 1;
+        }
+
+        return $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
+    }
+
+    public static function generateRequestNumber(string $reqPrefix = 'REQ-'): string {
+        $prefix = $reqPrefix . date('Ymd') . '-';
         $last = Database::fetchOne(
             "SELECT allocation_number FROM warehouse_allocations WHERE allocation_number LIKE ? ORDER BY id DESC LIMIT 1",
             [$prefix . '%']

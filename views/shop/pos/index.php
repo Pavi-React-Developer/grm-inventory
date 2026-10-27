@@ -592,8 +592,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success && data.data) {
                     const variant = data.data;
 
-                    // 1. Check if this physical piece tag was already billed in a past invoice
-                    if (variant.already_sold_invoice) {
+                    // 1. Check if this physical piece tag was already billed in a past invoice (bypass if SERIES)
+                    const isSeries = (variant.is_series == 1 || variant.category_type === 'SERIES' || variant.qr_type === 'SERIES_BATCH' || parseInt(variant.pack_quantity) > 1);
+                    if (variant.already_sold_invoice && !isSeries) {
                         playDuplicateAlert();
                         scanStatus.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> <strong class="text-danger">ALREADY SOLD:</strong> Piece Tag <code>${escapeHtml(variant.scanned_piece_tag || code)}</code> was already sold in Invoice #<strong>${escapeHtml(variant.already_sold_invoice)}</strong>! Cannot bill again.`;
                         scanStatus.className = 'text-danger fw-bold';
@@ -601,8 +602,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
 
-                    // 2. Check if this unique piece tag is ALREADY in the current active cart
-                    if (variant.scanned_piece_tag && scannedPieceTags.has(variant.scanned_piece_tag)) {
+                    // 2. Check if this unique piece tag is ALREADY in the current active cart (bypass if SERIES)
+                    if (variant.scanned_piece_tag && scannedPieceTags.has(variant.scanned_piece_tag) && !isSeries) {
                         playDuplicateAlert();
                         scanStatus.innerHTML = `<i class="bi bi-shield-slash-fill text-warning me-1"></i> <strong class="text-dark">DUPLICATE SCAN BLOCKED:</strong> Piece Tag <code class="text-danger fw-bold">${escapeHtml(variant.scanned_piece_tag)}</code> is already in the bill! Each physical garment has a unique serial QR and can only be scanned once.`;
                         scanStatus.className = 'bg-warning-subtle text-dark border border-warning p-2 rounded-3 small fw-bold d-block mt-1';
@@ -638,17 +639,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Add Product to Cart: EACH PIECE LISTED ONE BY ONE (Quantity = 1 per row)
     function addItemToCart(variant) {
+        const isComp = (variant.is_complementary == 1 || variant.category_type === 'COMPLEMENTARY');
+        const isSeries = (variant.is_series == 1 || variant.category_type === 'SERIES' || variant.qr_type === 'SERIES_BATCH' || parseInt(variant.pack_quantity) > 1);
         const pieceTag = variant.scanned_piece_tag || null;
-        if (pieceTag) {
+        if (pieceTag && !isSeries) {
             scannedPieceTags.add(pieceTag);
         }
 
         const cartItemId = 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-        let retailPrice = parseFloat(variant.selling_price) || 0;
-        let mrp = parseFloat(variant.mrp) || retailPrice;
-        if (retailPrice <= 0 && mrp > 0) retailPrice = mrp;
-        if (mrp <= 0 && retailPrice > 0) mrp = retailPrice;
-        const gstRate = parseFloat(variant.gst_percentage) || 5.0;
+        let retailPrice = isComp ? 0 : (parseFloat(variant.selling_price) || 0);
+        let mrp = isComp ? 0 : (parseFloat(variant.mrp) || retailPrice);
+        if (!isComp && retailPrice <= 0 && mrp > 0) retailPrice = mrp;
+        if (!isComp && mrp <= 0 && retailPrice > 0) mrp = retailPrice;
+        const gstRate = isComp ? 0 : (parseFloat(variant.gst_percentage) || 5.0);
 
         // Always push as an individual one-by-one row
         cart.push({
@@ -659,6 +662,9 @@ document.addEventListener('DOMContentLoaded', function() {
             size_name: variant.size_name || '',
             color_name: variant.color_name || '',
             image: variant.image || null,
+            is_complementary: isComp ? 1 : 0,
+            is_series: isSeries ? 1 : 0,
+            category_type: variant.category_type || 'NORMAL',
             original_price: retailPrice,
             billed_price: retailPrice,
             mrp: retailPrice,
@@ -812,14 +818,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
         let html = '';
         cart.forEach((item, index) => {
-            const orig = parseFloat(item.original_price) || 0;
-            const billed = parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig;
-            const gstPercentage = parseFloat(item.gst_percentage) || 5.0;
+            const isComp = (item.is_complementary == 1);
+            const isSeries = (item.is_series == 1);
+            const orig = isComp ? 0 : (parseFloat(item.original_price) || 0);
+            const billed = isComp ? 0 : (parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig);
+            const gstPercentage = isComp ? 0 : (parseFloat(item.gst_percentage) || 5.0);
             
-            const lineTaxable = Math.round((billed / (1 + (gstPercentage / 100))) * 100) / 100;
-            const lineGst = Math.round((billed - lineTaxable) * 100) / 100;
-            const discountAmount = orig > billed ? Math.round((orig - billed) * 100) / 100 : 0;
-            const discountPct = orig > 0 && discountAmount > 0 ? Math.round(((discountAmount / orig) * 100) * 10) / 10 : 0;
+            const lineTaxable = isComp ? 0 : Math.round((billed / (1 + (gstPercentage / 100))) * 100) / 100;
+            const lineGst = isComp ? 0 : Math.round((billed - lineTaxable) * 100) / 100;
+            const discountAmount = (!isComp && orig > billed) ? Math.round((orig - billed) * 100) / 100 : 0;
+            const discountPct = (!isComp && orig > 0 && discountAmount > 0) ? Math.round(((discountAmount / orig) * 100) * 10) / 10 : 0;
 
             const itemImgHtml = item.image 
                 ? `<img src="${escapeHtml(item.image)}" alt="" class="rounded-3 border me-2.5 shadow-sm" style="width:38px; height:38px; object-fit: cover;">`
@@ -828,6 +836,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const tagHtml = item.scanned_tag
                 ? `<span class="badge bg-dark-subtle text-dark border border-secondary-subtle font-monospace mt-0.5 d-inline-block" style="font-size:10px;"><i class="bi bi-qr-code text-primary me-1"></i>Piece Tag: ${escapeHtml(item.scanned_tag)}</span>`
                 : `<span class="badge bg-light text-dark border font-monospace mt-0.5 d-inline-block" style="font-size:10px;"><i class="bi bi-qr-code text-primary me-1"></i>QR: ${escapeHtml(item.sku)}</span>`;
+
+            let typeBadgeHtml = '';
+            if (isComp) {
+                typeBadgeHtml = '<span class="badge bg-warning-subtle text-dark border border-warning" style="font-size:10px;"><i class="bi bi-gift-fill text-warning me-1"></i>Complementary (₹0.00)</span>';
+            } else if (isSeries) {
+                typeBadgeHtml = '<span class="badge bg-info-subtle text-info border border-info" style="font-size:10px;"><i class="bi bi-collection-fill me-1"></i>Series Batch</span>';
+            }
 
             const discountBadgeHtml = discountAmount > 0
                 ? `<span class="badge bg-danger-subtle text-danger fw-bold font-monospace" style="font-size: 11px;">-₹${discountAmount.toFixed(2)}</span><div class="text-muted font-monospace mt-0.5" style="font-size: 9.5px;">(${discountPct}% off)</div>`
@@ -847,7 +862,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <span class="badge bg-light text-dark border font-monospace" style="font-size:10px;">${escapeHtml(item.sku)}</span> 
                                     ${item.size_name ? `<span class="badge bg-primary-subtle text-primary" style="font-size:10px;">${escapeHtml(item.size_name)}</span>` : ''} 
                                     ${item.color_name ? `<span class="badge bg-secondary-subtle text-secondary" style="font-size:10px;">${escapeHtml(item.color_name)}</span>` : ''}
-                                    <span class="badge bg-light text-secondary border font-monospace item-mrp-badge" style="font-size:10px;" title="Original MRP / Retail Price">MRP: ₹${orig.toFixed(2)}</span>
+                                    ${typeBadgeHtml}
+                                    <span class="badge bg-light text-secondary border font-monospace item-mrp-badge" style="font-size:10px;" title="Original MRP / Retail Price">${isComp ? 'Complementary' : 'MRP: ₹' + orig.toFixed(2)}</span>
                                 </div>
                                 ${tagHtml}
                             </div>
@@ -871,7 +887,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                    class="form-control form-control-sm text-end fw-bold font-monospace item-billed-price-input" 
                                    data-cart-id="${item.cart_id}" 
                                    value="${billed.toFixed(2)}" 
-                                   title="Click to edit Billed Price">
+                                   style="${isComp ? 'background-color: #f8fafc; color: #16a34a !important;' : ''}"
+                                   title="${isComp ? 'Complementary Item (Free - ₹0.00)' : 'Click to edit Billed Price'}"
+                                   ${isComp ? 'readonly' : ''}>
                         </div>
                     </td>
                     <td class="text-center pe-3" style="width: 40px;">
@@ -894,6 +912,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 const cartId = this.getAttribute('data-cart-id');
                 const item = cart.find(it => it.cart_id === cartId);
                 if (!item) return;
+
+                if (item.is_complementary == 1) {
+                    item.billed_price = 0.0;
+                    item.original_price = 0.0;
+                    item.mrp = 0.0;
+                    item.discount_amount = 0.0;
+                    item.discount_percent = 0.0;
+                    this.value = '0.00';
+                    updateSummaryTotals();
+                    return;
+                }
 
                 let enteredVal = parseFloat(this.value);
                 if (isNaN(enteredVal) || enteredVal < 0) {

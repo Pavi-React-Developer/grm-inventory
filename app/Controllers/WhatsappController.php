@@ -1829,7 +1829,7 @@ class WhatsappController {
             return;
         }
 
-        $allocationNumber = WarehouseAllocation::generateNumber();
+        $allocationNumber = WarehouseAllocation::generateRequestNumber('WREQ-');
         $allocationId = WarehouseAllocation::create([
             'allocation_number' => $allocationNumber,
             'warehouse_id'      => $warehouseId,

@@ -791,8 +791,10 @@ function processManualScan() {
     let pieceTag = rawCode.includes('|') ? rawCode.split('|')[0].trim() : rawCode.trim();
     pieceTag = pieceTag.toUpperCase();
 
-    // Check duplicate piece tag in active cart
-    if (pieceTag && scannedPieceTags.has(pieceTag)) {
+    const isSeries = (matched.is_series == 1 || matched.category_type === 'SERIES' || matched.qr_type === 'SERIES_BATCH' || (matched.pack_quantity && parseInt(matched.pack_quantity) > 1));
+
+    // Check duplicate piece tag in active cart - skip for series items where remaining quantity is still billable
+    if (pieceTag && scannedPieceTags.has(pieceTag) && !isSeries) {
         showScanToast(`Piece Tag <code class="text-danger fw-bold">${escapeHtml(pieceTag)}</code> is already in the order! Each physical garment has a unique serial QR.`, 'warning');
         flashCartItemRow(pieceTag);
         qrInput.value = '';
@@ -808,17 +810,27 @@ function processManualScan() {
 }
 
 function addItemToCart(variant, pieceTag) {
-    if (pieceTag) {
+    const isSeries = (variant.is_series == 1 || variant.category_type === 'SERIES' || variant.qr_type === 'SERIES_BATCH' || (variant.pack_quantity && parseInt(variant.pack_quantity) > 1));
+    const isComp = (variant.is_complementary == 1 || variant.category_type === 'COMPLEMENTARY' || variant.p_is_comp == 1 || variant.pv_is_comp == 1);
+
+    if (pieceTag && !isSeries) {
         scannedPieceTags.add(pieceTag);
     }
 
     const cartItemId = 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     let retailPrice = parseFloat(variant.selling_price) || 0;
     let mrp = parseFloat(variant.mrp) || retailPrice;
-    if (retailPrice <= 0 && mrp > 0) retailPrice = mrp;
-    if (mrp <= 0 && retailPrice > 0) mrp = retailPrice;
-    if (mrp < retailPrice) mrp = retailPrice;
-    const gstRate = parseFloat(variant.gst_percentage) || 5.0;
+    let gstRate = parseFloat(variant.gst_percentage) || 5.0;
+
+    if (isComp) {
+        retailPrice = 0.00;
+        mrp = 0.00;
+        gstRate = 0.00;
+    } else {
+        if (retailPrice <= 0 && mrp > 0) retailPrice = mrp;
+        if (mrp <= 0 && retailPrice > 0) mrp = retailPrice;
+        if (mrp < retailPrice) mrp = retailPrice;
+    }
 
     const discountAmount = mrp > retailPrice ? Math.round((mrp - retailPrice) * 100) / 100 : 0.0;
     const discountPct = mrp > 0 && discountAmount > 0 ? Math.round(((discountAmount / mrp) * 100) * 10) / 10 : 0.0;
@@ -838,7 +850,9 @@ function addItemToCart(variant, pieceTag) {
         discount_percent: discountPct,
         gst_percentage: gstRate,
         quantity: 1,
-        scanned_tag: pieceTag
+        scanned_tag: pieceTag,
+        is_complementary: isComp ? 1 : 0,
+        is_series: isSeries ? 1 : 0
     });
 
     renderCart();
@@ -860,9 +874,18 @@ function showLastScanned(variant, pieceTag) {
     document.getElementById('lastScanSku').innerText = variant.sku || '';
     document.getElementById('lastScanSize').innerText = variant.size_name || 'N/A';
     document.getElementById('lastScanColor').innerText = variant.color_name || 'N/A';
-    const pVal = parseFloat(variant.selling_price > 0 ? variant.selling_price : (variant.mrp || 0));
+    const isComp = (variant.is_complementary == 1 || variant.category_type === 'COMPLEMENTARY' || variant.p_is_comp == 1 || variant.pv_is_comp == 1);
+    const pVal = isComp ? 0 : parseFloat(variant.selling_price > 0 ? variant.selling_price : (variant.mrp || 0));
     document.getElementById('lastScanPrice').innerText = pVal.toFixed(2);
-    document.getElementById('lastScanTagBadge').innerHTML = pieceTag ? `<span class="piece-tag-badge"><i class="bi bi-qr-code"></i>Piece Tag: ${escapeHtml(pieceTag)}</span>` : '';
+    let tagBadges = pieceTag ? `<span class="piece-tag-badge"><i class="bi bi-qr-code"></i>Piece Tag: ${escapeHtml(pieceTag)}</span>` : '';
+    if (isComp) {
+        tagBadges += ` <span class="badge bg-warning-subtle text-dark border border-warning"><i class="bi bi-gift me-1"></i>Complementary (₹0.00)</span>`;
+    }
+    const isSeries = (variant.is_series == 1 || variant.category_type === 'SERIES' || variant.qr_type === 'SERIES_BATCH' || (variant.pack_quantity && parseInt(variant.pack_quantity) > 1));
+    if (isSeries) {
+        tagBadges += ` <span class="badge bg-info-subtle text-info border border-info font-monospace"><i class="bi bi-layers me-1"></i>Series Batch</span>`;
+    }
+    document.getElementById('lastScanTagBadge').innerHTML = tagBadges;
 }
 
 function showScanToast(msg, type = 'success') {
@@ -1001,14 +1024,16 @@ function renderCart() {
 
     let html = '';
     cart.forEach((item, index) => {
-        const orig = parseFloat(item.original_price) || 0;
-        const billed = parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig;
-        const gstPercentage = parseFloat(item.gst_percentage) || 5.0;
+        const isComp = (item.is_complementary == 1 || item.category_type === 'COMPLEMENTARY');
+        const isSeries = (item.is_series == 1 || item.category_type === 'SERIES' || item.qr_type === 'SERIES_BATCH');
+        const orig = isComp ? 0.00 : (parseFloat(item.original_price) || 0);
+        const billed = isComp ? 0.00 : (parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig);
+        const gstPercentage = isComp ? 0.00 : (parseFloat(item.gst_percentage) || 5.0);
 
-        const lineTaxable = Math.round((billed / (1 + (gstPercentage / 100))) * 100) / 100;
-        const lineGst = Math.round((billed - lineTaxable) * 100) / 100;
-        const discountAmount = orig > billed ? Math.round((orig - billed) * 100) / 100 : 0;
-        const discountPct = orig > 0 && discountAmount > 0 ? Math.round(((discountAmount / orig) * 100) * 10) / 10 : 0;
+        const lineTaxable = isComp ? 0.00 : (Math.round((billed / (1 + (gstPercentage / 100))) * 100) / 100);
+        const lineGst = isComp ? 0.00 : (Math.round((billed - lineTaxable) * 100) / 100);
+        const discountAmount = isComp ? 0.00 : (orig > billed ? Math.round((orig - billed) * 100) / 100 : 0);
+        const discountPct = isComp ? 0.00 : (orig > 0 && discountAmount > 0 ? Math.round(((discountAmount / orig) * 100) * 10) / 10 : 0);
 
         const itemImgHtml = item.image 
             ? `<img src="${escapeHtml(item.image)}" alt="" class="rounded-3 border me-2.5 shadow-sm" style="width:38px; height:38px; object-fit: cover;">`
@@ -1018,9 +1043,18 @@ function renderCart() {
             ? `<span class="badge bg-dark-subtle text-dark border border-secondary-subtle font-monospace mt-0.5 d-inline-block" style="font-size:10px;"><i class="bi bi-qr-code text-success me-1"></i>Piece Tag: ${escapeHtml(item.scanned_tag)}</span>`
             : `<span class="badge bg-light text-dark border font-monospace mt-0.5 d-inline-block" style="font-size:10px;"><i class="bi bi-qr-code text-success me-1"></i>QR: ${escapeHtml(item.sku)}</span>`;
 
-        const discountBadgeHtml = discountAmount > 0
-            ? `<span class="badge bg-danger-subtle text-danger fw-bold font-monospace" style="font-size: 11px;">-₹${discountAmount.toFixed(2)}</span><div class="text-muted font-monospace mt-0.5" style="font-size: 9.5px;">(${discountPct}% off)</div>`
-            : `<span class="badge bg-light text-muted font-monospace" style="font-size: 10.5px;">₹0.00</span>`;
+        const compBadgeHtml = isComp
+            ? `<span class="badge bg-warning-subtle text-dark border border-warning" style="font-size:10px;"><i class="bi bi-gift-fill me-1 text-warning"></i>Complementary (₹0.00)</span>`
+            : '';
+        const seriesBadgeHtml = isSeries
+            ? `<span class="badge bg-info-subtle text-info-emphasis border border-info font-monospace" style="font-size:10px;"><i class="bi bi-layers me-1 text-info"></i>Series Batch</span>`
+            : '';
+
+        const discountBadgeHtml = isComp 
+            ? `<span class="badge bg-light text-muted font-monospace" style="font-size: 10.5px;">₹0.00</span>`
+            : (discountAmount > 0
+                ? `<span class="badge bg-danger-subtle text-danger fw-bold font-monospace" style="font-size: 11px;">-₹${discountAmount.toFixed(2)}</span><div class="text-muted font-monospace mt-0.5" style="font-size: 9.5px;">(${discountPct}% off)</div>`
+                : `<span class="badge bg-light text-muted font-monospace" style="font-size: 10.5px;">₹0.00</span>`);
 
         html += `
             <tr data-cart-id="${item.cart_id}" data-piece-tag="${escapeHtml(item.scanned_tag || '')}" class="cart-item-row align-middle">
@@ -1036,7 +1070,9 @@ function renderCart() {
                                 <span class="badge bg-light text-dark border font-monospace" style="font-size:10px;">${escapeHtml(item.sku)}</span> 
                                 ${item.size_name ? `<span class="badge bg-primary-subtle text-primary" style="font-size:10px;">${escapeHtml(item.size_name)}</span>` : ''} 
                                 ${item.color_name ? `<span class="badge bg-secondary-subtle text-secondary" style="font-size:10px;">${escapeHtml(item.color_name)}</span>` : ''}
-                                <span class="badge bg-light text-secondary border font-monospace item-mrp-badge" style="font-size:10px;" title="Original MRP">MRP: ₹${orig.toFixed(2)}</span>
+                                ${compBadgeHtml}
+                                ${seriesBadgeHtml}
+                                ${!isComp ? `<span class="badge bg-light text-secondary border font-monospace item-mrp-badge" style="font-size:10px;" title="Original MRP">MRP: ₹${orig.toFixed(2)}</span>` : ''}
                             </div>
                             ${tagHtml}
                         </div>
@@ -1057,8 +1093,7 @@ function renderCart() {
                     <div class="text-muted font-monospace mt-0.5 item-gst-val" style="font-size: 10px;">+₹${lineGst.toFixed(2)}</div>
                 </td>
                 <td class="text-end item-discount-cell" style="width: 105px;">
-                    <span class="badge bg-danger-subtle text-danger fw-bold font-monospace item-discount-badge" style="font-size: 11px;">-₹${discountAmount.toFixed(2)}</span>
-                    <div class="text-muted font-monospace mt-0.5 item-discount-pct text-end" style="font-size: 9.5px;">(${discountPct}% off)</div>
+                    ${discountBadgeHtml}
                 </td>
                 <td class="text-end" style="width: 140px;">
                     <div class="item-billed-price-wrap">
@@ -1067,7 +1102,7 @@ function renderCart() {
                                class="form-control form-control-sm text-end fw-bold font-monospace item-billed-price-input" 
                                data-cart-id="${item.cart_id}" 
                                value="${billed.toFixed(2)}" 
-                               title="Click to edit Billed Price">
+                               ${isComp ? 'readonly style="background-color: #f8fafc !important; color: #64748b !important; cursor: not-allowed;" title="Complementary item is free (₹0.00)"' : 'title="Click to edit Billed Price"'}>
                     </div>
                 </td>
                 <td class="text-center pe-3" style="width: 40px;">
@@ -1090,6 +1125,15 @@ function attachCartRowEvents() {
             const cartId = this.getAttribute('data-cart-id');
             const item = cart.find(it => it.cart_id === cartId);
             if (!item) return;
+
+            if (item.is_complementary == 1) {
+                this.value = '0.00';
+                item.billed_price = 0;
+                item.original_price = 0;
+                item.mrp = 0;
+                updateSummaryTotals();
+                return;
+            }
 
             let enteredVal = parseFloat(this.value);
             if (isNaN(enteredVal) || enteredVal < 0) {

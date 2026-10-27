@@ -445,6 +445,8 @@ class ProductionBatch {
         $items = Database::fetchAll(
             "SELECT pbi.*, 
                     pv.sku, pv.qr_code, pv.mrp, pv.selling_price, pv.purchase_price, pv.production_cost,
+                    pv.qr_type, pv.pack_quantity, pv.is_complementary as pv_is_comp,
+                    p.is_complementary as p_is_comp, wc.category_type as warehouse_category_type,
                     pv.image_url as variant_image, pv.mfg_date as variant_mfg_date, pv.expiry_date as variant_expiry_date,
                     cat.name as category_name, cat.code as category_code,
                     subcat.name as subcategory_name, subcat.code as subcategory_code,
@@ -460,6 +462,7 @@ class ProductionBatch {
              JOIN product_variants pv ON pbi.variant_id = pv.id
              JOIN products p ON pv.product_id = p.id
              LEFT JOIN production_batches pb ON pb.id = pbi.production_batch_id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN categories cat ON p.category_id = cat.id
              LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
              LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
@@ -473,6 +476,14 @@ class ProductionBatch {
         if (empty($items)) {
             return [];
         }
+
+        foreach ($items as &$it) {
+            $isSeries = ((isset($it['warehouse_category_type']) && $it['warehouse_category_type'] === 'SERIES') || ($it['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($it['pack_quantity'] ?? 1) > 1);
+            $isComp = ((isset($it['warehouse_category_type']) && $it['warehouse_category_type'] === 'COMPLEMENTARY') || !empty($it['pv_is_comp']) || !empty($it['p_is_comp']));
+            $it['is_series'] = $isSeries ? 1 : 0;
+            $it['is_complementary'] = $isComp ? 1 : 0;
+        }
+        unset($it);
 
         // Fetch batch program info to resolve roll fabric details from seller_rolls
         $batch = Database::fetchOne("SELECT program_id, qc_batch_id FROM production_batches WHERE id = ?", [$batchId]);
@@ -546,6 +557,27 @@ class ProductionBatch {
             }
         }
 
+        // Resolve production QR code tag ranges and piece tags from QC and Label Batches
+        $qcBatchId = (int)($batch['qc_batch_id'] ?? 0);
+        $qcItems = [];
+        $piecesData = [];
+        $labelItems = [];
+
+        if ($qcBatchId > 0) {
+            $qbRow = Database::fetchOne("SELECT id, pieces_data, label_batch_id FROM qc_batches WHERE id = ?", [$qcBatchId]);
+            if ($qbRow) {
+                $qcItems = Database::fetchAll("SELECT * FROM qc_items WHERE qc_batch_id = ?", [$qcBatchId]);
+                $piecesData = !empty($qbRow['pieces_data']) ? json_decode($qbRow['pieces_data'], true) : [];
+                $lblBatchId = (int)($qbRow['label_batch_id'] ?? 0);
+                if ($lblBatchId > 0) {
+                    $labelItems = Database::fetchAll("SELECT * FROM label_items WHERE label_batch_id = ?", [$lblBatchId]);
+                }
+            }
+        }
+        if (empty($labelItems) && $progId > 0) {
+            $labelItems = Database::fetchAll("SELECT li.* FROM label_items li JOIN label_batches lb ON lb.id = li.label_batch_id WHERE lb.program_id = ? ORDER BY lb.id DESC", [$progId]);
+        }
+
         foreach ($items as &$it) {
             $c = strtoupper(trim($it['color_name'] ?? ''));
             $matched = null;
@@ -566,6 +598,92 @@ class ProductionBatch {
                 $it['fabric_roll_number'] = null;
                 $it['fabric_seller_name'] = null;
             }
+
+            $vid = (int)$it['variant_id'];
+            $sizeName = trim($it['size_name'] ?? '');
+            $colorName = trim($it['color_name'] ?? '');
+            $qty = (int)$it['quantity'];
+
+            $matchedQcItem = null;
+            foreach ($qcItems as $qi) {
+                if (!empty($qi['variant_id']) && (int)$qi['variant_id'] === $vid) {
+                    $matchedQcItem = $qi;
+                    break;
+                }
+                if (strcasecmp(trim($qi['size_name'] ?? ''), $sizeName) === 0 && strcasecmp(trim($qi['color_name'] ?? ''), $colorName) === 0) {
+                    $matchedQcItem = $qi;
+                    break;
+                }
+            }
+
+            $matchedLabelItem = null;
+            foreach ($labelItems as $li) {
+                if (!empty($li['variant_id']) && (int)$li['variant_id'] === $vid) {
+                    $matchedLabelItem = $li;
+                    break;
+                }
+                if (strcasecmp(trim($li['size_name'] ?? ''), $sizeName) === 0 && strcasecmp(trim($li['color_name'] ?? ''), $colorName) === 0) {
+                    $matchedLabelItem = $li;
+                    break;
+                }
+            }
+
+            $startSeq = $matchedLabelItem ? (int)$matchedLabelItem['start_seq'] : null;
+            $endSeq = $matchedLabelItem ? (int)$matchedLabelItem['end_seq'] : null;
+            $startCode = $matchedLabelItem['start_code'] ?? ($matchedQcItem['tag_code'] ?? null);
+            $endCode = $matchedLabelItem['end_code'] ?? null;
+
+            $variantPieces = [];
+            if (!empty($piecesData)) {
+                foreach ($piecesData as $p) {
+                    $tag = trim($p['tag_code'] ?? '');
+                    if (!$tag) continue;
+                    $isMatch = false;
+                    if ($matchedQcItem && isset($p['item_id']) && (int)$p['item_id'] === (int)$matchedQcItem['id']) {
+                        $isMatch = true;
+                    } elseif ($startSeq && $endSeq && preg_match('/(\d+)$/', $tag, $m)) {
+                        $seq = (int)$m[1];
+                        if ($seq >= $startSeq && $seq <= $endSeq) {
+                            $isMatch = true;
+                        }
+                    }
+                    if ($isMatch) {
+                        $variantPieces[] = [
+                            'tag_code' => $tag,
+                            'status'   => $p['status'] ?? 'APPROVED',
+                        ];
+                    }
+                }
+            }
+
+            if (empty($variantPieces) && $startCode && $startSeq) {
+                $prefix = preg_match('/^([A-Z0-9]+?)(\d{2,4})$/i', $startCode, $m) ? $m[1] : substr($startCode, 0, -2);
+                $calcEndSeq = $endSeq ?: ($startSeq + $qty - 1);
+                for ($s = $startSeq; $s <= $calcEndSeq; $s++) {
+                    $variantPieces[] = [
+                        'tag_code' => $prefix . sprintf('%02d', $s),
+                        'status'   => 'APPROVED',
+                    ];
+                }
+            }
+
+            if (!empty($variantPieces)) {
+                if (!$startCode) $startCode = $variantPieces[0]['tag_code'];
+                if (!$endCode) $endCode = end($variantPieces)['tag_code'];
+                if (!$startSeq && preg_match('/(\d+)$/', $startCode, $m)) $startSeq = (int)$m[1];
+                if (!$endSeq && preg_match('/(\d+)$/', $endCode, $m)) $endSeq = (int)$m[1];
+            }
+
+            $it['start_seq']   = $startSeq;
+            $it['end_seq']     = $endSeq;
+            $it['start_code']  = $startCode;
+            $it['end_code']    = $endCode;
+            $it['piece_tags']  = !empty($variantPieces) ? array_column($variantPieces, 'tag_code') : [];
+
+            $recTags = !empty($it['received_qr_codes']) ? array_filter(array_map('trim', explode(',', $it['received_qr_codes']))) : [];
+            $dmgTags = !empty($it['damaged_qr_codes']) ? array_filter(array_map('trim', explode(',', $it['damaged_qr_codes']))) : [];
+            $it['received_tags'] = array_values($recTags);
+            $it['damaged_tags']  = array_values($dmgTags);
         }
         unset($it);
 

@@ -227,7 +227,6 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                     <th>Last Purchase</th>
                                     <th>Total Units</th>
                                     <th>Lifetime Spend</th>
-                                    <th>Payment Status</th>
                                     <th class="text-end pe-3" style="width: 210px;">Actions</th>
                                 </tr>
                             </thead>
@@ -289,14 +288,6 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                             <?php if ($cust['pending_total'] > 0): ?>
                                                 <br><small class="text-danger">Pend: ₹<?= number_format($cust['pending_total'], 2) ?></small>
                                             <?php endif; ?>
-                                        </td>
-
-                                        <!-- Payment Status -->
-                                        <td>
-                                            <span class="badge bg-<?= $cust['pending_total'] <= 0 ? 'success' : 'warning text-dark' ?>">
-                                                <?= $cust['pending_total'] <= 0 ? 'PAID' : 'PARTIAL' ?>
-                                            </span>
-                                            <small class="text-muted d-block font-monospace mt-0.5"><?= implode(', ', $cust['payment_methods']) ?: 'CASH' ?></small>
                                         </td>
 
                                         <!-- Actions -->
@@ -654,34 +645,27 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                         </div>
                     </div>
 
-                    <!-- 4 Summary Stats Cards inside Header -->
+                    <!-- 3 Summary Stats Cards inside Header -->
                     <div class="row g-2 pt-2 border-top" style="border-color: rgba(255,255,255,0.1) !important;">
-                        <div class="col-6 col-md-3">
+                        <div class="col-12 col-md-4">
                             <div class="p-2.5 rounded-3" style="background: rgba(255, 255, 255, 0.06); backdrop-filter: blur(4px);">
                                 <div class="text-white-50 small" style="font-size: 0.75rem;"><i class="bi bi-receipt me-1 text-primary"></i>Total Direct Orders</div>
                                 <div class="h5 fw-bold text-white mb-0 mt-0.5" id="statCustTotalOrders">0</div>
                                 <div class="text-white-50" style="font-size: 0.7rem;" id="statCustOrdersSub">Across all warehouses</div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-3">
+                        <div class="col-12 col-md-4">
                             <div class="p-2.5 rounded-3" style="background: rgba(255, 255, 255, 0.06); backdrop-filter: blur(4px);">
                                 <div class="text-white-50 small" style="font-size: 0.75rem;"><i class="bi bi-box-seam me-1 text-info"></i>Total Garments Bought</div>
                                 <div class="h5 fw-bold text-info mb-0 mt-0.5" id="statCustTotalUnits">0 pcs</div>
                                 <div class="text-white-50" style="font-size: 0.7rem;" id="statCustProductsCount">0 distinct styles</div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-3">
+                        <div class="col-12 col-md-4">
                             <div class="p-2.5 rounded-3" style="background: rgba(255, 255, 255, 0.06); backdrop-filter: blur(4px);">
                                 <div class="text-white-50 small" style="font-size: 0.75rem;"><i class="bi bi-currency-rupee me-1 text-success"></i>Total Lifetime Spend</div>
                                 <div class="h5 fw-bold text-success mb-0 mt-0.5" id="statCustTotalSpend">₹0.00</div>
                                 <div class="text-white-50" style="font-size: 0.7rem;" id="statCustAvgOrder">Avg ₹0.00 / order</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="p-2.5 rounded-3" style="background: rgba(255, 255, 255, 0.06); backdrop-filter: blur(4px);">
-                                <div class="text-white-50 small" style="font-size: 0.75rem;"><i class="bi bi-wallet2 me-1 text-warning"></i>Payment Status</div>
-                                <div class="h5 fw-bold text-white mb-0 mt-0.5" id="statCustPaymentStatus">₹0.00 Paid</div>
-                                <div class="text-white-50" style="font-size: 0.7rem;" id="statCustPayMethods">CASH / UPI</div>
                             </div>
                         </div>
                     </div>
@@ -1019,8 +1003,14 @@ function renderCustomerProfileData(data) {
 
     const paidAmt = Number(sum.paid_spend || 0).toLocaleString('en-IN', {minimumFractionDigits: 0});
     const pendAmt = Number(sum.pending_spend || 0).toLocaleString('en-IN', {minimumFractionDigits: 0});
-    document.getElementById('statCustPaymentStatus').innerHTML = `<span class="text-success">₹${paidAmt}</span> <small class="text-white-50 fs-7">/ ₹${pendAmt} pend</small>`;
-    document.getElementById('statCustPayMethods').innerText = (sum.payment_methods && sum.payment_methods.length > 0) ? sum.payment_methods.join(', ') : 'CASH';
+    const elPayStat = document.getElementById('statCustPaymentStatus');
+    if (elPayStat) {
+        elPayStat.innerHTML = `<span class="text-success">₹${paidAmt}</span> <small class="text-white-50 fs-7">/ ₹${pendAmt} pend</small>`;
+    }
+    const elPayMeth = document.getElementById('statCustPayMethods');
+    if (elPayMeth) {
+        elPayMeth.innerText = (sum.payment_methods && sum.payment_methods.length > 0) ? sum.payment_methods.join(', ') : 'CASH';
+    }
 
     // Badges on tabs
     document.getElementById('badgeTotalProductsCount').innerText = products.length;

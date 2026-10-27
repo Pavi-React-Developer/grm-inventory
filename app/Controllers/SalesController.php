@@ -169,7 +169,11 @@ class SalesController {
         $customers = Database::fetchAll("SELECT * FROM customers ORDER BY name ASC");
         $users = Database::fetchAll("SELECT id, full_name, username FROM users WHERE is_active = 1 ORDER BY full_name ASC");
         $variants = Database::fetchAll(
-            "SELECT pv.id, pv.product_id, pv.sku, pv.qr_code, pv.mrp, pv.selling_price, p.code as product_code, p.name as product_name,
+            "SELECT pv.id, pv.product_id, pv.sku, pv.qr_code, pv.mrp, pv.selling_price, pv.qr_type, pv.pack_quantity,
+                    p.code as product_code, p.name as product_name,
+                    p.is_complementary as p_is_comp,
+                    pv.is_complementary as pv_is_comp,
+                    wc.category_type as category_type,
                     COALESCE(c.name, 'General') as category_name,
                     c.code as category_code,
                     COALESCE(sc.name, '') as subcategory_name,
@@ -184,6 +188,7 @@ class SalesController {
              FROM product_variants pv
              JOIN products p ON pv.product_id = p.id
              LEFT JOIN categories c ON p.category_id = c.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
              LEFT JOIN sub_subcategories ssc ON p.sub_subcategory_id = ssc.id
              LEFT JOIN sizes sz ON pv.size_id = sz.id
@@ -191,6 +196,18 @@ class SalesController {
              WHERE pv.is_active = 1
              ORDER BY p.name ASC, pv.sku ASC"
         );
+        foreach ($variants as &$v) {
+            $isComp = ((isset($v['category_type']) && $v['category_type'] === 'COMPLEMENTARY') || !empty($v['pv_is_comp']) || !empty($v['p_is_comp']));
+            $isSeries = ((isset($v['category_type']) && $v['category_type'] === 'SERIES') || ($v['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($v['pack_quantity'] ?? 1) > 1);
+            $v['is_complementary'] = $isComp ? 1 : 0;
+            $v['is_series'] = $isSeries ? 1 : 0;
+            if ($isComp) {
+                $v['selling_price'] = 0.00;
+                $v['mrp'] = 0.00;
+                $v['gst_percentage'] = 0.00;
+            }
+        }
+        unset($v);
         $variants = $this->enhanceVariantsWithDynamicTokens($variants);
 
         $currentUserId = Session::get('user_id');
@@ -328,17 +345,32 @@ class SalesController {
             $scannedQrs = trim($itm['scanned_qr_codes'] ?? '');
 
             if ($variantId > 0 && $qty > 0) {
+                $vRow = Database::fetchOne(
+                    "SELECT pv.*, p.is_complementary as p_is_comp, wc.category_type as warehouse_category_type
+                     FROM product_variants pv
+                     JOIN products p ON pv.product_id = p.id
+                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                     WHERE pv.id = ?",
+                    [$variantId]
+                );
+                $isComp = $vRow && ((isset($vRow['warehouse_category_type']) && $vRow['warehouse_category_type'] === 'COMPLEMENTARY') || !empty($vRow['is_complementary']) || !empty($vRow['p_is_comp']));
+
+                if ($isComp) {
+                    $price = 0.00;
+                }
+
                 $lineGross = $qty * $price;
                 $grossTotal += $lineGross;
-                $mrp = (float)($itm['mrp'] ?? $price);
-                if ($mrp <= 0) $mrp = $price;
+
+                $mrp = $isComp ? 0.00 : (float)($itm['mrp'] ?? $price);
+                if (!$isComp && $mrp <= 0) $mrp = $price;
                 $totalMrp += ($qty * $mrp);
 
                 // Line-level inclusive tax calculation
-                $lineTaxable = round($lineGross / (1 + ($gstPercentage / 100)), 2);
-                $lineTax = round($lineGross - $lineTaxable, 2);
-                $lineCgst = round($lineTax / 2, 2);
-                $lineSgst = round($lineTax - $lineCgst, 2);
+                $lineTaxable = $isComp ? 0.00 : round($lineGross / (1 + ($gstPercentage / 100)), 2);
+                $lineTax = $isComp ? 0.00 : round($lineGross - $lineTaxable, 2);
+                $lineCgst = $isComp ? 0.00 : round($lineTax / 2, 2);
+                $lineSgst = $isComp ? 0.00 : round($lineTax - $lineCgst, 2);
 
                 $orderItems[] = [
                     'variant_id'       => $variantId,
@@ -515,7 +547,11 @@ class SalesController {
         $customers = Database::fetchAll("SELECT * FROM customers ORDER BY name ASC");
         $users = Database::fetchAll("SELECT id, full_name, username FROM users WHERE is_active = 1 ORDER BY full_name ASC");
         $variants = Database::fetchAll(
-            "SELECT pv.id, pv.product_id, pv.sku, pv.qr_code, pv.mrp, pv.selling_price, p.code as product_code, p.name as product_name,
+            "SELECT pv.id, pv.product_id, pv.sku, pv.qr_code, pv.mrp, pv.selling_price, pv.qr_type, pv.pack_quantity,
+                    p.code as product_code, p.name as product_name,
+                    p.is_complementary as p_is_comp,
+                    pv.is_complementary as pv_is_comp,
+                    wc.category_type as category_type,
                     COALESCE(c.name, 'General') as category_name,
                     c.code as category_code,
                     COALESCE(sc.name, '') as subcategory_name,
@@ -530,6 +566,7 @@ class SalesController {
              FROM product_variants pv
              JOIN products p ON pv.product_id = p.id
              LEFT JOIN categories c ON p.category_id = c.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
              LEFT JOIN sub_subcategories ssc ON p.sub_subcategory_id = ssc.id
              LEFT JOIN sizes sz ON pv.size_id = sz.id
@@ -537,6 +574,18 @@ class SalesController {
              WHERE pv.is_active = 1
              ORDER BY p.name ASC, pv.sku ASC"
         );
+        foreach ($variants as &$v) {
+            $isComp = ((isset($v['category_type']) && $v['category_type'] === 'COMPLEMENTARY') || !empty($v['pv_is_comp']) || !empty($v['p_is_comp']));
+            $isSeries = ((isset($v['category_type']) && $v['category_type'] === 'SERIES') || ($v['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($v['pack_quantity'] ?? 1) > 1);
+            $v['is_complementary'] = $isComp ? 1 : 0;
+            $v['is_series'] = $isSeries ? 1 : 0;
+            if ($isComp) {
+                $v['selling_price'] = 0.00;
+                $v['mrp'] = 0.00;
+                $v['gst_percentage'] = 0.00;
+            }
+        }
+        unset($v);
         $variants = $this->enhanceVariantsWithDynamicTokens($variants);
 
         $currentUserId = Session::get('user_id');
@@ -674,11 +723,25 @@ class SalesController {
             $scannedQrs = trim($itm['scanned_qr_codes'] ?? '');
 
             if ($variantId > 0 && $qty > 0) {
+                $vRow = Database::fetchOne(
+                    "SELECT pv.*, p.is_complementary as p_is_comp, wc.category_type as warehouse_category_type
+                     FROM product_variants pv
+                     JOIN products p ON pv.product_id = p.id
+                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                     WHERE pv.id = ?",
+                    [$variantId]
+                );
+                $isComp = $vRow && ((isset($vRow['warehouse_category_type']) && $vRow['warehouse_category_type'] === 'COMPLEMENTARY') || !empty($vRow['is_complementary']) || !empty($vRow['p_is_comp']));
+
+                if ($isComp) {
+                    $price = 0.00;
+                }
+
                 $sub = $qty * $price;
                 $grossTotal += $sub;
 
-                $mrp = (float)($itm['mrp'] ?? $price);
-                if ($mrp <= 0) $mrp = $price;
+                $mrp = $isComp ? 0.00 : (float)($itm['mrp'] ?? $price);
+                if (!$isComp && $mrp <= 0) $mrp = $price;
                 $totalMrp += ($qty * $mrp);
 
                 $orderItems[] = [

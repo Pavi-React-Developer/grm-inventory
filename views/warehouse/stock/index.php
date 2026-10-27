@@ -2,6 +2,39 @@
 // views/warehouse/stock/index.php
 // Warehouse Stock Inventory — Dual Sections: Production Inward & Third-Party Vendor Inventory
 $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
+
+if (!function_exists('renderCategoryTypeBadge')) {
+    function renderCategoryTypeBadge(array $item): string {
+        $catType = strtoupper($item['category_type'] ?? '');
+        $packQty = (int)($item['pack_quantity'] ?? 1);
+        $isComp = ($catType === 'COMPLEMENTARY' || !empty($item['is_complementary']) || !empty($item['variant_is_complementary']));
+        $isSeries = ($catType === 'SERIES' || ($item['qr_type'] ?? '') === 'SERIES_BATCH' || $packQty > 1);
+
+        if ($isComp) {
+            $html = '<span class="badge bg-warning-subtle text-warning-emphasis border border-warning fw-semibold px-2 py-1 shadow-xs font-monospace" style="font-size: 0.72rem;">';
+            $html .= '<i class="bi bi-gift-fill me-1 text-danger"></i>COMPLEMENTARY';
+            $html .= '</span>';
+            if ($packQty > 1) {
+                $html .= '<small class="text-muted d-block mt-0.5 font-monospace" style="font-size: 0.68rem;">' . $packQty . ' pcs / pack</small>';
+            }
+            return $html;
+        }
+
+        if ($isSeries) {
+            $html = '<span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold px-2 py-1 shadow-xs font-monospace" style="font-size: 0.72rem;">';
+            $html .= '<i class="bi bi-boxes me-1 text-primary"></i>SERIES PACK';
+            $html .= '</span>';
+            $html .= '<small class="text-muted d-block mt-0.5 font-monospace" style="font-size: 0.68rem;">' . ($packQty > 1 ? $packQty : 10) . ' pcs bundle</small>';
+            return $html;
+        }
+
+        $html = '<span class="badge bg-light text-secondary border fw-semibold px-2 py-1 shadow-xs font-monospace" style="font-size: 0.72rem;">';
+        $html .= '<i class="bi bi-tag me-1 text-muted"></i>NORMAL';
+        $html .= '</span>';
+        $html .= '<small class="text-muted d-block mt-0.5" style="font-size: 0.68rem;">Single Piece</small>';
+        return $html;
+    }
+}
 ?>
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
@@ -337,6 +370,7 @@ $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
                                 </th>
                                 <th>SKU / QR</th>
                                 <th>Product Style &amp; Category</th>
+                                <th>Category Type</th>
                                 <th>Variant (Size / Color)</th>
                                 <th>Stock State</th>
                                 <th>Current Balance</th>
@@ -388,6 +422,9 @@ $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
                                         </div>
                                     </td>
                                     <td>
+                                        <?= renderCategoryTypeBadge($item) ?>
+                                    </td>
+                                    <td>
                                         <span class="badge bg-dark px-2 py-1"><?= e($item['size_name']) ?></span>
                                         <span class="d-inline-flex align-items-center gap-1 ms-1">
                                             <?php if (!empty($item['color_hex'])): ?>
@@ -414,7 +451,7 @@ $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
                                     <td class="text-end fw-bold text-dark font-monospace" id="val-cell-<?= $item['variant_id'] ?>">₹<?= number_format((float)($item['valuation'] ?? 0), 2) ?></td>
                                     <td class="text-end text-nowrap">
                                         <div class="d-inline-flex gap-1">
-                                            <a href="<?= url('warehouse/stock/detail/' . $item['variant_id']) ?>" class="btn btn-sm btn-outline-primary px-2 py-1" title="View Stock Details & Ledger">
+                                            <a href="<?= url('warehouse/stock/detail/' . $item['variant_id'] . (!empty($selectedWarehouseId) ? ('?warehouse_id=' . (int)$selectedWarehouseId) : '')) ?>" class="btn btn-sm btn-outline-primary px-2 py-1" title="View Stock Details & Ledger">
                                                 <i class="bi bi-clock-history me-1"></i> History
                                             </a>
                                         </div>
@@ -475,6 +512,7 @@ $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
                                 </th>
                                 <th>SKU / QR</th>
                                 <th>Product Style &amp; Supplier</th>
+                                <th>Category Type</th>
                                 <th>Variant (Size / Color)</th>
                                 <th>Stock State</th>
                                 <th>Current Balance</th>
@@ -531,6 +569,9 @@ $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
                                         </div>
                                     </td>
                                     <td>
+                                        <?= renderCategoryTypeBadge($item) ?>
+                                    </td>
+                                    <td>
                                         <span class="badge bg-dark px-2 py-1"><?= e($item['size_name']) ?></span>
                                         <span class="d-inline-flex align-items-center gap-1 ms-1">
                                             <?php if (!empty($item['color_hex'])): ?>
@@ -558,7 +599,7 @@ $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
                                     <td class="text-end fw-bold text-dark font-monospace" id="val-cell-<?= $item['variant_id'] ?>">₹<?= number_format((float)($item['valuation'] ?? 0), 2) ?></td>
                                     <td class="text-end text-nowrap">
                                         <div class="d-inline-flex gap-1">
-                                            <a href="<?= url('warehouse/stock/detail/' . $item['variant_id']) ?>" class="btn btn-sm btn-outline-primary px-2 py-1" title="View Stock Details & Ledger">
+                                            <a href="<?= url('warehouse/stock/detail/' . $item['variant_id'] . (!empty($selectedWarehouseId) ? ('?warehouse_id=' . (int)$selectedWarehouseId) : '')) ?>" class="btn btn-sm btn-outline-primary px-2 py-1" title="View Stock Details & Ledger">
                                                 <i class="bi bi-clock-history me-1"></i> History
                                             </a>
                                         </div>
@@ -624,6 +665,7 @@ $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
                                 </th>
                                 <th>SKU / QR</th>
                                 <th>Product Style &amp; Supplier</th>
+                                <th>Category Type</th>
                                 <th>Variant (Size / Color)</th>
                                 <th>Stock State</th>
                                 <th>Current Balance</th>
@@ -678,6 +720,9 @@ $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
                                         </div>
                                     </td>
                                     <td>
+                                        <?= renderCategoryTypeBadge($item) ?>
+                                    </td>
+                                    <td>
                                         <span class="badge bg-dark px-2 py-1"><?= e($item['size_name']) ?></span>
                                         <span class="d-inline-flex align-items-center gap-1 ms-1">
                                             <?php if (!empty($item['color_hex'])): ?>
@@ -705,7 +750,7 @@ $currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
                                     <td class="text-end fw-bold text-dark font-monospace" id="val-cell-<?= $item['variant_id'] ?>">₹<?= number_format((float)($item['valuation'] ?? 0), 2) ?></td>
                                     <td class="text-end text-nowrap">
                                         <div class="d-inline-flex gap-1">
-                                            <a href="<?= url('warehouse/stock/detail/' . $item['variant_id']) ?>" class="btn btn-sm btn-outline-primary px-2 py-1" title="View Stock Details & Ledger">
+                                            <a href="<?= url('warehouse/stock/detail/' . $item['variant_id'] . (!empty($selectedWarehouseId) ? ('?warehouse_id=' . (int)$selectedWarehouseId) : '')) ?>" class="btn btn-sm btn-outline-primary px-2 py-1" title="View Stock Details & Ledger">
                                                 <i class="bi bi-clock-history me-1"></i> History
                                             </a>
                                         </div>

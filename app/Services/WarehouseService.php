@@ -125,7 +125,7 @@ class WarehouseService {
                 $itemQr = trim($item['qr_code'] ?? '');
                 $varId = (string)($item['variant_id'] ?? '');
 
-                if (
+                $isMatch = (
                     ($itemQr !== '' && strcasecmp($itemQr, $scannedCode) === 0) ||
                     ($itemQr !== '' && strcasecmp($itemQr, $extractedCode) === 0) ||
                     ($itemSku !== '' && strcasecmp($itemSku, $scannedCode) === 0) ||
@@ -133,7 +133,31 @@ class WarehouseService {
                     ($extractedSku !== '' && strcasecmp($itemSku, $extractedSku) === 0) ||
                     $varId === $scannedCode ||
                     $varId === $extractedCode
-                ) {
+                );
+
+                // Match by exact production piece tag code
+                if (!$isMatch && !empty($item['piece_tags'])) {
+                    $pieceUpper = array_map('strtoupper', $item['piece_tags']);
+                    if (in_array(strtoupper($scannedCode), $pieceUpper) || (!empty($extractedTag) && in_array(strtoupper($extractedTag), $pieceUpper))) {
+                        $isMatch = true;
+                    }
+                }
+
+                // Match by start/end code sequence range
+                if (!$isMatch && !empty($item['start_seq']) && !empty($item['end_seq'])) {
+                    $testCodes = array_filter([$scannedCode, $extractedCode, $extractedTag]);
+                    foreach ($testCodes as $tc) {
+                        if (preg_match('/(\d+)$/', $tc, $mNum)) {
+                            $seq = (int)$mNum[1];
+                            if ($seq >= (int)$item['start_seq'] && $seq <= (int)$item['end_seq']) {
+                                $isMatch = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if ($isMatch) {
                     $matchedVariantId = (int)$item['variant_id'];
                     $matchedItem = $item;
                     break;
@@ -155,8 +179,17 @@ class WarehouseService {
                 ];
             }
 
-            $currentCount = (int)($scannedMap[$matchedVariantId] ?? 0);
-            $scannedMap[$matchedVariantId] = $currentCount + 1;
+            $isSeriesOrComp = (!empty($matchedItem['is_series']) || !empty($matchedItem['is_complementary']) || ($matchedItem['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($matchedItem['pack_quantity'] ?? 1) > 1);
+            if ($isSeriesOrComp) {
+                // Single scan inwards ALL counts for series and complementary products
+                $scannedMap[$matchedVariantId] = (int)$matchedItem['quantity'];
+                $scanMessage = "Scanned {$matchedItem['sku']} (All counts inwarded: +{$matchedItem['quantity']} pcs)";
+            } else {
+                // Normal products: 1 piece per scan
+                $currentCount = (int)($scannedMap[$matchedVariantId] ?? 0);
+                $scannedMap[$matchedVariantId] = $currentCount + 1;
+                $scanMessage = "Scanned {$matchedItem['sku']} (+1 pc)";
+            }
         }
 
         // Build comparison breakdown and missing QR list
@@ -212,7 +245,7 @@ class WarehouseService {
 
         return [
             'success'          => true,
-            'message'          => $isMasterCarton ? "Master Carton QR scanned! All items verified." : "Scanned {$matchedItem['sku']} (+1 pc)",
+            'message'          => $isMasterCarton ? "Master Carton QR scanned! All items verified." : ($scanMessage ?? "Scanned {$matchedItem['sku']}"),
             'is_master_carton' => $isMasterCarton,
             'matched_item'     => $matchedItem,
             'total_expected'   => $totalExpected,
@@ -287,12 +320,26 @@ class WarehouseService {
                     $discrepancyReport[] = "SKU {$item['sku']}: Expected $expectedQty, Accepted $acceptedQty, Damaged $damagedQty (Diff: $diff)";
                 }
 
-                // Persist variant-level received, damaged, and missing quantities
+                // Extract or resolve actual piece QR codes for received and damaged garments
+                $itemRecvTags = trim($receivedItems[$vid]['received_tags'] ?? '');
+                $itemDmgTags = trim($receivedItems[$vid]['damaged_tags'] ?? '');
+
+                $pieceTags = !empty($item['piece_tags']) ? $item['piece_tags'] : [];
+                if (empty($itemRecvTags) && !empty($pieceTags) && $acceptedQty > 0) {
+                    $recvList = array_slice($pieceTags, 0, (int)$acceptedQty);
+                    $itemRecvTags = implode(',', $recvList);
+                }
+                if (empty($itemDmgTags) && !empty($pieceTags) && $damagedQty > 0) {
+                    $dmgList = array_slice($pieceTags, (int)$acceptedQty, (int)$damagedQty);
+                    $itemDmgTags = implode(',', $dmgList);
+                }
+
+                // Persist variant-level received, damaged, missing quantities, and exact QR codes
                 Database::execute(
                     "UPDATE production_batch_items 
-                     SET received_qty = ?, damaged_qty = ?, missing_qty = ? 
+                     SET received_qty = ?, damaged_qty = ?, missing_qty = ?, received_qr_codes = ?, damaged_qr_codes = ? 
                      WHERE id = ?",
-                    [(int)$acceptedQty, (int)$damagedQty, (int)$missingQty, $item['id']]
+                    [(int)$acceptedQty, (int)$damagedQty, (int)$missingQty, $itemRecvTags ?: null, $itemDmgTags ?: null, $item['id']]
                 );
 
                 // Calculate incremental deltas for AVAILABLE stock
@@ -345,31 +392,37 @@ class WarehouseService {
                     }
                     $totalLoss = $deltaDamaged * $costPerUnit;
 
-                    $catInitial = !empty($item['category_name']) ? strtoupper(substr(trim($item['category_name']), 0, 1)) : 'M';
-                    $subInitial = !empty($item['subcategory_name']) ? strtoupper(substr(trim($item['subcategory_name']), 0, 1)) : 'T';
-                    $subSubInitial = !empty($item['sub_subcategory_name']) ? strtoupper(substr(trim($item['sub_subcategory_name']), 0, 1)) : 'P';
-                    $datePart = date('my');
-                    $baseTagPrefix = $catInitial . $subInitial . $subSubInitial . $datePart;
-                    $damageTagList = [];
-                    for ($ti = 1; $ti <= $deltaDamaged; $ti++) {
-                        $damageTagList[] = $baseTagPrefix . str_pad((string)$ti, 2, '0', STR_PAD_LEFT);
+                    $actualDamageTag = !empty($itemDmgTags) ? $itemDmgTags : '';
+                    if (empty($actualDamageTag)) {
+                        $catInitial = !empty($item['category_name']) ? strtoupper(substr(trim($item['category_name']), 0, 1)) : 'M';
+                        $subInitial = !empty($item['subcategory_name']) ? strtoupper(substr(trim($item['subcategory_name']), 0, 1)) : 'T';
+                        $subSubInitial = !empty($item['sub_subcategory_name']) ? strtoupper(substr(trim($item['sub_subcategory_name']), 0, 1)) : 'P';
+                        $datePart = date('my');
+                        $baseTagPrefix = $catInitial . $subInitial . $subSubInitial . $datePart;
+                        $damageTagList = [];
+                        for ($ti = 1; $ti <= $deltaDamaged; $ti++) {
+                            $damageTagList[] = $baseTagPrefix . str_pad((string)$ti, 2, '0', STR_PAD_LEFT);
+                        }
+                        $actualDamageTag = implode(', ', $damageTagList);
                     }
-                    $generatedDamageTag = implode(', ', $damageTagList);
+
+                    $damageNumber = WarehouseDamage::generateDamageNumber('DMG');
 
                     $damageId = WarehouseDamage::create([
-                        'damage_number' => $damageNumber,
-                        'warehouse_id'  => $warehouseId,
-                        'variant_id'    => $vid,
-                        'tag_code'      => $generatedDamageTag,
-                        'source_type'   => 'PRODUCTION_INWARD',
-                        'reference_id'  => $batchId,
-                        'quantity'      => $deltaDamaged,
-                        'cost_per_unit' => $costPerUnit,
-                        'total_loss'    => $totalLoss,
-                        'damage_reason' => 'Transit / Inward Verification Damage',
-                        'defect_notes'  => "Quarantined during Inward GRN for Batch #{$batch['batch_number']} (Program: {$batch['program_number']}, Facility: " . ($batch['production_unit_name'] ?? 'Main Facility') . ")",
-                        'status'        => 'LOGGED',
-                        'reported_by'   => $userId,
+                        'damage_number'      => $damageNumber,
+                        'warehouse_id'       => $warehouseId,
+                        'variant_id'         => $vid,
+                        'tag_code'           => $actualDamageTag,
+                        'source_type'        => 'PRODUCTION_INWARD',
+                        'reference_id'       => $batchId,
+                        'quantity'           => $deltaDamaged,
+                        'cost_per_unit'      => $costPerUnit,
+                        'total_loss'         => $totalLoss,
+                        'damage_reason'      => 'Transit / Inward Verification Damage',
+                        'defect_notes'       => "Quarantined during Inward GRN for Batch #{$batch['batch_number']} (Program: {$batch['program_number']}, Facility: " . ($batch['production_unit_name'] ?? 'Main Facility') . ")",
+                        'status'             => 'LOGGED',
+                        'reported_by'        => $userId,
+                        'production_unit_id' => !empty($batch['production_unit_id']) ? (int)$batch['production_unit_id'] : null,
                     ]);
 
                     StockService::increase(
@@ -471,13 +524,26 @@ class WarehouseService {
                 $qty = (int)($item['quantity'] ?? 0);
                 if ($qty <= 0) continue;
 
-                $unitPrice = (float)($item['unit_price'] ?? 0.0);
-                $mrp = (float)($item['mrp'] ?? $unitPrice);
-                if ($mrp <= 0) $mrp = $unitPrice;
-                if ($unitPrice <= 0 && $mrp > 0) $unitPrice = $mrp;
+                $vInfo = Database::fetchOne(
+                    "SELECT pv.id, pv.qr_type, pv.pack_quantity, COALESCE(pv.is_complementary, p.is_complementary, 0) as is_comp,
+                            COALESCE(wc.category_type, 'NORMAL') as cat_type
+                     FROM product_variants pv
+                     JOIN products p ON pv.product_id = p.id
+                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                     WHERE pv.id = ?",
+                    [(int)$item['variant_id']]
+                );
+                $isComp = ($vInfo && ($vInfo['is_comp'] == 1 || strtoupper($vInfo['cat_type'] ?? '') === 'COMPLEMENTARY'));
 
-                $discountPct = max(0.0, min(100.0, (float)($item['discount_percentage'] ?? 0.0)));
-                $gstRate = max(0.0, (float)($item['gst_percentage'] ?? 5.0));
+                $unitPrice = $isComp ? 0.0 : (float)($item['unit_price'] ?? 0.0);
+                $mrp = $isComp ? 0.0 : (float)($item['mrp'] ?? $unitPrice);
+                if (!$isComp) {
+                    if ($mrp <= 0) $mrp = $unitPrice;
+                    if ($unitPrice <= 0 && $mrp > 0) $unitPrice = $mrp;
+                }
+
+                $discountPct = $isComp ? 0.0 : max(0.0, min(100.0, (float)($item['discount_percentage'] ?? 0.0)));
+                $gstRate = $isComp ? 0.0 : max(0.0, (float)($item['gst_percentage'] ?? 5.0));
 
                 $lineMrpGross = $qty * $mrp;
                 $lineBilledTotal = round($qty * $unitPrice, 2);
@@ -603,13 +669,26 @@ class WarehouseService {
                 $qty = (int)($item['quantity'] ?? 0);
                 if ($qty <= 0) continue;
 
-                $unitPrice = (float)($item['unit_price'] ?? 0.0);
-                $mrp = (float)($item['mrp'] ?? $unitPrice);
-                if ($mrp <= 0) $mrp = $unitPrice;
-                if ($unitPrice <= 0 && $mrp > 0) $unitPrice = $mrp;
+                $vInfo = Database::fetchOne(
+                    "SELECT pv.id, pv.qr_type, pv.pack_quantity, COALESCE(pv.is_complementary, p.is_complementary, 0) as is_comp,
+                            COALESCE(wc.category_type, 'NORMAL') as cat_type
+                     FROM product_variants pv
+                     JOIN products p ON pv.product_id = p.id
+                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                     WHERE pv.id = ?",
+                    [(int)$item['variant_id']]
+                );
+                $isComp = ($vInfo && ($vInfo['is_comp'] == 1 || strtoupper($vInfo['cat_type'] ?? '') === 'COMPLEMENTARY'));
 
-                $discountPct = max(0.0, min(100.0, (float)($item['discount_percentage'] ?? 0.0)));
-                $gstRate = max(0.0, (float)($item['gst_percentage'] ?? 5.0));
+                $unitPrice = $isComp ? 0.0 : (float)($item['unit_price'] ?? 0.0);
+                $mrp = $isComp ? 0.0 : (float)($item['mrp'] ?? $unitPrice);
+                if (!$isComp) {
+                    if ($mrp <= 0) $mrp = $unitPrice;
+                    if ($unitPrice <= 0 && $mrp > 0) $unitPrice = $mrp;
+                }
+
+                $discountPct = $isComp ? 0.0 : max(0.0, min(100.0, (float)($item['discount_percentage'] ?? 0.0)));
+                $gstRate = $isComp ? 0.0 : max(0.0, (float)($item['gst_percentage'] ?? 5.0));
 
                 $lineMrpGross = $qty * $mrp;
                 $lineBilledTotal = round($qty * $unitPrice, 2);

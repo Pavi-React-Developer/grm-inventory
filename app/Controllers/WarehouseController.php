@@ -401,9 +401,11 @@ class WarehouseController {
             $receivedItems = [];
             foreach ($_POST['items'] as $varId => $data) {
                 $receivedItems[(int)$varId] = [
-                    'received_qty' => (float)($data['received_qty'] ?? 0),
-                    'damaged_qty'  => (float)($data['damaged_qty'] ?? 0),
-                    'notes'        => trim($data['notes'] ?? ''),
+                    'received_qty'  => (float)($data['received_qty'] ?? 0),
+                    'damaged_qty'   => (float)($data['damaged_qty'] ?? 0),
+                    'received_tags' => trim($data['received_tags'] ?? ''),
+                    'damaged_tags'  => trim($data['damaged_tags'] ?? ''),
+                    'notes'         => trim($data['notes'] ?? ''),
                 ];
             }
         }
@@ -710,12 +712,15 @@ class WarehouseController {
                 }
             }
 
-            // Check direct Product Variant / Series Master QR
+            // Check direct Product Variant / Series Master QR / Complementary QR
             $variant = Database::fetchOne(
                 "SELECT pv.*, p.name as product_name, p.code as product_code,
-                        sz.name as size_name, col.name as color_name
+                        p.is_complementary as p_is_comp,
+                        sz.name as size_name, col.name as color_name,
+                        wc.category_type as warehouse_category_type
                  FROM product_variants pv
                  JOIN products p ON pv.product_id = p.id
+                 LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
                  LEFT JOIN sizes sz ON pv.size_id = sz.id
                  LEFT JOIN colors col ON pv.color_id = col.id
                  WHERE pv.sku = ? OR pv.qr_code = ? OR pv.series_start_code = ? OR pv.series_end_code = ?
@@ -725,7 +730,18 @@ class WarehouseController {
             );
 
             if ($variant) {
-                $qtyToCredit = $seriesPackQty > 0 ? $seriesPackQty : ($variant['pack_quantity'] > 0 ? (int)$variant['pack_quantity'] : 1);
+                $isComp = !empty($variant['is_complementary']) || !empty($variant['p_is_comp']);
+                $isSeries = ($variant['qr_type'] === 'SERIES_BATCH' || $isSeriesBatch || ($variant['warehouse_category_type'] ?? '') === 'SERIES' || (int)($variant['pack_quantity'] ?? 0) > 1);
+                $isSeriesOrComp = $isSeries || $isComp;
+
+                if ($isSeriesOrComp) {
+                    // For Series & Complementary products: Inward ALL counts in a single scan!
+                    $qtyToCredit = $seriesPackQty > 0 ? $seriesPackQty : (!empty($variant['pack_quantity']) && (int)$variant['pack_quantity'] > 1 ? (int)$variant['pack_quantity'] : 10);
+                } else {
+                    // Normal products: Inward 1 piece per scan
+                    $qtyToCredit = 1;
+                }
+
                 $scopedWhId = function_exists('currentWarehouseId') ? currentWarehouseId() : null;
                 $selectedWhId = !empty($_POST['warehouse_id']) ? (int)$_POST['warehouse_id'] : null;
                 $targetWhId = $scopedWhId ?: ($selectedWhId ?: null);
@@ -739,7 +755,7 @@ class WarehouseController {
 
                 if ($autoReceive) {
                     $userId = Session::get('user_id') ?? 1;
-                    $seriesInfo = $variant['qr_type'] === 'SERIES_BATCH' || $isSeriesBatch ? " [Master Series Range: " . ($seriesStart ?: $variant['series_start_code']) . " ➔ " . ($seriesEnd ?: $variant['series_end_code']) . "]" : "";
+                    $typeInfo = $isComp ? " [Complementary Pack ({$qtyToCredit} pcs)]" : ($isSeries ? " [Master Series Range: " . ($seriesStart ?: $variant['series_start_code']) . " ➔ " . ($seriesEnd ?: $variant['series_end_code']) . "]" : "");
                     StockService::increase(
                         (int)$variant['id'],
                         'WAREHOUSE',
@@ -750,12 +766,14 @@ class WarehouseController {
                         'products',
                         (int)$variant['product_id'],
                         $userId,
-                        "Inward scanned via Master Series QR ({$qtyToCredit} pcs){$seriesInfo}"
+                        "Inward scanned via QR ({$qtyToCredit} pcs){$typeInfo}"
                     );
 
-                    Response::jsonSuccess("Master Series Pack for SKU {$variant['sku']} ({$qtyToCredit} pcs) credited to {$whLabel}!", [
+                    $typeLabel = $isComp ? "Complementary Product" : ($isSeries ? "Master Series Pack" : "Product");
+                    Response::jsonSuccess("{$typeLabel} for SKU {$variant['sku']} ({$qtyToCredit} pcs) credited to {$whLabel}!", [
                         'variant'          => $variant,
-                        'is_series_master' => true,
+                        'is_series_master' => $isSeries,
+                        'is_complementary' => $isComp,
                         'pack_quantity'    => $qtyToCredit,
                         'series_range'     => ($seriesStart ?: $variant['series_start_code']) . ' ➔ ' . ($seriesEnd ?: $variant['series_end_code']),
                         'credited'         => true,
@@ -763,9 +781,11 @@ class WarehouseController {
                     ]);
                     return;
                 } else {
-                    Response::jsonSuccess("Master Series Variant {$variant['sku']} ({$qtyToCredit} pcs) loaded.", [
+                    $typeLabel = $isComp ? "Complementary Product" : ($isSeries ? "Master Series Variant" : "Product Variant");
+                    Response::jsonSuccess("{$typeLabel} {$variant['sku']} ({$qtyToCredit} pcs) loaded.", [
                         'variant'          => $variant,
-                        'is_series_master' => true,
+                        'is_series_master' => $isSeries,
+                        'is_complementary' => $isComp,
                         'pack_quantity'    => $qtyToCredit,
                         'series_range'     => ($seriesStart ?: $variant['series_start_code']) . ' ➔ ' . ($seriesEnd ?: $variant['series_end_code']),
                         'credited'         => false,
@@ -853,9 +873,10 @@ class WarehouseController {
 
         $sql = "SELECT sb.*, 
                        pv.sku, pv.qr_code, pv.selling_price, pv.mrp, pv.production_cost, pv.purchase_price, pv.is_complementary as variant_is_complementary,
+                       pv.qr_type, pv.pack_quantity, pv.series_start_code, pv.series_end_code,
                        p.id as product_id, p.name as product_name, p.code as product_code, p.source_type, p.min_stock, p.material, p.image_url, p.is_complementary,
                        p.warehouse_category_id as category_id, p.warehouse_subcategory_id as subcategory_id, p.warehouse_sub_subcategory_id as sub_subcategory_id,
-                       c.name as category_name, sc.name as subcategory_name, ssc.name as sub_subcategory_name,
+                       c.name as category_name, c.category_type as warehouse_category_type, sc.name as subcategory_name, ssc.name as sub_subcategory_name,
                        s.name as size_name, s.code as size_code,
                        col.name as color_name, col.hex_code as color_hex,
                        w.name as warehouse_name, w.code as warehouse_code,
@@ -935,7 +956,15 @@ class WarehouseController {
         $compValuation = 0.0;
 
         foreach ($stockItems as $item) {
-            $isComp = (!empty($item['is_complementary']) || !empty($item['variant_is_complementary']));
+            $isComp = (!empty($item['is_complementary']) || !empty($item['variant_is_complementary']) || ($item['warehouse_category_type'] ?? '') === 'COMPLEMENTARY');
+            $isSeries = (($item['qr_type'] ?? '') === 'SERIES_BATCH' || ($item['warehouse_category_type'] ?? '') === 'SERIES' || (int)($item['pack_quantity'] ?? 1) > 1);
+            if ($isComp) {
+                $item['category_type'] = 'COMPLEMENTARY';
+            } elseif ($isSeries) {
+                $item['category_type'] = 'SERIES';
+            } else {
+                $item['category_type'] = !empty($item['warehouse_category_type']) ? strtoupper($item['warehouse_category_type']) : 'NORMAL';
+            }
             $isProd = ($item['source_type'] === 'OWN_PRODUCTION');
             $purchasePrice = (float)($item['purchase_price'] ?? 0);
             $productionCost = (float)($item['production_cost'] ?? 0);
@@ -1172,6 +1201,7 @@ class WarehouseController {
                     COALESCE(pv.mfg_date, p.mfg_date) as mfg_date,
                     COALESCE(pv.expiry_date, p.expiry_date) as expiry_date,
                     COALESCE(c.name, cat.name) as category_name,
+                    COALESCE(c.category_type, 'NORMAL') as warehouse_category_type,
                     COALESCE(subcat.name, sub_cat.name) as subcategory_name,
                     COALESCE(subsubcat.name, sub_sub_cat.name) as sub_subcategory_name,
                     COALESCE(c.code, cat.code, p.category_code) as cat_code,
@@ -1202,6 +1232,13 @@ class WarehouseController {
         }
 
         $scopedWarehouseId = function_exists('currentWarehouseId') ? currentWarehouseId() : null;
+        $selectedWarehouseId = !empty($_GET['warehouse_id']) ? (int)$_GET['warehouse_id'] : ($scopedWarehouseId ? (int)$scopedWarehouseId : null);
+        $selectedWarehouse = null;
+        if ($selectedWarehouseId) {
+            $selectedWarehouse = Database::fetchOne("SELECT * FROM warehouses WHERE id = ?", [$selectedWarehouseId]);
+        }
+
+        // Fetch balances across all warehouses (or scoped warehouse if user has hard restriction)
         $whBalanceClause = $scopedWarehouseId ? " AND sb.location_id = " . (int)$scopedWarehouseId : "";
         $balances = Database::fetchAll(
             "SELECT sb.*, w.name as warehouse_name, w.code as warehouse_code
@@ -1212,20 +1249,38 @@ class WarehouseController {
             [$variantId]
         );
 
-        $transactions = StockService::getTransactionHistory($variantId, ['limit' => 50]);
+        $txFilters = ['limit' => 50];
+        if ($selectedWarehouseId) {
+            $txFilters['location_type'] = 'WAREHOUSE';
+            $txFilters['location_id'] = $selectedWarehouseId;
+        }
+        $transactions = StockService::getTransactionHistory($variantId, $txFilters);
 
+        $allWarehouseTotalAvailable = 0;
+        $warehouseAvailMap = [];
         $totalAvailable = 0;
         $totalDamaged = 0;
         $totalReserved = 0;
-        foreach ($balances as $b) {
+        foreach ($balances as &$b) {
+            $isThisWh = ($selectedWarehouseId && (int)$b['location_id'] === (int)$selectedWarehouseId);
+            $b['is_selected'] = $isThisWh;
+
             if ($b['stock_state'] === 'AVAILABLE') {
-                $totalAvailable += (int)$b['quantity'];
-            } elseif ($b['stock_state'] === 'DAMAGED') {
-                $totalDamaged += (int)$b['quantity'];
-            } elseif ($b['stock_state'] === 'RESERVED') {
-                $totalReserved += (int)$b['quantity'];
+                $warehouseAvailMap[(int)$b['location_id']] = (int)$b['quantity'];
+                $allWarehouseTotalAvailable += (int)$b['quantity'];
+            }
+
+            if (!$selectedWarehouseId || $isThisWh) {
+                if ($b['stock_state'] === 'AVAILABLE') {
+                    $totalAvailable += (int)$b['quantity'];
+                } elseif ($b['stock_state'] === 'DAMAGED') {
+                    $totalDamaged += (int)$b['quantity'];
+                } elseif ($b['stock_state'] === 'RESERVED') {
+                    $totalReserved += (int)$b['quantity'];
+                }
             }
         }
+        unset($b);
 
         $c1 = !empty($variant['category_name']) ? strtoupper(substr(trim($variant['category_name']), 0, 1)) : (!empty($variant['cat_code']) ? strtoupper(substr(trim($variant['cat_code']), 0, 1)) : '');
         $c2 = !empty($variant['subcategory_name']) ? strtoupper(substr(trim($variant['subcategory_name']), 0, 1)) : (!empty($variant['sub_code']) ? strtoupper(substr(trim($variant['sub_code']), 0, 1)) : '');
@@ -1265,11 +1320,12 @@ class WarehouseController {
         $year2Digit = date('y', $mfgTime); // 2-digit year: 26
 
         // Fetch already allocated/dispatched piece tags for this variant to skip them in active inventory
+        $whAllocClause = $selectedWarehouseId ? " AND wa.warehouse_id = " . (int)$selectedWarehouseId : "";
         $allocatedRows = Database::fetchAll(
             "SELECT ai.selected_qr_codes 
              FROM allocation_items ai
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
-             WHERE ai.variant_id = ? AND wa.status IN ('REQUESTED', 'APPROVED', 'PICKING', 'PACKING', 'DISPATCHED', 'DELIVERED', 'RECEIVED')",
+             WHERE ai.variant_id = ? AND wa.status IN ('REQUESTED', 'APPROVED', 'PICKING', 'PACKING', 'DISPATCHED', 'DELIVERED', 'RECEIVED')$whAllocClause",
             [$variantId]
         );
         $usedTags = [];
@@ -1284,8 +1340,9 @@ class WarehouseController {
         }
 
         // Fetch active damaged / quarantined piece tags for this variant to skip them in active inventory
+        $whDmgFilter = $selectedWarehouseId ? " AND warehouse_id = " . (int)$selectedWarehouseId : "";
         $damagedRows = Database::fetchAll(
-            "SELECT tag_code, quantity, defect_notes FROM warehouse_damages WHERE variant_id = ? AND status NOT IN ('RESTOCKED', 'REPAIRED')",
+            "SELECT tag_code, quantity, defect_notes FROM warehouse_damages WHERE variant_id = ? AND status NOT IN ('RESTOCKED', 'REPAIRED')$whDmgFilter",
             [$variantId]
         );
         foreach ($damagedRows as $dr) {
@@ -1358,11 +1415,12 @@ class WarehouseController {
         } catch (Throwable $e) {}
 
         // Fetch piece tags from direct customer purchases for this variant to skip sold pieces in active inventory
+        $whPurchClause = $selectedWarehouseId ? " AND po.warehouse_id = " . (int)$selectedWarehouseId : "";
         $purchasedRows = Database::fetchAll(
             "SELECT pi.batch_lot_no, pi.notes 
              FROM purchase_items pi
              JOIN purchase_orders po ON pi.purchase_order_id = po.id
-             WHERE pi.variant_id = ? AND po.status NOT IN ('CANCELLED', 'VOID')",
+             WHERE pi.variant_id = ? AND po.status NOT IN ('CANCELLED', 'VOID')$whPurchClause",
             [$variantId]
         );
         foreach ($purchasedRows as $pr) {
@@ -1400,11 +1458,12 @@ class WarehouseController {
         }
 
         // Fetch returned GOOD piece tags (restocked to available warehouse stock) - these must be UN-HIDDEN / AVAILABLE in active inventory!
+        $whReturnGoodFilter = $selectedWarehouseId ? " AND r.warehouse_id = " . (int)$selectedWarehouseId : "";
         $returnedGoodRows = Database::fetchAll(
             "SELECT ri.reason 
              FROM return_items ri
              JOIN returns r ON ri.return_id = r.id
-             WHERE ri.variant_id = ? AND ri.item_condition = 'GOOD' AND r.status != 'CANCELLED'",
+             WHERE ri.variant_id = ? AND ri.item_condition = 'GOOD' AND r.status != 'CANCELLED'$whReturnGoodFilter",
             [$variantId]
         );
         $restockedTags = [];
@@ -1457,16 +1516,166 @@ class WarehouseController {
             ' ›'
         );
 
+        // Retrieve actual inwarded tags and ranges from stock_transactions (Stickered Inward, Purchase Inward, etc.)
+        $stInwardRows = Database::fetchAll(
+            "SELECT notes, reference_type, quantity, created_at
+             FROM stock_transactions 
+             WHERE variant_id = ? AND transaction_type = 'PURCHASE_INWARD'
+             ORDER BY id ASC",
+            [$variantId]
+        );
+
+        $inwardedTagsFromTx = [];
+        $stickeredSeriesRange = null;
+
+        foreach ($stInwardRows as $stRow) {
+            $notes = $stRow['notes'] ?? '';
+            // Match range: e.g. Tags: TTT102601 - TTT102610
+            if (preg_match('/Tags:\s*([A-Za-z0-9]+)\s*-\s*([A-Za-z0-9]+)/i', $notes, $mRange)) {
+                $startTag = strtoupper(trim($mRange[1]));
+                $endTag = strtoupper(trim($mRange[2]));
+                if (!$stickeredSeriesRange) {
+                    $stickeredSeriesRange = ['start' => $startTag, 'end' => $endTag];
+                }
+
+                // If individual piece tags are defined by a range, expand them
+                if (preg_match('/^([A-Za-z0-9]+?)(\d+)$/', $startTag, $mStart) && preg_match('/^([A-Za-z0-9]+?)(\d+)$/', $endTag, $mEnd)) {
+                    if ($mStart[1] === $mEnd[1]) {
+                        $pfx = $mStart[1];
+                        $sNum = (int)$mStart[2];
+                        $eNum = (int)$mEnd[2];
+                        $pad = strlen($mStart[2]);
+                        for ($seq = $sNum; $seq <= $eNum; $seq++) {
+                            $code = $pfx . sprintf("%0{$pad}d", $seq);
+                            if (!in_array($code, $inwardedTagsFromTx)) {
+                                $inwardedTagsFromTx[] = $code;
+                            }
+                        }
+                    }
+                }
+            } elseif (preg_match('/Tags:\s*([A-Za-z0-9,\s]+)/i', $notes, $mList)) {
+                $rawList = trim($mList[1]);
+                $tagsArr = array_map('trim', explode(',', $rawList));
+                $firstCode = null;
+                foreach ($tagsArr as $t) {
+                    $cleanT = strtoupper($t);
+                    if (preg_match('/^[A-Za-z0-9]{6,16}$/', $cleanT)) {
+                        if ($firstCode === null) $firstCode = $cleanT;
+                        if (!in_array($cleanT, $inwardedTagsFromTx)) {
+                            $inwardedTagsFromTx[] = $cleanT;
+                        }
+                    }
+                }
+                // If truncated with total (e.g. "... (total 10)"), expand the full sequence
+                if (preg_match('/\(total\s+(\d+)\)/i', $notes, $mTotal) && $firstCode !== null) {
+                    $totalInw = (int)$mTotal[1];
+                    if (preg_match('/^([A-Za-z0-9]+?)(\d+)$/', $firstCode, $mF)) {
+                        $pfx = $mF[1];
+                        $sNum = (int)$mF[2];
+                        $pad = strlen($mF[2]);
+                        for ($seq = $sNum; $seq < ($sNum + $totalInw); $seq++) {
+                            $code = $pfx . sprintf("%0{$pad}d", $seq);
+                            if (!in_array($code, $inwardedTagsFromTx)) {
+                                $inwardedTagsFromTx[] = $code;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if ($isSeriesBatch || $isComplementary) {
             $packQty = (int)$totalAvailable;
             if ($packQty <= 0) $packQty = max(1, (int)(!empty($variant['pack_quantity']) ? $variant['pack_quantity'] : 1));
 
-            // Standard Category-derived single master QR code (e.g. WMF102601 or SSSC102601) - no number series range
-            $properCatCode = "{$catPrefix}{$monthStr}{$year2Digit}01";
+            // Resolve proper Master QR Code for the Pack
+            $singleMasterCode = null;
+            $seriesEndCode = null;
+
             if (!empty($variant['series_start_code']) && !preg_match('/^\d+$/', $variant['series_start_code'])) {
-                $singleMasterCode = $variant['series_start_code'];
-            } else {
-                $singleMasterCode = $properCatCode;
+                $singleMasterCode = strtoupper(trim($variant['series_start_code']));
+                if (!empty($variant['series_end_code']) && !preg_match('/^\d+$/', $variant['series_end_code'])) {
+                    $seriesEndCode = strtoupper(trim($variant['series_end_code']));
+                }
+            } elseif ($stickeredSeriesRange && !empty($stickeredSeriesRange['start'])) {
+                $singleMasterCode = $stickeredSeriesRange['start'];
+                $seriesEndCode = $stickeredSeriesRange['end'] ?? $singleMasterCode;
+            } elseif (!empty($inwardedTagsFromTx)) {
+                $singleMasterCode = reset($inwardedTagsFromTx);
+                $seriesEndCode = end($inwardedTagsFromTx);
+            }
+
+            // Fallback: If no code recorded, dynamically compute continuous category sequence offset so it NEVER collides with another product
+            if (empty($singleMasterCode)) {
+                $baseTagPrefix = "{$catPrefix}{$monthStr}{$year2Digit}";
+                $catId = (int)($variant['warehouse_category_id'] ?? $variant['category_id'] ?? 0);
+                $subcatId = (int)($variant['warehouse_subcategory_id'] ?? $variant['subcategory_id'] ?? 0);
+                $subSubcatId = (int)($variant['warehouse_sub_subcategory_id'] ?? $variant['sub_subcategory_id'] ?? 0);
+                $prodCreatedAt = $variant['product_created_at'] ?? $variant['created_at'] ?? date('Y-m-d H:i:s');
+                $productId = (int)($variant['product_id'] ?? 0);
+
+                $categoryOffset = 0;
+                $earlierRows = Database::fetchAll(
+                    "SELECT pv.id as variant_id, pv.pack_quantity, p.id as product_id, p.name as product_name, p.created_at,
+                            p.quantity as prod_qty,
+                            COALESCE(pi_agg.po_qty, 0) as po_qty,
+                            COALESCE(st_agg.inwarded_qty, 0) as inwarded_qty
+                     FROM product_variants pv
+                     JOIN products p ON pv.product_id = p.id
+                     LEFT JOIN (SELECT variant_id, SUM(quantity) as po_qty FROM purchase_items GROUP BY variant_id) pi_agg ON pi_agg.variant_id = pv.id
+                     LEFT JOIN (SELECT variant_id, SUM(quantity) as inwarded_qty FROM stock_transactions WHERE reference_type = 'THIRD_PARTY_STICKERED' GROUP BY variant_id) st_agg ON st_agg.variant_id = pv.id
+                     WHERE pv.is_active = 1 AND pv.id != ?
+                       AND ((p.created_at < ?) OR (p.created_at = ? AND p.id < ?) OR (p.id = ? AND pv.id < ?))
+                       AND ((? > 0 AND p.warehouse_category_id = ? AND p.warehouse_subcategory_id = ? AND p.warehouse_sub_subcategory_id = ?)
+                            OR (? > 0 AND p.category_id = ? AND p.subcategory_id = ? AND p.sub_subcategory_id = ?)
+                            OR (? != '' AND p.qr_code_prefix = ?))
+                       AND p.created_at >= ? AND p.created_at <= ?
+                     ORDER BY p.created_at ASC, p.id ASC, pv.id ASC",
+                    [
+                        $variantId,
+                        $prodCreatedAt, $prodCreatedAt, $productId, $productId, $variantId,
+                        $catId ?: 0, $catId ?: 0, $subcatId ?: 0, $subSubcatId ?: 0,
+                        $catId ?: 0, $catId ?: 0, $subcatId ?: 0, $subSubcatId ?: 0,
+                        $catPrefix ?: '', $catPrefix ?: '',
+                        date('Y-m-01 00:00:00'), date('Y-m-t 23:59:59')
+                    ]
+                );
+                foreach ($earlierRows as $er) {
+                    $qty = $er['po_qty'] > 0 ? (int)$er['po_qty'] : max((int)$er['prod_qty'], (int)$er['inwarded_qty'], (int)($er['pack_quantity'] ?? 0));
+                    if ($qty <= 0) $qty = 1;
+                    $categoryOffset += $qty;
+                }
+
+                $maxRecorded = 0;
+                $stOtherNotes = Database::fetchAll("SELECT notes FROM stock_transactions WHERE variant_id != ? AND notes LIKE ?", [$variantId, '%' . $baseTagPrefix . '%']);
+                foreach ($stOtherNotes as $stn) {
+                    if (preg_match_all('/' . preg_quote($baseTagPrefix, '/') . '(\d+)/', $stn['notes'], $m)) {
+                        foreach ($m[1] as $seqVal) {
+                            $maxRecorded = max($maxRecorded, (int)$seqVal);
+                        }
+                    }
+                }
+
+                $finalOffset = max($categoryOffset, $maxRecorded);
+                $startNum = $finalOffset + 1;
+                $endNum = $finalOffset + $packQty;
+                $seqPad = ($endNum > 99) ? 3 : 2;
+                $singleMasterCode = $baseTagPrefix . sprintf("%0{$seqPad}d", $startNum);
+                $seriesEndCode = $baseTagPrefix . sprintf("%0{$seqPad}d", $endNum);
+            }
+
+            if (empty($seriesEndCode)) {
+                $seriesEndCode = $singleMasterCode;
+            }
+
+            // Update product_variants so the variant's start/end codes are permanently persisted
+            if (empty($variant['series_start_code']) || preg_match('/^\d+$/', $variant['series_start_code'])) {
+                try {
+                    Database::query(
+                        "UPDATE product_variants SET series_start_code = ?, series_end_code = ? WHERE id = ?",
+                        [$singleMasterCode, $seriesEndCode, $variantId]
+                    );
+                } catch (Throwable $e) {}
             }
 
             $tagCode = $singleMasterCode;
@@ -1493,7 +1702,7 @@ class WarehouseController {
                         'is_complementary'      => $isComplementary,
                         'pack_quantity'         => $packQty,
                         'series_start_code'     => $singleMasterCode,
-                        'series_end_code'       => $singleMasterCode,
+                        'series_end_code'       => $seriesEndCode,
                         'qr_payload'            => $qrPayload,
                         'category_name'         => $variant['category_name'] ?? '',
                         'subcategory_name'      => $variant['subcategory_name'] ?? '',
@@ -1525,15 +1734,54 @@ class WarehouseController {
                 }
             }
 
-            $currSeq = 1;
-            while (count($pieceQRs) < $totalAvailable) {
-                $pieceSeq = sprintf("%02d", $currSeq);
-                $tagCode = "{$catPrefix}{$monthStr}{$year2Digit}{$pieceSeq}"; // e.g. MTP092601
+            // Retrieve actual received QR codes from production batches inwarded for this variant
+            $whBatchPieceClause = $selectedWarehouseId ? " AND (pb.destination_warehouse_id = " . (int)$selectedWarehouseId . " OR po.warehouse_id = " . (int)$selectedWarehouseId . ")" : "";
+            $batchPieceRows = Database::fetchAll(
+                "SELECT pbi.received_qr_codes, pbi.quantity, pbi.received_qty, pb.id as batch_id, pb.qc_batch_id, pb.program_id
+                 FROM production_batch_items pbi
+                 JOIN production_batches pb ON pb.id = pbi.production_batch_id
+                 LEFT JOIN production_outwards po ON po.production_batch_id = pb.id
+                 WHERE pbi.variant_id = ? AND pb.status IN ('RECEIVED', 'DISPATCHED')$whBatchPieceClause
+                 ORDER BY pb.id ASC",
+                [$variantId]
+            );
 
-                if (!isset($usedTags[$tagCode]) && !isset($restockedTags[$tagCode])) {
+            $productionPieceTags = [];
+            foreach ($batchPieceRows as $bpr) {
+                if (!empty($bpr['received_qr_codes'])) {
+                    foreach (explode(',', $bpr['received_qr_codes']) as $t) {
+                        $cleanT = strtoupper(trim($t));
+                        if ($cleanT !== '' && !in_array($cleanT, $productionPieceTags)) {
+                            $productionPieceTags[] = $cleanT;
+                        }
+                    }
+                } else {
+                    // If received_qr_codes column was empty, resolve from the batch's QC pieces_data or label_items
+                    $batchItems = ProductionBatch::getItems((int)$bpr['batch_id']);
+                    foreach ($batchItems as $bi) {
+                        if ((int)$bi['variant_id'] === (int)$variantId && !empty($bi['piece_tags'])) {
+                            $maxAdd = (int)($bpr['received_qty'] > 0 ? $bpr['received_qty'] : $bpr['quantity']);
+                            $added = 0;
+                            foreach ($bi['piece_tags'] as $pt) {
+                                $cleanPt = strtoupper(trim($pt));
+                                if ($cleanPt !== '' && !in_array($cleanPt, $productionPieceTags)) {
+                                    $productionPieceTags[] = $cleanPt;
+                                    $added++;
+                                    if ($added >= $maxAdd) break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Add verified inward production tags that are available (not used/damaged/sold/allocated)
+            foreach ($productionPieceTags as $prodTag) {
+                if (count($pieceQRs) >= $totalAvailable) break;
+                if (!isset($usedTags[$prodTag]) && !isset($restockedTags[$prodTag])) {
                     $pieceQRs[] = [
                         'piece_no'           => count($pieceQRs) + 1,
-                        'tag_code'           => $tagCode,
+                        'tag_code'           => $prodTag,
                         'sku'                => $variant['sku'],
                         'brand_name'         => $displayBrand,
                         'cost_price'         => $costPrice,
@@ -1545,14 +1793,76 @@ class WarehouseController {
                         'category_hierarchy' => $categoryHierarchy,
                     ];
                 }
-                $currSeq++;
-                if ($currSeq > 9999) break;
+            }
+
+            // Third, add verified inward tags recorded in stock_transactions (Stickered Inward, Purchase Inward)
+            foreach ($inwardedTagsFromTx as $txTag) {
+                if (count($pieceQRs) >= $totalAvailable) break;
+                if (!isset($usedTags[$txTag]) && !isset($restockedTags[$txTag]) && !in_array($txTag, $productionPieceTags)) {
+                    $pieceQRs[] = [
+                        'piece_no'           => count($pieceQRs) + 1,
+                        'tag_code'           => $txTag,
+                        'sku'                => $variant['sku'],
+                        'brand_name'         => $displayBrand,
+                        'cost_price'         => $costPrice,
+                        'mrp'                => $basePrice,
+                        'selling_price'      => $sellingPrice,
+                        'size_name'          => $variant['size_name'] ?? 'Free',
+                        'color_name'         => $variant['color_name'] ?? 'Std',
+                        'category_name'      => $variant['category_name'] ?? '',
+                        'category_hierarchy' => $categoryHierarchy,
+                    ];
+                }
+            }
+
+            // Fallback: If available stock still exceeds known inward tags, determine highest recorded tag sequence for this prefix/month so it NEVER collides
+            if (count($pieceQRs) < $totalAvailable) {
+                $baseTagPrefix = "{$catPrefix}{$monthStr}{$year2Digit}";
+                $maxSeq = 0;
+                foreach (array_merge($productionPieceTags, $inwardedTagsFromTx, array_keys($usedTags), array_keys($restockedTags)) as $kTag) {
+                    if (preg_match('/' . preg_quote($baseTagPrefix, '/') . '(\d+)/', $kTag, $mK)) {
+                        $maxSeq = max($maxSeq, (int)$mK[1]);
+                    }
+                }
+                $stOtherNotes = Database::fetchAll("SELECT notes FROM stock_transactions WHERE variant_id != ? AND notes LIKE ?", [$variantId, '%' . $baseTagPrefix . '%']);
+                foreach ($stOtherNotes as $stn) {
+                    if (preg_match_all('/' . preg_quote($baseTagPrefix, '/') . '(\d+)/', $stn['notes'], $m)) {
+                        foreach ($m[1] as $sVal) {
+                            $maxSeq = max($maxSeq, (int)$sVal);
+                        }
+                    }
+                }
+
+                $currSeq = $maxSeq + 1;
+                while (count($pieceQRs) < $totalAvailable) {
+                    $pieceSeq = sprintf("%02d", $currSeq);
+                    $tagCode = "{$baseTagPrefix}{$pieceSeq}";
+
+                    if (!isset($usedTags[$tagCode]) && !isset($restockedTags[$tagCode]) && !in_array($tagCode, $productionPieceTags) && !in_array($tagCode, $inwardedTagsFromTx)) {
+                        $pieceQRs[] = [
+                            'piece_no'           => count($pieceQRs) + 1,
+                            'tag_code'           => $tagCode,
+                            'sku'                => $variant['sku'],
+                            'brand_name'         => $displayBrand,
+                            'cost_price'         => $costPrice,
+                            'mrp'                => $basePrice,
+                            'selling_price'      => $sellingPrice,
+                            'size_name'          => $variant['size_name'] ?? 'Free',
+                            'color_name'         => $variant['color_name'] ?? 'Std',
+                            'category_name'      => $variant['category_name'] ?? '',
+                            'category_hierarchy' => $categoryHierarchy,
+                        ];
+                    }
+                    $currSeq++;
+                    if ($currSeq > 9999) break;
+                }
             }
         }
 
         $warehouses = Database::fetchAll("SELECT * FROM warehouses WHERE is_active = 1 ORDER BY name ASC");
 
         // Fetch batch-wise added stock history specifically for this variant including damage tracking
+        $whBatchHistoryClause = $selectedWarehouseId ? " AND (po.warehouse_id = " . (int)$selectedWarehouseId . " OR pb.destination_warehouse_id = " . (int)$selectedWarehouseId . ")" : "";
         $variantBatchHistory = Database::fetchAll(
             "SELECT pbi.quantity as batch_item_expected_qty,
                     COALESCE(pbi.received_qty, pbi.quantity) as batch_item_qty,
@@ -1562,7 +1872,9 @@ class WarehouseController {
                     pp.id as program_id, pp.program_number, pp.name as program_name,
                     pu.name as unit_name, pu.code as unit_code, pu.manager_name as unit_manager, pu.phone as unit_phone,
                     po.outward_number, po.dispatch_date as outward_dispatch_date, po.vehicle_number, po.driver_name,
-                    w.id as warehouse_id, w.name as warehouse_name, w.code as warehouse_code,
+                    COALESCE(w.id, pw.id) as warehouse_id,
+                    COALESCE(w.name, pw.name) as warehouse_name,
+                    COALESCE(w.code, pw.code) as warehouse_code,
                     COALESCE(MAX(st.created_at), po.dispatch_date, pb.created_at) as inward_received_at,
                     wd.id as damage_id, wd.damage_number, wd.quantity as damage_qty, wd.tag_code as damage_tags, wd.status as damage_status
              FROM production_batch_items pbi
@@ -1571,9 +1883,10 @@ class WarehouseController {
              LEFT JOIN production_units pu ON pp.production_unit_id = pu.id
              LEFT JOIN production_outwards po ON po.production_batch_id = pb.id
              LEFT JOIN warehouses w ON po.warehouse_id = w.id
+             LEFT JOIN warehouses pw ON pb.destination_warehouse_id = pw.id
              LEFT JOIN stock_transactions st ON (st.variant_id = pbi.variant_id AND st.reference_type = 'production_batch' AND st.reference_id = pb.id)
              LEFT JOIN warehouse_damages wd ON (wd.reference_id = pb.id AND wd.variant_id = pbi.variant_id)
-             WHERE pbi.variant_id = ?
+             WHERE pbi.variant_id = ?$whBatchHistoryClause
              GROUP BY pb.id, pbi.id, wd.id
              ORDER BY pb.id DESC",
             [$variantId]
@@ -1608,6 +1921,7 @@ class WarehouseController {
         );
 
         // Fetch all damaged / quarantined records and individual piece tags for this variant
+        $whDamageClause = $selectedWarehouseId ? " AND wd.warehouse_id = " . (int)$selectedWarehouseId : "";
         $variantDamages = Database::fetchAll(
             "SELECT wd.*, w.name as warehouse_name, w.code as warehouse_code,
                     pb.batch_number, u.full_name as reported_by_name
@@ -1615,7 +1929,7 @@ class WarehouseController {
              LEFT JOIN warehouses w ON wd.warehouse_id = w.id
              LEFT JOIN production_batches pb ON (wd.source_type IN ('PRODUCTION_INWARD', 'INWARD_GRN', 'PRODUCTION_BATCH', 'INWARD_TRANSIT') AND wd.reference_id = pb.id)
              LEFT JOIN users u ON wd.reported_by = u.id
-             WHERE wd.variant_id = ?
+             WHERE wd.variant_id = ?$whDamageClause
              ORDER BY wd.id DESC",
             [$variantId]
         );
@@ -1656,6 +1970,7 @@ class WarehouseController {
         }
 
         // Fetch all direct customer purchase / sold piece records for this variant
+        $whPurchClause = $selectedWarehouseId ? " AND po.warehouse_id = " . (int)$selectedWarehouseId : "";
         $variantPurchases = Database::fetchAll(
             "SELECT pi.*, po.po_number, po.order_date, po.status as po_status, po.payment_status, po.payment_method,
                     c.name as customer_name, c.phone as customer_phone, w.name as warehouse_name
@@ -1663,7 +1978,7 @@ class WarehouseController {
              JOIN purchase_orders po ON pi.purchase_order_id = po.id
              LEFT JOIN customers c ON po.customer_id = c.id
              LEFT JOIN warehouses w ON po.warehouse_id = w.id
-             WHERE pi.variant_id = ? AND po.status NOT IN ('CANCELLED', 'VOID')
+             WHERE pi.variant_id = ? AND po.status NOT IN ('CANCELLED', 'VOID')$whPurchClause
              ORDER BY po.id DESC, pi.id DESC",
             [$variantId]
         );
@@ -1705,6 +2020,7 @@ class WarehouseController {
         }
 
         // Also append exchanged-out replacement pieces to the sold/outward list
+        $whExchangeClause = $selectedWarehouseId ? " AND r.warehouse_id = " . (int)$selectedWarehouseId : "";
         $variantExchanges = Database::fetchAll(
             "SELECT ei.*, e.exchange_number, e.created_at as exchange_date, e.status as exchange_status,
                     r.return_number, po.po_number, c.name as customer_name, c.phone as customer_phone, w.name as warehouse_name
@@ -1714,7 +2030,7 @@ class WarehouseController {
              LEFT JOIN purchase_orders po ON e.purchase_order_id = po.id
              LEFT JOIN customers c ON po.customer_id = c.id
              LEFT JOIN warehouses w ON r.warehouse_id = w.id
-             WHERE ei.variant_id = ? AND ei.item_type = 'NEW' AND e.status != 'CANCELLED'
+             WHERE ei.variant_id = ? AND ei.item_type = 'NEW' AND e.status != 'CANCELLED'$whExchangeClause
              ORDER BY ei.id DESC",
             [$variantId]
         );
@@ -1745,6 +2061,7 @@ class WarehouseController {
         }
 
         // Fetch all customer return and exchange records for this variant
+        $whReturnClause = $selectedWarehouseId ? " AND r.warehouse_id = " . (int)$selectedWarehouseId : "";
         $variantReturns = Database::fetchAll(
             "SELECT ri.*, r.return_number, r.return_type, r.reason as return_reason, r.refund_amount as total_refund, r.created_at as return_date,
                     r.refund_mode, r.status as return_status, r.notes as return_notes, po.po_number,
@@ -1754,7 +2071,7 @@ class WarehouseController {
              LEFT JOIN purchase_orders po ON r.purchase_order_id = po.id
              LEFT JOIN customers c ON r.customer_id = c.id
              LEFT JOIN warehouses w ON r.warehouse_id = w.id
-             WHERE ri.variant_id = ? AND r.status != 'CANCELLED'
+             WHERE ri.variant_id = ? AND r.status != 'CANCELLED'$whReturnClause
              ORDER BY r.id DESC, ri.id DESC",
             [$variantId]
         );
@@ -1802,29 +2119,33 @@ class WarehouseController {
         } catch (Exception $e) {}
 
         Response::view('warehouse.stock.detail', [
-            'pageTitle'           => 'Stock Detail: ' . $variant['sku'],
-            'activeModule'        => 'warehouse',
-            'activeMenu'          => 'wh-stock',
-            'variant'             => $variant,
-            'balances'            => $balances,
-            'transactions'        => $transactions,
-            'priceLogs'           => $priceLogs,
-            'totalAvailable'      => $totalAvailable,
-            'totalDamaged'        => $totalDamaged,
-            'totalReserved'       => $totalReserved,
-            'pieceQRs'            => $pieceQRs,
-            'variantBatchHistory' => $variantBatchHistory,
-            'productBatchHistory' => $productBatchHistory,
-            'variantDamages'      => $variantDamages,
-            'damagedPieceList'    => $damagedPieceList,
-            'variantPurchases'    => $variantPurchases,
-            'soldPieceList'       => $soldPieceList,
-            'variantReturns'      => $variantReturns,
-            'returnedPieceList'   => $returnedPieceList,
-            'warehouses'          => $warehouses,
-            'breadcrumb'          => [
+            'pageTitle'                  => 'Stock Detail: ' . $variant['sku'],
+            'activeModule'               => 'warehouse',
+            'activeMenu'                 => 'wh-stock',
+            'variant'                    => $variant,
+            'balances'                   => $balances,
+            'transactions'               => $transactions,
+            'priceLogs'                  => $priceLogs,
+            'totalAvailable'             => $totalAvailable,
+            'totalDamaged'               => $totalDamaged,
+            'totalReserved'              => $totalReserved,
+            'allWarehouseTotalAvailable' => $allWarehouseTotalAvailable,
+            'warehouseAvailMap'          => $warehouseAvailMap,
+            'selectedWarehouseId'        => $selectedWarehouseId,
+            'selectedWarehouse'          => $selectedWarehouse,
+            'pieceQRs'                   => $pieceQRs,
+            'variantBatchHistory'        => $variantBatchHistory,
+            'productBatchHistory'        => $productBatchHistory,
+            'variantDamages'             => $variantDamages,
+            'damagedPieceList'           => $damagedPieceList,
+            'variantPurchases'           => $variantPurchases,
+            'soldPieceList'              => $soldPieceList,
+            'variantReturns'             => $variantReturns,
+            'returnedPieceList'          => $returnedPieceList,
+            'warehouses'                 => $warehouses,
+            'breadcrumb'                 => [
                 ['label' => 'Warehouse', 'url' => url('warehouse/dashboard')],
-                ['label' => 'Stock Ledger', 'url' => url('warehouse/stock')],
+                ['label' => 'Stock Ledger', 'url' => url('warehouse/stock' . (!empty($selectedWarehouseId) ? ('?warehouse_id=' . (int)$selectedWarehouseId) : ''))],
                 ['label' => $variant['sku']],
             ],
         ]);
@@ -2047,7 +2368,7 @@ class WarehouseController {
         ]);
 
         Session::flash('success', "QR code tags successfully re-generated for {$qtyToPrint} available units of SKU {$variant['sku']}. Ready to print directly below.");
-        Response::redirect(url('warehouse/stock/detail/' . $variantId));
+        Response::redirect(url('warehouse/stock/detail/' . $variantId . ($warehouseId ? '?warehouse_id=' . $warehouseId : '')));
     }
 
     // =========================================================================
@@ -3553,6 +3874,10 @@ class WarehouseController {
                     p.category_code, p.subcategory_code, p.sub_subcategory_code,
                     s.name as size_name, s.code as size_code, c.name as color_name,
                     COALESCE(cat.name, c_old.name, 'General') as category_name,
+                    COALESCE(cat.category_type, 'NORMAL') as category_type,
+                    COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                    p.is_complementary as prod_is_comp,
+                    pv.is_complementary as var_is_comp,
                     COALESCE(p.gst_percentage, 5.0) as gst_rate,
                     COALESCE(sb.total_avail, 0) as available_stock
              FROM product_variants pv
@@ -3572,7 +3897,14 @@ class WarehouseController {
         );
 
         foreach ($variants as &$v) {
+            $v['category_type'] = strtoupper($v['category_type'] ?? 'NORMAL');
+            $v['is_complementary'] = (!empty($v['is_complementary']) || !empty($v['prod_is_comp']) || !empty($v['var_is_comp']) || $v['category_type'] === 'COMPLEMENTARY') ? 1 : 0;
+            $v['is_series'] = ($v['category_type'] === 'SERIES' || ($v['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($v['pack_quantity'] ?? 0) > 1) ? 1 : 0;
+
             $retailPrice = (float)($v['selling_price'] > 0 ? $v['selling_price'] : $v['mrp']);
+            if ($v['is_complementary']) {
+                $retailPrice = 0.00;
+            }
             $v['selling_price'] = $retailPrice;
             $v['mrp'] = $retailPrice;
 
@@ -3652,12 +3984,23 @@ class WarehouseController {
                 }
             }
 
-            // Server-side duplicate piece QR check
+            // Server-side duplicate piece QR check (enforced only for individual garments, series QR remaining quantity is still available)
             $seenTags = [];
             foreach ($items as $item) {
                 if (!empty($item['scanned_qr_codes'])) {
+                    $vInfo = Database::fetchOne(
+                        "SELECT pv.id, pv.qr_type, pv.pack_quantity, COALESCE(pv.is_complementary, p.is_complementary, 0) as is_comp,
+                                COALESCE(wc.category_type, 'NORMAL') as cat_type
+                         FROM product_variants pv
+                         JOIN products p ON pv.product_id = p.id
+                         LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                         WHERE pv.id = ?",
+                        [(int)$item['variant_id']]
+                    );
+                    $isSeries = ($vInfo && (strtoupper($vInfo['cat_type'] ?? '') === 'SERIES' || ($vInfo['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($vInfo['pack_quantity'] ?? 0) > 1));
+
                     $lowerTag = strtolower($item['scanned_qr_codes']);
-                    if (in_array($lowerTag, $seenTags)) {
+                    if (!$isSeries && in_array($lowerTag, $seenTags)) {
                         Response::redirect(url('warehouse/purchases/create'), 'error', "Duplicate piece QR tag detected: '{$item['scanned_qr_codes']}'. Each piece QR can only be scanned and added once.");
                         return;
                     }
@@ -3802,6 +4145,10 @@ class WarehouseController {
                     p.category_code, p.subcategory_code, p.sub_subcategory_code,
                     s.name as size_name, s.code as size_code, c.name as color_name,
                     COALESCE(cat.name, c_old.name, 'General') as category_name,
+                    COALESCE(cat.category_type, 'NORMAL') as category_type,
+                    COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                    p.is_complementary as prod_is_comp,
+                    pv.is_complementary as var_is_comp,
                     COALESCE(p.gst_percentage, 5.0) as gst_rate,
                     COALESCE(sb.total_avail, 0) as available_stock
              FROM product_variants pv
@@ -3821,7 +4168,14 @@ class WarehouseController {
         );
 
         foreach ($variants as &$v) {
+            $v['category_type'] = strtoupper($v['category_type'] ?? 'NORMAL');
+            $v['is_complementary'] = (!empty($v['is_complementary']) || !empty($v['prod_is_comp']) || !empty($v['var_is_comp']) || $v['category_type'] === 'COMPLEMENTARY') ? 1 : 0;
+            $v['is_series'] = ($v['category_type'] === 'SERIES' || ($v['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($v['pack_quantity'] ?? 0) > 1) ? 1 : 0;
+
             $retailPrice = (float)($v['selling_price'] > 0 ? $v['selling_price'] : $v['mrp']);
+            if ($v['is_complementary']) {
+                $retailPrice = 0.00;
+            }
             $v['selling_price'] = $retailPrice;
             $v['mrp'] = $retailPrice;
 
@@ -3904,12 +4258,23 @@ class WarehouseController {
                 }
             }
 
-            // Server-side duplicate piece QR check
+            // Server-side duplicate piece QR check (enforced only for individual garments, series QR remaining quantity is still available)
             $seenTags = [];
             foreach ($items as $item) {
                 if (!empty($item['scanned_qr_codes'])) {
+                    $vInfo = Database::fetchOne(
+                        "SELECT pv.id, pv.qr_type, pv.pack_quantity, COALESCE(pv.is_complementary, p.is_complementary, 0) as is_comp,
+                                COALESCE(wc.category_type, 'NORMAL') as cat_type
+                         FROM product_variants pv
+                         JOIN products p ON pv.product_id = p.id
+                         LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                         WHERE pv.id = ?",
+                        [(int)$item['variant_id']]
+                    );
+                    $isSeries = ($vInfo && (strtoupper($vInfo['cat_type'] ?? '') === 'SERIES' || ($vInfo['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($vInfo['pack_quantity'] ?? 0) > 1));
+
                     $lowerTag = strtolower($item['scanned_qr_codes']);
-                    if (in_array($lowerTag, $seenTags)) {
+                    if (!$isSeries && in_array($lowerTag, $seenTags)) {
                         Response::redirect(url('warehouse/purchases/edit/' . $poId), 'error', "Duplicate piece QR tag detected: '{$item['scanned_qr_codes']}'. Each piece QR can only be added once.");
                         return;
                     }
@@ -4088,39 +4453,156 @@ class WarehouseController {
             if (isset($parts[2]) && !empty($parts[2])) $candidateCodes[] = $parts[2];
         }
 
+        // 4. Concatenated multi-tag scans without delimiter (e.g. "SSS102602SSS102612")
+        if (preg_match_all('/([A-Za-z_-]{2,6}\d{5,8})/i', $rawCode, $multiTags) && count($multiTags[0]) > 1) {
+            foreach ($multiTags[0] as $mt) {
+                $candidateCodes[] = strtoupper(trim($mt));
+            }
+            $extractedTag = strtoupper(trim($multiTags[0][0]));
+        }
+
         $candidateCodes = array_values(array_unique(array_filter($candidateCodes)));
         $variant = null;
+
+        $baseVariantSql = "
+            SELECT pv.*, 
+                   p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
+                   COALESCE(p.gst_percentage, 5.0) as gst_rate,
+                   COALESCE(p.is_complementary, 0) as prod_is_comp,
+                   COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                   p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
+                   p.category_id, p.subcategory_id, p.sub_subcategory_id,
+                   p.warehouse_category_id, p.warehouse_subcategory_id, p.warehouse_sub_subcategory_id,
+                   s.name as size_name, s.code as size_code,
+                   col.name as color_name, col.hex_code as color_hex,
+                   COALESCE(wc.name, cat.name, 'General') as category_name,
+                   COALESCE(wsc.name, subcat.name) as subcategory_name,
+                   COALESCE(wssc.name, subsubcat.name) as sub_subcategory_name,
+                   COALESCE(wc.category_type, 'NORMAL') as category_type
+            FROM product_variants pv
+            JOIN products p ON pv.product_id = p.id
+            LEFT JOIN sizes s ON pv.size_id = s.id
+            LEFT JOIN colors col ON pv.color_id = col.id
+            LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+            LEFT JOIN warehouse_subcategories wsc ON p.warehouse_subcategory_id = wsc.id
+            LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
+            LEFT JOIN categories cat ON p.category_id = cat.id
+            LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
+            LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
+        ";
 
         // Strategy 1: Exact match on candidate codes against product_variants or products
         foreach ($candidateCodes as $c) {
             if (empty($c)) continue;
             $variant = Database::fetchOne(
-                "SELECT pv.*, 
-                        p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                        COALESCE(p.gst_percentage, 5.0) as gst_rate,
-                        p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                        p.category_id, p.subcategory_id, p.sub_subcategory_id,
-                        s.name as size_name, s.code as size_code,
-                        col.name as color_name, col.hex_code as color_hex,
-                        cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name
-                 FROM product_variants pv
-                 JOIN products p ON pv.product_id = p.id
-                 LEFT JOIN sizes s ON pv.size_id = s.id
-                 LEFT JOIN colors col ON pv.color_id = col.id
-                 LEFT JOIN categories cat ON p.category_id = cat.id
-                 LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
-                 LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
+                $baseVariantSql . "
                  WHERE pv.sku = ? 
                     OR pv.qr_code = ? 
                     OR p.code = ?
+                    OR pv.series_start_code = ?
                     OR (pv.id = ? AND ? > 0)
                  LIMIT 1",
-                [$c, $c, $c, is_numeric($c) ? (int)$c : 0, is_numeric($c) ? (int)$c : 0]
+                [$c, $c, $c, $c, is_numeric($c) ? (int)$c : 0, is_numeric($c) ? (int)$c : 0]
             );
             if ($variant) break;
         }
 
-        // Strategy 2: Lookup from QC Items recorded tag_code
+        // Strategy 2: Series Range Check directly on product_variants (series_start_code <= code <= series_end_code)
+        if (!$variant) {
+            foreach ($candidateCodes as $c) {
+                if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $c, $mTag)) {
+                    $tagPfx = strtoupper($mTag[1]);
+                    $tagNum = (int)$mTag[2];
+                    $tagLen = strlen($mTag[2]);
+
+                    $seriesVariants = Database::fetchAll(
+                        $baseVariantSql . "
+                         WHERE pv.series_start_code IS NOT NULL AND pv.series_end_code IS NOT NULL AND pv.is_active = 1
+                        "
+                    );
+                    foreach ($seriesVariants as $sv) {
+                        if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $sv['series_start_code'], $mS) &&
+                            preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $sv['series_end_code'], $mE)) {
+                            if (strtoupper($mS[1]) === $tagPfx && strtoupper($mE[1]) === $tagPfx) {
+                                $sNum = (int)$mS[2];
+                                $eNum = (int)$mE[2];
+                                if ($tagNum >= $sNum && $tagNum <= $eNum && strlen($mS[2]) === $tagLen) {
+                                    $variant = $sv;
+                                    break 2;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Strategy 3: Stock Transactions Notes Lookup (Inward GRN / Piece Tags Recorded in Warehouse)
+        if (!$variant) {
+            foreach ($candidateCodes as $c) {
+                if (strlen($c) < 3) continue;
+
+                // 3a: Exact tag occurrence in stock_transactions notes (e.g. "Tags: ..., SSS102602, ...")
+                $tx = Database::fetchOne(
+                    "SELECT st.variant_id 
+                     FROM stock_transactions st
+                     WHERE st.notes LIKE ? 
+                     ORDER BY st.id DESC LIMIT 1",
+                    ['%' . $c . '%']
+                );
+                if ($tx && !empty($tx['variant_id'])) {
+                    $variant = Database::fetchOne($baseVariantSql . " WHERE pv.id = ? LIMIT 1", [$tx['variant_id']]);
+                    if ($variant) break;
+                }
+
+                // 3b: Range in stock_transactions notes (e.g. "Tags: TTT102601 - TTT102610" or "Tags: SSS102601... (total 10)")
+                if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $c, $mTag)) {
+                    $tagPfx = strtoupper($mTag[1]);
+                    $tagNum = (int)$mTag[2];
+                    $tagLen = strlen($mTag[2]);
+
+                    $txRows = Database::fetchAll(
+                        "SELECT st.variant_id, st.notes 
+                         FROM stock_transactions st
+                         WHERE st.notes LIKE '%Tags:%' 
+                         ORDER BY st.id DESC LIMIT 50"
+                    );
+                    foreach ($txRows as $tr) {
+                        $notes = $tr['notes'] ?? '';
+                        // Range pattern: Tags: TTT102601 - TTT102610
+                        if (preg_match('/Tags:\s*([A-Za-z0-9]+)\s*-\s*([A-Za-z0-9]+)/i', $notes, $mRange)) {
+                            if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $mRange[1], $mS) &&
+                                preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $mRange[2], $mE)) {
+                                if (strtoupper($mS[1]) === $tagPfx && strtoupper($mE[1]) === $tagPfx) {
+                                    $sNum = (int)$mS[2];
+                                    $eNum = (int)$mE[2];
+                                    if ($tagNum >= $sNum && $tagNum <= $eNum && strlen($mS[2]) === $tagLen) {
+                                        $variant = Database::fetchOne($baseVariantSql . " WHERE pv.id = ? LIMIT 1", [$tr['variant_id']]);
+                                        if ($variant) break 2;
+                                    }
+                                }
+                            }
+                        }
+                        // Truncated list pattern: Tags: SSS102601, SSS102602... (total 10)
+                        elseif (preg_match('/Tags:\s*([A-Za-z0-9]+).*?\(total\s+(\d+)\)/i', $notes, $mTotal)) {
+                            if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $mTotal[1], $mS)) {
+                                if (strtoupper($mS[1]) === $tagPfx && strlen($mS[2]) === $tagLen) {
+                                    $sNum = (int)$mS[2];
+                                    $tot = (int)$mTotal[2];
+                                    $eNum = $sNum + $tot - 1;
+                                    if ($tagNum >= $sNum && $tagNum <= $eNum) {
+                                        $variant = Database::fetchOne($baseVariantSql . " WHERE pv.id = ? LIMIT 1", [$tr['variant_id']]);
+                                        if ($variant) break 2;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Strategy 4: Lookup from QC Items recorded tag_code
         if (!$variant) {
             foreach ($candidateCodes as $c) {
                 $qc = Database::fetchOne(
@@ -4128,25 +4610,7 @@ class WarehouseController {
                     [$c]
                 );
                 if ($qc && !empty($qc['variant_id'])) {
-                    $variant = Database::fetchOne(
-                        "SELECT pv.*, 
-                                p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                                COALESCE(p.gst_percentage, 5.0) as gst_rate,
-                                p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                                p.category_id, p.subcategory_id, p.sub_subcategory_id,
-                                s.name as size_name, s.code as size_code,
-                                col.name as color_name, col.hex_code as color_hex,
-                                cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name
-                         FROM product_variants pv
-                         JOIN products p ON pv.product_id = p.id
-                         LEFT JOIN sizes s ON pv.size_id = s.id
-                         LEFT JOIN colors col ON pv.color_id = col.id
-                         LEFT JOIN categories cat ON p.category_id = cat.id
-                         LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
-                         LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
-                         WHERE pv.id = ? LIMIT 1",
-                        [$qc['variant_id']]
-                    );
+                    $variant = Database::fetchOne($baseVariantSql . " WHERE pv.id = ? LIMIT 1", [$qc['variant_id']]);
                     if ($variant) {
                         $extractedTag = $qc['tag_code'] ?: $extractedTag;
                         break;
@@ -4155,7 +4619,7 @@ class WarehouseController {
             }
         }
 
-        // Strategy 3: Lookup by Production Batch Number
+        // Strategy 5: Lookup by Production Batch Number
         if (!$variant) {
             foreach ($candidateCodes as $c) {
                 $batchItem = Database::fetchOne(
@@ -4167,31 +4631,13 @@ class WarehouseController {
                     [$c, '%' . $c . '%']
                 );
                 if ($batchItem && !empty($batchItem['variant_id'])) {
-                    $variant = Database::fetchOne(
-                        "SELECT pv.*, 
-                                p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                                COALESCE(p.gst_percentage, 5.0) as gst_rate,
-                                p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                                p.category_id, p.subcategory_id, p.sub_subcategory_id,
-                                s.name as size_name, s.code as size_code,
-                                col.name as color_name, col.hex_code as color_hex,
-                                cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name
-                         FROM product_variants pv
-                         JOIN products p ON pv.product_id = p.id
-                         LEFT JOIN sizes s ON pv.size_id = s.id
-                         LEFT JOIN colors col ON pv.color_id = col.id
-                         LEFT JOIN categories cat ON p.category_id = cat.id
-                         LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
-                         LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
-                         WHERE pv.id = ? LIMIT 1",
-                        [$batchItem['variant_id']]
-                    );
+                    $variant = Database::fetchOne($baseVariantSql . " WHERE pv.id = ? LIMIT 1", [$batchItem['variant_id']]);
                     if ($variant) break;
                 }
             }
         }
 
-        // Strategy 4: Lookup by Tag Prefix pattern (e.g. KGF092607, TTS092601)
+        // Strategy 6: Tag Prefix pattern with warehouse categories & products (e.g. SSS102602 -> SSS)
         if (!$variant) {
             $matchedAlpha = null;
             if (preg_match('/^([A-Za-z_-]+)(\d+)?$/i', $extractedTag, $matches)) {
@@ -4202,13 +4648,18 @@ class WarehouseController {
 
             if (!empty($matchedAlpha)) {
                 $alphaPrefix = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $matchedAlpha));
-                if (!empty($alphaPrefix)) {
+                if (strlen($alphaPrefix) >= 2) {
                     $allProducts = Database::fetchAll("
                         SELECT p.id, p.name, p.code, p.qr_code_prefix,
                                p.category_code, p.subcategory_code, p.sub_subcategory_code,
+                               wc.name as wc_name, wsc.name as wsc_name, wssc.name as wssc_name,
+                               wc.code as wc_c, wsc.code as wsc_c, wssc.code as wssc_c,
                                cat.name as cat_name, subcat.name as sub_name, subsubcat.name as subsub_name,
                                cat.code as cat_c, subcat.code as sub_c, subsubcat.code as subsub_c
                         FROM products p
+                        LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                        LEFT JOIN warehouse_subcategories wsc ON p.warehouse_subcategory_id = wsc.id
+                        LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
                         LEFT JOIN categories cat ON p.category_id = cat.id
                         LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
                         LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
@@ -4218,42 +4669,31 @@ class WarehouseController {
                     foreach ($allProducts as $p) {
                         $pCleanPrefix = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $p['qr_code_prefix'] ?? ''));
                         $pCleanCode   = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $p['code'] ?? ''));
-                        
-                        $catC = strtoupper(trim($p['cat_c'] ?? ''));
-                        $subC = strtoupper(trim($p['sub_c'] ?? ''));
-                        $subsubC = strtoupper(trim($p['subsub_c'] ?? ''));
 
-                        $initials1 = ($catC !== '' ? $catC[0] : '') . ($subC !== '' ? $subC[0] : '') . ($subsubC !== '' ? $subsubC[0] : '');
-                        $initialsR = 'R' . $initials1;
-                        $initials2 = ($catC !== '' ? $catC[0] : '') . ($subC !== '' ? $subC[0] : '');
-                        $initialsR2 = 'R' . $initials2;
+                        // Warehouse Category Initials (e.g. SAMPLE1 (S) + SAMPLE2 (S) + SAMPLE3 (S) = SSS)
+                        $wcN = strtoupper(trim($p['wc_name'] ?? ''));
+                        $wscN = strtoupper(trim($p['wsc_name'] ?? ''));
+                        $wsscN = strtoupper(trim($p['wssc_name'] ?? ''));
+                        $whInitials = ($wcN !== '' ? $wcN[0] : '') . ($wscN !== '' ? $wscN[0] : '') . ($wsscN !== '' ? $wsscN[0] : '');
 
+                        // Regular Category Initials
                         $catN = strtoupper(trim($p['cat_name'] ?? ''));
                         $subN = strtoupper(trim($p['sub_name'] ?? ''));
                         $subsubN = strtoupper(trim($p['subsub_name'] ?? ''));
-                        $nameInitials = ($catN !== '' ? $catN[0] : '') . ($subN !== '' ? $subN[0] : '') . ($subsubN !== '' ? $subsubN[0] : '');
-                        $nameInitialsR = 'R' . $nameInitials;
+                        $catInitials = ($catN !== '' ? $catN[0] : '') . ($subN !== '' ? $subN[0] : '') . ($subsubN !== '' ? $subsubN[0] : '');
 
-                        $pNameParts = preg_split('/[\s\-_]+/', trim($p['name']));
-                        $pNameInitials = '';
-                        foreach ($pNameParts as $pnp) {
-                            if (!empty($pnp)) $pNameInitials .= strtoupper($pnp[0]);
+                        $isPrefixMatch = false;
+                        if (!empty($pCleanPrefix) && ($alphaPrefix === $pCleanPrefix || str_starts_with($pCleanPrefix, $alphaPrefix) || str_starts_with($alphaPrefix, $pCleanPrefix))) {
+                            $isPrefixMatch = true;
+                        } elseif (!empty($whInitials) && $alphaPrefix === $whInitials) {
+                            $isPrefixMatch = true;
+                        } elseif (!empty($catInitials) && $alphaPrefix === $catInitials) {
+                            $isPrefixMatch = true;
+                        } elseif (!empty($pCleanCode) && $alphaPrefix === $pCleanCode) {
+                            $isPrefixMatch = true;
                         }
 
-                        if (
-                            $alphaPrefix === $pCleanPrefix ||
-                            $alphaPrefix === $pCleanCode ||
-                            str_starts_with($pCleanPrefix, $alphaPrefix) ||
-                            str_starts_with($alphaPrefix, $pCleanPrefix) ||
-                            $alphaPrefix === $initials1 ||
-                            $alphaPrefix === $initialsR ||
-                            $alphaPrefix === $initials2 ||
-                            $alphaPrefix === $initialsR2 ||
-                            $alphaPrefix === $nameInitials ||
-                            $alphaPrefix === $nameInitialsR ||
-                            $alphaPrefix === $pNameInitials ||
-                            stripos($p['name'], $alphaPrefix) !== false
-                        ) {
+                        if ($isPrefixMatch) {
                             $matchedProdIds[] = $p['id'];
                         }
                     }
@@ -4261,21 +4701,7 @@ class WarehouseController {
                     if (!empty($matchedProdIds)) {
                         $placeholders = implode(',', array_fill(0, count($matchedProdIds), '?'));
                         $variant = Database::fetchOne(
-                            "SELECT pv.*, 
-                                    p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                                    COALESCE(p.gst_percentage, 5.0) as gst_rate,
-                                    p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                                    p.category_id, p.subcategory_id, p.sub_subcategory_id,
-                                    s.name as size_name, s.code as size_code,
-                                    col.name as color_name, col.hex_code as color_hex,
-                                    cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name
-                             FROM product_variants pv
-                             JOIN products p ON pv.product_id = p.id
-                             LEFT JOIN sizes s ON pv.size_id = s.id
-                             LEFT JOIN colors col ON pv.color_id = col.id
-                             LEFT JOIN categories cat ON p.category_id = cat.id
-                             LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
-                             LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
+                            $baseVariantSql . "
                              LEFT JOIN stock_balances sb ON sb.variant_id = pv.id AND sb.location_type = 'WAREHOUSE' AND sb.stock_state = 'AVAILABLE'
                              WHERE pv.product_id IN ($placeholders) AND pv.is_active = 1
                              ORDER BY COALESCE(sb.quantity, 0) DESC, pv.id ASC
@@ -4287,26 +4713,12 @@ class WarehouseController {
             }
         }
 
-        // Strategy 5: Fuzzy search LIKE on SKU, Product Name, Code
+        // Strategy 7: Fuzzy search LIKE on SKU, Product Name, Code
         if (!$variant) {
             foreach ($candidateCodes as $c) {
                 if (strlen($c) < 2) continue;
                 $variant = Database::fetchOne(
-                    "SELECT pv.*, 
-                            p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                            COALESCE(p.gst_percentage, 5.0) as gst_rate,
-                            p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                            p.category_id, p.subcategory_id, p.sub_subcategory_id,
-                            s.name as size_name, s.code as size_code,
-                            col.name as color_name, col.hex_code as color_hex,
-                            cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name
-                     FROM product_variants pv
-                     JOIN products p ON pv.product_id = p.id
-                     LEFT JOIN sizes s ON pv.size_id = s.id
-                     LEFT JOIN colors col ON pv.color_id = col.id
-                     LEFT JOIN categories cat ON p.category_id = cat.id
-                     LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
-                     LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
+                    $baseVariantSql . "
                      LEFT JOIN stock_balances sb ON sb.variant_id = pv.id AND sb.location_type = 'WAREHOUSE' AND sb.stock_state = 'AVAILABLE'
                      WHERE (pv.sku LIKE ? OR p.name LIKE ? OR p.code LIKE ? OR col.name LIKE ?) AND pv.is_active = 1
                      ORDER BY COALESCE(sb.quantity, 0) DESC, pv.id ASC
@@ -4357,23 +4769,30 @@ class WarehouseController {
             exit;
         }
 
+        $isComp = (!empty($variant['is_complementary']) || !empty($variant['prod_is_comp']) || ($variant['category_type'] ?? '') === 'COMPLEMENTARY') ? 1 : 0;
+        $isSeries = (($variant['category_type'] ?? '') === 'SERIES' || ($variant['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($variant['pack_quantity'] ?? 0) > 1) ? 1 : 0;
+        $retailPrice = $isComp ? 0.00 : (float)($variant['selling_price'] > 0 ? $variant['selling_price'] : $variant['mrp']);
+
         // 2. Active Allocation Check (Exclude pieces in active dispatch / gate pass)
-        $isAllocated = Database::fetchOne(
-            "SELECT wa.allocation_number, wa.status
-             FROM allocation_items ai
-             JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
-             WHERE ai.variant_id = ? 
-               AND FIND_IN_SET(?, REPLACE(COALESCE(ai.selected_qr_codes, ''), ' ', '')) > 0
-               AND wa.status IN ('REQUESTED', 'APPROVED', 'PICKED', 'PACKED', 'DISPATCHED', 'DELIVERED', 'RECEIVED')
-             LIMIT 1",
-            [$variant['id'], $extractedTag]
-        );
-        if ($isAllocated) {
-            echo json_encode([
-                'success' => false,
-                'message' => "🚫 Piece Already Allocated: Tag '{$extractedTag}' is allocated in Pass #{$isAllocated['allocation_number']} ({$isAllocated['status']}). Cannot scan an allocated piece!"
-            ]);
-            exit;
+        // Series products with available warehouse stock (> 0) can continue to be billed
+        if (!$isSeries) {
+            $isAllocated = Database::fetchOne(
+                "SELECT wa.allocation_number, wa.status
+                 FROM allocation_items ai
+                 JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
+                 WHERE ai.variant_id = ? 
+                   AND FIND_IN_SET(?, REPLACE(COALESCE(ai.selected_qr_codes, ''), ' ', '')) > 0
+                   AND wa.status IN ('REQUESTED', 'APPROVED', 'PICKED', 'PACKED', 'DISPATCHED', 'DELIVERED', 'RECEIVED')
+                 LIMIT 1",
+                [$variant['id'], $extractedTag]
+            );
+            if ($isAllocated) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => "🚫 Piece Already Allocated: Tag '{$extractedTag}' is allocated in Pass #{$isAllocated['allocation_number']} ({$isAllocated['status']}). Cannot scan an allocated piece!"
+                ]);
+                exit;
+            }
         }
 
         // 3. Damaged / Defect Pool Check
@@ -4393,47 +4812,69 @@ class WarehouseController {
         }
 
         // 4. Already Purchased / Sold Check
-        $isPurchased = Database::fetchOne(
-            "SELECT po.po_number, po.status
-             FROM purchase_items pi
-             JOIN purchase_orders po ON pi.purchase_order_id = po.id
-             WHERE pi.variant_id = ?
-               AND (
-                   FIND_IN_SET(?, REPLACE(COALESCE(pi.batch_lot_no, ''), ' ', '')) > 0
-                   OR pi.batch_lot_no = ?
-                   OR pi.notes LIKE ?
-               )
-               AND po.status NOT IN ('CANCELLED', 'VOID')
-             LIMIT 1",
-            [$variant['id'], $extractedTag, $extractedTag, '%' . $extractedTag . '%']
-        );
-        if ($isPurchased) {
-            echo json_encode([
-                'success' => false,
-                'message' => "🚫 Piece Already Sold: Tag '{$extractedTag}' was already sold in Direct Purchase #{$isPurchased['po_number']} ({$isPurchased['status']}). Cannot scan an already sold piece!"
-            ]);
-            exit;
+        // For Series products with available warehouse stock (> 0), the QR remains available for remaining quantity!
+        if (!$isSeries) {
+            $isPurchased = Database::fetchOne(
+                "SELECT po.po_number, po.status
+                 FROM purchase_items pi
+                 JOIN purchase_orders po ON pi.purchase_order_id = po.id
+                 WHERE pi.variant_id = ?
+                   AND (
+                       FIND_IN_SET(?, REPLACE(COALESCE(pi.batch_lot_no, ''), ' ', '')) > 0
+                       OR pi.batch_lot_no = ?
+                       OR pi.notes LIKE ?
+                   )
+                   AND po.status NOT IN ('CANCELLED', 'VOID')
+                 LIMIT 1",
+                [$variant['id'], $extractedTag, $extractedTag, '%' . $extractedTag . '%']
+            );
+            if ($isPurchased) {
+                // Check if this piece was subsequently returned and restocked in GOOD condition
+                $isRestocked = Database::fetchOne(
+                    "SELECT r.return_number
+                     FROM return_items ri
+                     JOIN `returns` r ON ri.return_id = r.id
+                     WHERE ri.variant_id = ?
+                       AND (ri.tag_code = ? OR FIND_IN_SET(?, REPLACE(COALESCE(ri.tag_code, ''), ' ', '')) > 0 OR ri.reason LIKE ?)
+                       AND ri.item_condition = 'GOOD'
+                       AND ri.destination = 'AVAILABLE'
+                       AND r.status NOT IN ('CANCELLED', 'REJECTED')
+                     ORDER BY r.id DESC LIMIT 1",
+                    [$variant['id'], $extractedTag, $extractedTag, '%' . $extractedTag . '%']
+                );
+                if (!$isRestocked) {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => "🚫 Piece Already Sold: Tag '{$extractedTag}' was already sold in Direct Purchase #{$isPurchased['po_number']} ({$isPurchased['status']}). Cannot scan an already sold piece!"
+                    ]);
+                    exit;
+                }
+            }
         }
 
-        $retailPrice = (float)($variant['selling_price'] > 0 ? $variant['selling_price'] : $variant['mrp']);
         echo json_encode([
             'success'       => true,
             'tag_code'      => $extractedTag,
             'extracted_tag' => $extractedTag,
             'variant'       => [
-                'id'              => (int)$variant['id'],
-                'sku'             => $variant['sku'],
-                'qr_code'         => !empty($variant['qr_code']) ? $variant['qr_code'] : $extractedTag,
-                'piece_tag'       => $extractedTag,
-                'product_name'    => $variant['product_name'],
-                'product_code'    => $variant['product_code'],
-                'size_name'       => $variant['size_name'] ?? 'Free',
-                'color_name'      => $variant['color_name'] ?? 'Std',
-                'category_name'   => $variant['category_name'] ?? 'General',
-                'selling_price'   => $retailPrice,
-                'mrp'             => $retailPrice,
-                'gst_rate'        => (float)($variant['gst_rate'] ?? 5.0),
-                'available_stock' => $availableStock
+                'id'               => (int)$variant['id'],
+                'sku'              => $variant['sku'],
+                'qr_code'          => !empty($variant['qr_code']) ? $variant['qr_code'] : $extractedTag,
+                'piece_tag'        => $extractedTag,
+                'product_name'     => $variant['product_name'],
+                'product_code'     => $variant['product_code'],
+                'size_name'        => $variant['size_name'] ?? 'Free',
+                'color_name'       => $variant['color_name'] ?? 'Std',
+                'category_name'    => $variant['category_name'] ?? 'General',
+                'category_type'    => $variant['category_type'] ?? 'NORMAL',
+                'is_complementary' => $isComp,
+                'is_series'        => $isSeries,
+                'qr_type'          => $variant['qr_type'] ?? 'INDIVIDUAL',
+                'pack_quantity'    => (int)($variant['pack_quantity'] ?? 1),
+                'selling_price'    => $retailPrice,
+                'mrp'              => $retailPrice,
+                'gst_rate'         => $isComp ? 0.0 : (float)($variant['gst_rate'] ?? 5.0),
+                'available_stock'  => $availableStock
             ]
         ]);
         exit;
@@ -5139,12 +5580,14 @@ class WarehouseController {
             "SELECT pv.id, pv.sku, pv.qr_code as barcode, pv.mrp, pv.selling_price, pv.purchase_price,
                     pv.qr_type, pv.pack_quantity, pv.series_start_code, pv.series_end_code,
                     COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary, p.is_complementary as prod_is_comp,
+                    COALESCE(wc.category_type, 'NORMAL') as category_type,
                     p.id as product_id, p.name as product_name, p.category_id, p.subcategory_id, p.sub_subcategory_id,
                     sz.name as size_name, c.name as color_name,
-                    cat.name as category_name, subcat.name as subcategory_name, subsub.name as sub_subcategory_name,
+                    COALESCE(wc.name, cat.name) as category_name, subcat.name as subcategory_name, subsub.name as sub_subcategory_name,
                     COALESCE((SELECT SUM(quantity) FROM stock_balances WHERE variant_id = pv.id AND location_type = 'WAREHOUSE' " . ($defaultWhId > 0 ? "AND location_id = {$defaultWhId}" : "") . " AND stock_state = 'AVAILABLE'), 0) as total_warehouse_stock
              FROM product_variants pv
              JOIN products p ON pv.product_id = p.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN categories cat ON p.category_id = cat.id
              LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
              LEFT JOIN sub_subcategories subsub ON p.sub_subcategory_id = subsub.id
@@ -5267,9 +5710,28 @@ class WarehouseController {
                     $stagUpper = strtoupper($stag);
 
                     if (isset($seenInSubmission[$stagUpper])) {
-                        Session::flash('error', "Cannot save: Piece Tag '{$stagUpper}' was added multiple times in this requisition.");
-                        Response::redirect(url('warehouse/allocation/create'));
-                        return;
+                        $vCheck = Database::fetchOne(
+                            "SELECT pv.id, pv.qr_type, pv.pack_quantity,
+                                    COALESCE(pv.is_complementary, p.is_complementary, 0) as is_comp,
+                                    COALESCE(wc.category_type, 'NORMAL') as cat_type
+                             FROM product_variants pv 
+                             JOIN products p ON pv.product_id = p.id 
+                             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                             LEFT JOIN categories cat ON p.category_id = cat.id
+                             WHERE pv.id = ?",
+                            [(int)$vId]
+                        );
+                        $isMasterOrComp = ($vCheck && (
+                            $vCheck['qr_type'] === 'SERIES_BATCH'
+                            || strtoupper($vCheck['cat_type'] ?? '') === 'SERIES'
+                            || (int)($vCheck['pack_quantity'] ?? 0) > 1
+                            || !empty($vCheck['is_comp'])
+                        ));
+                        if (!$isMasterOrComp) {
+                            Session::flash('error', "Cannot save: Piece Tag '{$stagUpper}' was added multiple times in this requisition.");
+                            Response::redirect(url('warehouse/allocation/create'));
+                            return;
+                        }
                     }
                     $seenInSubmission[$stagUpper] = true;
 
@@ -5286,13 +5748,22 @@ class WarehouseController {
                     if ($exist) {
                         // Check if this variant is a Master pack / Series batch / Complementary pack with sufficient available stock
                         $vCheck = Database::fetchOne(
-                            "SELECT pv.id, pv.qr_type, pv.is_complementary, p.is_complementary as prod_comp
+                            "SELECT pv.id, pv.qr_type, pv.pack_quantity,
+                                    COALESCE(pv.is_complementary, p.is_complementary, 0) as is_comp,
+                                    COALESCE(wc.category_type, 'NORMAL') as cat_type
                              FROM product_variants pv 
                              JOIN products p ON pv.product_id = p.id 
+                             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                             LEFT JOIN categories cat ON p.category_id = cat.id
                              WHERE pv.id = ?",
                             [(int)$vId]
                         );
-                        $isMasterOrComp = ($vCheck && ($vCheck['qr_type'] === 'SERIES_BATCH' || !empty($vCheck['is_complementary']) || !empty($vCheck['prod_comp'])));
+                        $isMasterOrComp = ($vCheck && (
+                            $vCheck['qr_type'] === 'SERIES_BATCH'
+                            || strtoupper($vCheck['cat_type'] ?? '') === 'SERIES'
+                            || (int)($vCheck['pack_quantity'] ?? 0) > 1
+                            || !empty($vCheck['is_comp'])
+                        ));
 
                         $availStockRow = Database::fetchOne(
                             "SELECT COALESCE(SUM(quantity), 0) as qty FROM stock_balances 
@@ -5327,7 +5798,9 @@ class WarehouseController {
                 'shop_id'           => $shopId,
                 'channel_id'        => $channelId,
                 'requested_by'      => $userId,
-                'status'            => 'REQUESTED',
+                'approved_by'       => $userId,
+                'approved_at'       => date('Y-m-d H:i:s'),
+                'status'            => 'APPROVED',
                 'notes'             => $notes,
             ]);
 
@@ -5350,8 +5823,8 @@ class WarehouseController {
                 'number' => $allocationNumber, 'warehouse_id' => $warehouseId
             ]);
 
-            Session::flash('success', "Allocation Requisition #{$allocationNumber} created successfully!");
-            Response::redirect(url('warehouse/allocation/view/' . $allocationId));
+            Session::flash('success', "Allocation Batch #{$allocationNumber} created and moved to Batches successfully!");
+            Response::redirect(url('warehouse/allocation?tab=batches'));
         } catch (Exception $e) {
             Session::flash('error', 'Failed to create allocation: ' . $e->getMessage());
             Response::redirect(url('warehouse/allocation/create'));
@@ -5568,14 +6041,55 @@ class WarehouseController {
         }
 
         $pieces = [];
+
+        // Check if there are real production inward QR codes for this variant
+        $variantId = (int)($variant['id'] ?? 0);
+        if ($variantId > 0) {
+            $batchPieceRows = Database::fetchAll(
+                "SELECT pbi.received_qr_codes, pbi.quantity, pbi.received_qty, pb.id as batch_id
+                 FROM production_batch_items pbi
+                 JOIN production_batches pb ON pb.id = pbi.production_batch_id
+                 WHERE pbi.variant_id = ? AND pb.status IN ('RECEIVED', 'DISPATCHED')
+                 ORDER BY pb.id ASC",
+                [$variantId]
+            );
+
+            foreach ($batchPieceRows as $bpr) {
+                if (count($pieces) >= $count) break;
+                if (!empty($bpr['received_qr_codes'])) {
+                    foreach (explode(',', $bpr['received_qr_codes']) as $t) {
+                        if (count($pieces) >= $count) break;
+                        $code = strtoupper(trim($t));
+                        if ($code !== '' && !isset($alreadyAllocatedCodes[$code])) {
+                            $pieces[] = [
+                                'piece_no'      => count($pieces) + 1,
+                                'qr_code'       => $code,
+                                'sku'           => $sku,
+                                'size'          => $variant['size_name'] ?? 'Free',
+                                'color'         => $variant['color_name'] ?? '',
+                                'product'       => $pName,
+                                'mrp'           => (float)($variant['mrp'] ?? 0),
+                                'selling_price' => (float)($variant['selling_price'] ?? 0),
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fill remaining with sequence if needed
         $i = 1;
         while (count($pieces) < $count && $i <= 500) {
             $code = $prefix . sprintf("%02d", (int)$m) . $y . sprintf("%02d", $i);
             
             // EXCLUDE ALREADY ALLOCATED QR CODES
-            if (!isset($alreadyAllocatedCodes[$code])) {
+            $alreadyAdded = false;
+            foreach ($pieces as $pc) {
+                if ($pc['qr_code'] === $code) { $alreadyAdded = true; break; }
+            }
+            if (!$alreadyAdded && !isset($alreadyAllocatedCodes[$code])) {
                 $pieces[] = [
-                    'piece_no'      => $i,
+                    'piece_no'      => count($pieces) + 1,
                     'qr_code'       => $code,
                     'sku'           => $sku,
                     'size'          => $variant['size_name'] ?? 'Free',
@@ -5690,6 +6204,14 @@ class WarehouseController {
             $candidateCodes[] = $mSku[1];
         }
 
+        // 5. Concatenated multi-tag scans without delimiter (e.g. "SSS102602SSS102612")
+        if (preg_match_all('/([A-Za-z_-]{2,6}\d{5,8})/i', $rawCode, $multiTags) && count($multiTags[0]) > 1) {
+            foreach ($multiTags[0] as $mt) {
+                $candidateCodes[] = strtoupper(trim($mt));
+            }
+            $extractedTag = strtoupper(trim($multiTags[0][0]));
+        }
+
         $candidateCodes = array_values(array_unique(array_filter($candidateCodes)));
 
         // Guardrail: Check if this piece tag or candidate code is already allocated in ANY active/dispatched/delivered allocation
@@ -5721,13 +6243,22 @@ class WarehouseController {
             if ($alreadyAlloc) {
                 // Check if this variant is a Master pack / Series batch / Complementary pack with remaining available warehouse stock
                 $allocVar = Database::fetchOne(
-                    "SELECT pv.id, pv.qr_type, pv.is_complementary, p.is_complementary as prod_comp
+                    "SELECT pv.id, pv.qr_type, pv.pack_quantity,
+                            COALESCE(pv.is_complementary, p.is_complementary, 0) as is_comp,
+                            COALESCE(wc.category_type, 'NORMAL') as cat_type
                      FROM product_variants pv 
                      JOIN products p ON pv.product_id = p.id 
+                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                     LEFT JOIN categories cat ON p.category_id = cat.id
                      WHERE pv.id = ?",
                     [$alreadyAlloc['variant_id']]
                 );
-                $isMasterOrComp = ($allocVar && ($allocVar['qr_type'] === 'SERIES_BATCH' || !empty($allocVar['is_complementary']) || !empty($allocVar['prod_comp'])));
+                $isMasterOrComp = ($allocVar && (
+                    $allocVar['qr_type'] === 'SERIES_BATCH'
+                    || strtoupper($allocVar['cat_type'] ?? '') === 'SERIES'
+                    || (int)($allocVar['pack_quantity'] ?? 0) > 1
+                    || !empty($allocVar['is_comp'])
+                ));
 
                 if ($isMasterOrComp) {
                     $availStockRow = Database::fetchOne(
@@ -5759,29 +6290,34 @@ class WarehouseController {
 
         $variant = null;
 
-        // Strategy 1: Exact match on candidate codes against product_variants (sku, qr_code, id) or products (code, qr_code_prefix)
+        $baseVariantSql = "
+            SELECT pv.*, 
+                   p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
+                   COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                   p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
+                   p.category_id, p.subcategory_id, p.sub_subcategory_id,
+                   s.name as size_name, s.code as size_code,
+                   col.name as color_name, col.hex_code as color_hex,
+                   COALESCE(wc.name, cat.name) as category_name,
+                   COALESCE(wsc.name, subcat.name) as subcategory_name,
+                   COALESCE(wssc.name, subsubcat.name) as sub_subcategory_name
+            FROM product_variants pv
+            JOIN products p ON pv.product_id = p.id
+            LEFT JOIN sizes s ON pv.size_id = s.id
+            LEFT JOIN colors col ON pv.color_id = col.id
+            LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+            LEFT JOIN warehouse_subcategories wsc ON p.warehouse_subcategory_id = wsc.id
+            LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
+            LEFT JOIN categories cat ON p.category_id = cat.id
+            LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
+            LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
+        ";
+
+        // Strategy 1: Exact match on candidate codes against product_variants or products
         foreach ($candidateCodes as $c) {
             if (empty($c)) continue;
             $variant = Database::fetchOne(
-                "SELECT pv.*, 
-                        p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                        p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                        p.category_id, p.subcategory_id, p.sub_subcategory_id,
-                        s.name as size_name, s.code as size_code,
-                        col.name as color_name, col.hex_code as color_hex,
-                        COALESCE(wc.name, cat.name) as category_name,
-                        COALESCE(wsc.name, subcat.name) as subcategory_name,
-                        COALESCE(wssc.name, subsubcat.name) as sub_subcategory_name
-                 FROM product_variants pv
-                 JOIN products p ON pv.product_id = p.id
-                 LEFT JOIN sizes s ON pv.size_id = s.id
-                 LEFT JOIN colors col ON pv.color_id = col.id
-                 LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
-                 LEFT JOIN warehouse_subcategories wsc ON p.warehouse_subcategory_id = wsc.id
-                 LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
-                 LEFT JOIN categories cat ON p.category_id = cat.id
-                 LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
-                 LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
+                $baseVariantSql . "
                  WHERE pv.sku = ? 
                     OR pv.qr_code = ? 
                     OR pv.series_start_code = ?
@@ -5789,83 +6325,125 @@ class WarehouseController {
                     OR p.code = ?
                     OR p.qr_code_prefix = ?
                     OR (pv.id = ? AND ? > 0)
+                 ORDER BY is_complementary ASC
                  LIMIT 1",
                 [$c, $c, $c, $c, $c, $c, is_numeric($c) ? (int)$c : 0, is_numeric($c) ? (int)$c : 0]
             );
             if ($variant) break;
         }
 
-        // Strategy 2: Historical Inward GRN / Stock transactions / Purchase Items tag search
+        // Strategy 2: Series Range Check directly on product_variants (series_start_code <= code <= series_end_code)
         if (!$variant) {
             foreach ($candidateCodes as $c) {
-                if (empty($c) || strlen($c) < 3) continue;
-                $tx = Database::fetchOne(
-                    "SELECT pv.*, 
-                            p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                            p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                            p.category_id, p.subcategory_id, p.sub_subcategory_id,
-                            s.name as size_name, s.code as size_code,
-                            col.name as color_name, col.hex_code as color_hex,
-                            COALESCE(wc.name, cat.name) as category_name,
-                            COALESCE(wsc.name, subcat.name) as subcategory_name,
-                            COALESCE(wssc.name, subsubcat.name) as sub_subcategory_name
-                     FROM stock_transactions st
-                     JOIN product_variants pv ON st.variant_id = pv.id
-                     JOIN products p ON pv.product_id = p.id
-                     LEFT JOIN sizes s ON pv.size_id = s.id
-                     LEFT JOIN colors col ON pv.color_id = col.id
-                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
-                     LEFT JOIN warehouse_subcategories wsc ON p.warehouse_subcategory_id = wsc.id
-                     LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
-                     LEFT JOIN categories cat ON p.category_id = cat.id
-                     LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
-                     LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
-                     LEFT JOIN stock_balances sb ON sb.variant_id = pv.id AND sb.location_type = 'WAREHOUSE' " . ($warehouseId > 0 ? "AND sb.location_id = {$warehouseId}" : "") . " AND sb.stock_state = 'AVAILABLE'
-                     WHERE st.notes LIKE ? OR st.notes LIKE ?
-                     ORDER BY sb.quantity DESC, st.id DESC
-                     LIMIT 1",
-                    ['%' . $c . '%', '%Tags: ' . $c . '%']
-                );
-                if ($tx) {
-                    $variant = $tx;
-                    break;
-                }
+                if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $c, $mTag)) {
+                    $tagPfx = strtoupper($mTag[1]);
+                    $tagNum = (int)$mTag[2];
+                    $tagLen = strlen($mTag[2]);
 
-                $pi = Database::fetchOne(
-                    "SELECT pv.*, 
-                            p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                            p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                            p.category_id, p.subcategory_id, p.sub_subcategory_id,
-                            s.name as size_name, s.code as size_code,
-                            col.name as color_name, col.hex_code as color_hex,
-                            COALESCE(wc.name, cat.name) as category_name,
-                            COALESCE(wsc.name, subcat.name) as subcategory_name,
-                            COALESCE(wssc.name, subsubcat.name) as sub_subcategory_name
-                     FROM purchase_items pi
-                     JOIN product_variants pv ON pi.variant_id = pv.id
-                     JOIN products p ON pv.product_id = p.id
-                     LEFT JOIN sizes s ON pv.size_id = s.id
-                     LEFT JOIN colors col ON pv.color_id = col.id
-                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
-                     LEFT JOIN warehouse_subcategories wsc ON p.warehouse_subcategory_id = wsc.id
-                     LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
-                     LEFT JOIN categories cat ON p.category_id = cat.id
-                     LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
-                     LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
-                     LEFT JOIN stock_balances sb ON sb.variant_id = pv.id AND sb.location_type = 'WAREHOUSE' " . ($warehouseId > 0 ? "AND sb.location_id = {$warehouseId}" : "") . " AND sb.stock_state = 'AVAILABLE'
-                     WHERE pi.batch_lot_no LIKE ? OR pi.notes LIKE ?
-                     ORDER BY sb.quantity DESC, pi.id DESC
-                     LIMIT 1",
-                    ['%' . $c . '%', '%' . $c . '%']
-                );
-                if ($pi) {
-                    $variant = $pi;
-                    break;
+                    $seriesVariants = Database::fetchAll(
+                        $baseVariantSql . "
+                         WHERE pv.series_start_code IS NOT NULL AND pv.series_end_code IS NOT NULL AND pv.is_active = 1
+                         ORDER BY is_complementary ASC, pv.id ASC
+                        "
+                    );
+                    foreach ($seriesVariants as $sv) {
+                        if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $sv['series_start_code'], $mS) &&
+                            preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $sv['series_end_code'], $mE)) {
+                            if (strtoupper($mS[1]) === $tagPfx && strtoupper($mE[1]) === $tagPfx) {
+                                $sNum = (int)$mS[2];
+                                $eNum = (int)$mE[2];
+                                if ($tagNum >= $sNum && $tagNum <= $eNum && strlen($mS[2]) === $tagLen) {
+                                    $variant = $sv;
+                                    break 2;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // Strategy 3: Lookup from QC Items recorded tag_code
+        // Strategy 3: Historical Inward GRN / Stock transactions / Purchase Items tag search
+        if (!$variant) {
+            foreach ($candidateCodes as $c) {
+                if (empty($c) || strlen($c) < 3) continue;
+
+                // 3a: Exact tag occurrence in stock_transactions notes (e.g. "Tags: ..., SSS102602, ...")
+                $tx = Database::fetchOne(
+                    "SELECT st.variant_id 
+                     FROM stock_transactions st
+                     JOIN product_variants pv ON st.variant_id = pv.id
+                     JOIN products p ON pv.product_id = p.id
+                     WHERE (st.notes LIKE ? OR st.notes LIKE ? OR st.notes LIKE ?)
+                     ORDER BY COALESCE(pv.is_complementary, p.is_complementary, 0) ASC, st.id DESC LIMIT 1",
+                    ['%' . $c . ',%', '%, ' . $c . '%', '%Tags: ' . $c . '%']
+                );
+                if ($tx && !empty($tx['variant_id'])) {
+                    $variant = Database::fetchOne($baseVariantSql . " WHERE pv.id = ? LIMIT 1", [$tx['variant_id']]);
+                    if ($variant) break;
+                }
+
+                // 3b: Inward range pattern in stock_transactions notes
+                if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $c, $mTag)) {
+                    $tagPfx = strtoupper($mTag[1]);
+                    $tagNum = (int)$mTag[2];
+                    $tagLen = strlen($mTag[2]);
+
+                    $txRows = Database::fetchAll(
+                        "SELECT st.variant_id, st.notes, COALESCE(pv.is_complementary, p.is_complementary, 0) as is_comp
+                         FROM stock_transactions st
+                         JOIN product_variants pv ON st.variant_id = pv.id
+                         JOIN products p ON pv.product_id = p.id
+                         WHERE st.notes LIKE '%Tags:%' 
+                         ORDER BY is_comp ASC, st.id DESC LIMIT 50"
+                    );
+                    foreach ($txRows as $tr) {
+                        $notes = $tr['notes'] ?? '';
+                        if (preg_match('/Tags:\s*([A-Za-z0-9]+)\s*-\s*([A-Za-z0-9]+)/i', $notes, $mRange)) {
+                            if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $mRange[1], $mS) &&
+                                preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $mRange[2], $mE)) {
+                                if (strtoupper($mS[1]) === $tagPfx && strtoupper($mE[1]) === $tagPfx) {
+                                    $sNum = (int)$mS[2];
+                                    $eNum = (int)$mE[2];
+                                    if ($tagNum >= $sNum && $tagNum <= $eNum && strlen($mS[2]) === $tagLen) {
+                                        $variant = Database::fetchOne($baseVariantSql . " WHERE pv.id = ? LIMIT 1", [$tr['variant_id']]);
+                                        if ($variant) break 2;
+                                    }
+                                }
+                            }
+                        } elseif (preg_match('/Tags:\s*([A-Za-z0-9]+).*?\(total\s+(\d+)\)/i', $notes, $mTotal)) {
+                            if (preg_match('/^([A-Za-z0-9_-]+?)(\d+)$/', $mTotal[1], $mS)) {
+                                if (strtoupper($mS[1]) === $tagPfx) {
+                                    $sNum = (int)$mS[2];
+                                    $totCount = (int)$mTotal[2];
+                                    $eNum = $sNum + $totCount - 1;
+                                    if ($tagNum >= $sNum && $tagNum <= $eNum && strlen($mS[2]) === $tagLen) {
+                                        $variant = Database::fetchOne($baseVariantSql . " WHERE pv.id = ? LIMIT 1", [$tr['variant_id']]);
+                                        if ($variant) break 2;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $pi = Database::fetchOne(
+                    "SELECT pi.variant_id 
+                     FROM purchase_items pi
+                     JOIN product_variants pv ON pi.variant_id = pv.id
+                     JOIN products p ON pv.product_id = p.id
+                     WHERE pi.batch_lot_no = ? OR pi.notes LIKE ?
+                     ORDER BY COALESCE(pv.is_complementary, p.is_complementary, 0) ASC, pi.id DESC LIMIT 1",
+                    [$c, '%' . $c . '%']
+                );
+                if ($pi && !empty($pi['variant_id'])) {
+                    $variant = Database::fetchOne($baseVariantSql . " WHERE pv.id = ? LIMIT 1", [$pi['variant_id']]);
+                    if ($variant) break;
+                }
+            }
+        }
+
+        // Strategy 4: Lookup from QC Items recorded tag_code
         if (!$variant) {
             foreach ($candidateCodes as $c) {
                 $qc = Database::fetchOne(
@@ -6177,7 +6755,7 @@ class WarehouseController {
 
         $catHierarchy = trim(($variant['category_name'] ?? '') . ' > ' . ($variant['subcategory_name'] ?? '') . ($variant['sub_subcategory_name'] ? ' > ' . $variant['sub_subcategory_name'] : ''), ' >');
 
-        $isSeries = (($variant['qr_type'] ?? '') === 'SERIES_BATCH');
+        $isSeries = (($variant['qr_type'] ?? '') === 'SERIES_BATCH' || ($variant['category_type'] ?? '') === 'SERIES' || (int)($variant['pack_quantity'] ?? 0) > 1);
         $isComplementary = (!empty($variant['is_complementary']) || !empty($variant['prod_is_comp']));
         $packQty = (int)(!empty($variant['pack_quantity']) ? $variant['pack_quantity'] : ($isSeries || $isComplementary ? $availableStock : 1));
         if ($packQty <= 0) $packQty = 1;
@@ -6312,15 +6890,17 @@ class WarehouseController {
         }
 
         $fromSource = $_GET['from'] ?? '';
-        $isShopRequest = ($fromSource === 'shop-requests' || ($allocation['destination_type'] ?? '') === 'SHOP');
+        $isShopRequest = ($fromSource === 'shop-requests' || str_starts_with($allocation['allocation_number'] ?? '', 'IND-') || str_starts_with($allocation['allocation_number'] ?? '', 'REQ-') || str_starts_with($allocation['allocation_number'] ?? '', 'WREQ-') || str_starts_with($allocation['allocation_number'] ?? '', 'WEBREQ-'));
 
-        $activeMenu = $isShopRequest ? 'wh-shop-requests' : 'wh-allocations';
+        $isBatches = (($_GET['tab'] ?? '') === 'batches' || in_array($allocation['status'], ['APPROVED', 'PICKING', 'PACKING']));
+        $activeMenu = $isShopRequest ? 'wh-shop-requests' : ($isBatches ? 'wh-batches' : 'wh-allocations');
         $breadcrumb = $isShopRequest ? [
             ['label' => 'Warehouse', 'url' => url('warehouse/dashboard')],
             ['label' => 'Shop Requests', 'url' => url('warehouse/shop-requests')],
             ['label' => $allocation['allocation_number']],
         ] : [
             ['label' => 'Warehouse', 'url' => url('warehouse/allocation')],
+            ['label' => $isBatches ? 'Dispatch Batches' : 'Stock Allocations', 'url' => url('warehouse/allocation' . ($isBatches ? '?tab=batches' : ''))],
             ['label' => $allocation['allocation_number']],
         ];
 
@@ -7325,7 +7905,7 @@ class WarehouseController {
             "SELECT pv.id, pv.sku, pv.qr_code as barcode, pv.mrp, pv.purchase_price, pv.production_cost, pv.selling_price,
                     pv.qr_type, pv.series_start_code, pv.series_end_code, pv.pack_quantity,
                     COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
-                    p.id as product_id, p.name as product_name, p.code as product_code, p.catalog_code, p.qr_code_prefix,
+                    p.id as product_id, p.name as product_name, p.code as product_code, COALESCE(NULLIF(p.catalog_code, ''), p.code) as catalog_code, p.qr_code_prefix,
                     p.brand_id, b.name as brand_name,
                     p.warehouse_category_id as category_id, p.warehouse_subcategory_id as subcategory_id, p.warehouse_sub_subcategory_id as sub_subcategory_id,
                     p.category_code, p.subcategory_code, p.sub_subcategory_code,
@@ -7362,9 +7942,11 @@ class WarehouseController {
             "SELECT pv.id, pv.sku, pv.qr_code as barcode, pv.mrp, pv.purchase_price, pv.production_cost, pv.selling_price,
                     pv.qr_type, pv.series_start_code, pv.series_end_code, pv.pack_quantity,
                     COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
-                    p.id as product_id, p.name as product_name, p.code as product_code, p.catalog_code, p.qr_code_prefix,
+                    p.id as product_id, p.name as product_name, p.code as product_code, COALESCE(NULLIF(p.catalog_code, ''), p.code) as catalog_code, p.qr_code_prefix, p.quantity,
                     p.brand_id, COALESCE(b.name, s.company, s.name, 'Third-Party Brand') as brand_name,
+                    p.created_at as product_created_at,
                     p.warehouse_category_id as category_id, p.warehouse_subcategory_id as subcategory_id, p.warehouse_sub_subcategory_id as sub_subcategory_id,
+                    p.warehouse_category_id, p.warehouse_subcategory_id, p.warehouse_sub_subcategory_id,
                     p.category_code, p.subcategory_code, p.sub_subcategory_code,
                     p.source_type, p.warehouse_supplier_id as seller_id, s.name as seller_name, s.company as seller_company,
                     sz.name as size_name, c.name as color_name,
@@ -7449,6 +8031,85 @@ class WarehouseController {
              ORDER BY wri.id DESC LIMIT 50"
         );
 
+        // Query inwarded and catalog QR batches for easy identification & one-time validation
+        $inwardedRows = Database::fetchAll(
+            "SELECT st.variant_id, SUM(st.quantity) as inwarded_qty, MAX(st.notes) as latest_notes, MAX(st.created_at) as latest_date
+             FROM stock_transactions st
+             WHERE st.reference_type = 'THIRD_PARTY_STICKERED'
+             GROUP BY st.variant_id"
+        );
+        $inwardMap = [];
+        foreach ($inwardedRows as $r) {
+            $inwardMap[(int)$r['variant_id']] = [
+                'inwarded_qty' => (int)$r['inwarded_qty'],
+                'notes'        => $r['latest_notes'],
+                'date'         => $r['latest_date'],
+            ];
+        }
+
+        $poItemsRows = Database::fetchAll(
+            "SELECT variant_id, SUM(quantity) as po_qty FROM purchase_items GROUP BY variant_id"
+        );
+        $poMap = [];
+        foreach ($poItemsRows as $r) {
+            $poMap[(int)$r['variant_id']] = (int)$r['po_qty'];
+        }
+
+        $qrBatches = [];
+        $fullyInwardedVariantIds = [];
+
+        if (!empty($thirdPartyVariants)) {
+            foreach ($thirdPartyVariants as $tpv) {
+                $vId = (int)$tpv['id'];
+                $cCode = trim($tpv['catalog_code'] ?? '') ?: trim($tpv['product_code'] ?? '');
+                if (empty($cCode)) continue;
+
+                $inwardedQty = $inwardMap[$vId]['inwarded_qty'] ?? 0;
+                $poQty = $poMap[$vId] ?? 0;
+                $totalQty = $poQty > 0 ? $poQty : max((int)($tpv['quantity'] ?? 0), (int)($tpv['pack_quantity'] ?? 0), $inwardedQty);
+                if ($totalQty <= 0) $totalQty = max(1, $inwardedQty);
+                $remainingQty = max(0, $totalQty - $inwardedQty);
+
+                if ($inwardedQty >= $totalQty && $totalQty > 0) {
+                    $status = 'INWARDED';
+                    $fullyInwardedVariantIds[] = $vId;
+                } elseif ($inwardedQty > 0) {
+                    $status = 'PARTIAL';
+                } else {
+                    $status = 'PENDING';
+                }
+
+                $qrBatches[] = [
+                    'trans_id'         => 0,
+                    'variant_id'       => $vId,
+                    'product_id'       => (int)$tpv['product_id'],
+                    'product_name'     => $tpv['product_name'] ?? 'Product',
+                    'product_code'     => $tpv['product_code'] ?? '',
+                    'catalog_code'     => $cCode,
+                    'sku'              => $tpv['sku'] ?? '',
+                    'size_name'        => $tpv['size_name'] ?? 'Free',
+                    'color_name'       => $tpv['color_name'] ?? 'Std',
+                    'brand_name'       => $tpv['brand_name'] ?? 'Third-Party Brand',
+                    'warehouse_name'   => 'Central Warehouse Hub',
+                    'seller_id'        => (int)($tpv['seller_id'] ?? 0),
+                    'seller_name'      => $tpv['seller_name'] ?? '',
+                    'seller_company'   => $tpv['seller_company'] ?? '',
+                    'qr_type'          => $tpv['qr_type'] ?? 'INDIVIDUAL',
+                    'pack_quantity'    => (int)($tpv['pack_quantity'] ?? 0),
+                    'is_complementary' => !empty($tpv['is_complementary']) ? 1 : 0,
+                    'total_qty'        => $totalQty,
+                    'qty'              => $totalQty,
+                    'inwarded_qty'     => $inwardedQty,
+                    'remaining_qty'    => $remainingQty,
+                    'inward_status'    => $status,
+                    'batch_date'       => $inwardMap[$vId]['date'] ?? ($tpv['created_at'] ?? date('Y-m-d H:i:s')),
+                    'notes'            => $inwardMap[$vId]['notes'] ?? '',
+                ];
+            }
+        }
+
+        $inwardedVariantIds = array_values(array_unique($fullyInwardedVariantIds));
+
         Response::view('warehouse.labels.index', [
             'pageTitle'         => 'Warehouse QR Labels & Printing Suite',
             'activeModule'      => 'warehouse',
@@ -7465,6 +8126,8 @@ class WarehouseController {
             'sellers'           => $sellers,
             'returns'           => $returns,
             'classifiedReturns' => $classifiedReturns,
+            'qrBatches'         => $qrBatches,
+            'inwardedVariantIds'=> $inwardedVariantIds,
             'breadcrumb'        => [
                 ['label' => 'Warehouse', 'url' => url('warehouse/dashboard')],
                 ['label' => 'QR Labels & Printing Suite'],
@@ -7624,7 +8287,29 @@ class WarehouseController {
         $tagType = trim($_POST['tag_type'] ?? 'GOOD');
         $reason = urlencode(trim($_POST['reason'] ?? ''));
 
-        Response::redirect(url("warehouse/labels?source_type={$sourceType}&source_id={$sourceId}&variant_id={$variantId}&tag_type={$tagType}&copies={$copies}&reason={$reason}"));
+        // One-time inward validation: prevent generating duplicate QR labels ONLY IF 100% already inwarded
+        if ($variantId > 0 && empty($sourceId) && in_array($sourceType, ['po', 'tp_purchase'])) {
+            $inwardedQty = (float)(Database::fetchOne(
+                "SELECT COALESCE(SUM(quantity), 0) as qty FROM stock_transactions WHERE variant_id = ? AND reference_type = 'THIRD_PARTY_STICKERED'",
+                [$variantId]
+            )['qty'] ?? 0);
+            $poQty = (float)(Database::fetchOne(
+                "SELECT COALESCE(SUM(quantity), 0) as qty FROM purchase_items WHERE variant_id = ?",
+                [$variantId]
+            )['qty'] ?? 0);
+            $pQty = (float)(Database::fetchOne(
+                "SELECT p.quantity FROM product_variants pv JOIN products p ON pv.product_id = p.id WHERE pv.id = ?",
+                [$variantId]
+            )['quantity'] ?? 0);
+            $totalExpected = $poQty > 0 ? $poQty : max($pQty + $inwardedQty, $inwardedQty);
+            if ($totalExpected > 0 && $inwardedQty >= $totalExpected) {
+                Session::flash('warning', 'QR Generation Restricted: This product has already been 100% inwarded into warehouse inventory (' . (int)$inwardedQty . ' pcs).');
+                Response::redirect(url("warehouse/labels?view=batches"));
+                return;
+            }
+        }
+
+        Response::redirect(url("warehouse/labels?source_type={$sourceType}&source_id={$sourceId}&variant_id={$variantId}&tag_type={$tagType}&copies={$copies}&reason={$reason}&view=generate"));
     }
 
     /**
@@ -7663,11 +8348,14 @@ class WarehouseController {
 
         $variant = Database::fetchOne(
             "SELECT pv.*, p.name as product_name, p.code as product_code,
+                    p.is_complementary as p_is_comp,
                     sz.name as size_name, c.name as color_name,
-                    cat.name as category_name
+                    cat.name as category_name,
+                    wc.category_type as warehouse_category_type
              FROM product_variants pv
              JOIN products p ON pv.product_id = p.id
              LEFT JOIN categories cat ON p.category_id = cat.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN sizes sz ON pv.size_id = sz.id
              LEFT JOIN colors c ON pv.color_id = c.id
              WHERE pv.id = ?",
@@ -7679,13 +8367,74 @@ class WarehouseController {
             return;
         }
 
+        $isComp = !empty($variant['is_complementary']) || !empty($variant['p_is_comp']);
+        $isSeries = (strtoupper($variant['qr_type'] ?? '') === 'SERIES_BATCH' || strtoupper($variant['qr_type'] ?? '') === 'SERIES' || ($variant['warehouse_category_type'] ?? '') === 'SERIES' || (int)($variant['pack_quantity'] ?? 0) > 1);
+        $isSeriesOrComp = $isSeries || $isComp;
+
+        if ($isSeriesOrComp) {
+            $poQty = 0;
+            if ($poId) {
+                $poItem = Database::fetchOne("SELECT quantity FROM purchase_items WHERE purchase_order_id = ? AND variant_id = ?", [$poId, $variantId]);
+                if ($poItem && !empty($poItem['quantity'])) {
+                    $poQty = (int)$poItem['quantity'];
+                }
+            }
+            $targetPackQty = $poQty > 0 ? $poQty : (!empty($variant['pack_quantity']) && (int)$variant['pack_quantity'] > 1 ? (int)$variant['pack_quantity'] : 10);
+
+            // Inward transactions already recorded for this variant via stickered inward
+            $alreadyInwardedQty = (int)(Database::fetchOne(
+                "SELECT COALESCE(SUM(quantity), 0) as total_inwarded 
+                 FROM stock_transactions 
+                 WHERE variant_id = ? AND reference_type = 'THIRD_PARTY_STICKERED'",
+                [$variantId]
+            )['total_inwarded'] ?? 0);
+
+            $remainingExpected = max(0, $targetPackQty - $alreadyInwardedQty);
+            // Single scan/action inwards ALL counts for series and complementary products:
+            // If submitted quantity is 1 (e.g. single master QR sticker) or less than remaining count, inward all remaining count!
+            if ($quantity <= 1 || $quantity < $remainingExpected) {
+                $quantity = ($remainingExpected > 0) ? $remainingExpected : $targetPackQty;
+            }
+        }
+
         $warehouse = Database::fetchOne("SELECT * FROM warehouses WHERE id = ?", [$warehouseId]);
         $whName = $warehouse['name'] ?? ('Warehouse #' . $warehouseId);
 
         $userId = Session::get('user_id') ?: 1;
-        $tagSummary = !empty($tagCodes) ? (is_array($tagCodes) ? implode(', ', array_slice($tagCodes, 0, 5)) . (count($tagCodes) > 5 ? '... (total ' . count($tagCodes) . ')' : '') : (string)$tagCodes) : 'QR Stickers Generated';
+        $firstTag = !empty($tagCodes) && is_array($tagCodes) ? reset($tagCodes) : null;
+        $lastTag = !empty($tagCodes) && is_array($tagCodes) ? end($tagCodes) : null;
 
-        $inwardNote = !empty($notes) ? $notes : "Third-Party Stickered QR Inward (+{$quantity} pcs) for SKU {$variant['sku']}. Tags: {$tagSummary}";
+        if ($firstTag && is_string($firstTag) && strpos($firstTag, ' - ') !== false) {
+            $parts = explode(' - ', $firstTag);
+            $firstTag = trim($parts[0]);
+            $lastTag = trim($parts[1] ?? $parts[0]);
+        }
+
+        if ($isSeriesOrComp && $firstTag) {
+            try {
+                Database::query(
+                    "UPDATE product_variants SET series_start_code = ?, series_end_code = ? WHERE id = ?",
+                    [$firstTag, $lastTag ?: $firstTag, $variantId]
+                );
+            } catch (Throwable $e) {}
+        }
+
+        if (!empty($tagCodes) && is_array($tagCodes)) {
+            if (count($tagCodes) > 1 && $firstTag && $lastTag) {
+                $tagSummary = "{$firstTag} - {$lastTag} (total " . count($tagCodes) . ")";
+            } elseif ($firstTag && strpos($firstTag, ' - ') !== false) {
+                $tagSummary = $firstTag;
+            } else {
+                $tagSummary = implode(', ', $tagCodes);
+            }
+        } elseif (!empty($tagCodes)) {
+            $tagSummary = (string)$tagCodes;
+        } else {
+            $tagSummary = 'QR Stickers Generated';
+        }
+
+        $typeLabel = $isComp ? "Complementary Product" : ($isSeries ? "Master Series Pack" : "Third-Party Product");
+        $inwardNote = !empty($notes) ? $notes : "Third-Party Stickered QR Inward (+{$quantity} pcs) for {$typeLabel} SKU {$variant['sku']}. Tags: {$tagSummary}";
 
         try {
             // Central Stock Service safely increases AVAILABLE stock in stock_balances with audit log
@@ -8384,8 +9133,22 @@ class WarehouseController {
         }
         unset($p);
 
+        $totalCategories = count($categories);
+        $totalSubcategories = (int)(Database::fetchOne("SELECT COUNT(*) as c FROM warehouse_subcategories WHERE is_active = 1")['c'] ?? 0);
+        $totalSubSubcategories = (int)(Database::fetchOne("SELECT COUNT(*) as c FROM warehouse_sub_subcategories WHERE is_active = 1")['c'] ?? 0);
+        $totalAttributes = (int)(Database::fetchOne("SELECT COUNT(*) as c FROM wh_category_attributes WHERE is_active = 1")['c'] ?? 0);
+        $totalProducts = count($products);
+
+        $catalogStats = [
+            'total_categories'        => $totalCategories,
+            'total_subcategories'     => $totalSubcategories,
+            'total_sub_subcategories' => $totalSubSubcategories,
+            'total_attributes'        => $totalAttributes,
+            'total_products'          => $totalProducts,
+        ];
+
         Response::view('warehouse.catalog.index', [
-            'pageTitle'        => 'Warehouse Product Catalog & Third-Party Styles',
+            'pageTitle'        => 'Warehouse Product Catalog & Category Manager',
             'activeModule'     => 'warehouse',
             'activeMenu'       => 'wh-catalog',
             'products'         => $products,
@@ -8397,6 +9160,7 @@ class WarehouseController {
             'search'           => $search,
             'categoryId'       => $categoryId,
             'sourceType'       => $sourceType,
+            'catalogStats'     => $catalogStats,
             'breadcrumb'       => [
                 ['label' => 'Warehouse', 'url' => url('warehouse/dashboard')],
                 ['label' => 'Product Catalog'],
@@ -8420,6 +9184,10 @@ class WarehouseController {
     public function ajaxQuickAddCategory(): void {
         try {
             $name = mb_strtoupper(trim($_POST['name'] ?? ''));
+            $categoryType = strtoupper(trim($_POST['category_type'] ?? 'NORMAL'));
+            if (!in_array($categoryType, ['NORMAL', 'COMPLEMENTARY', 'SERIES'])) {
+                $categoryType = 'NORMAL';
+            }
             if (empty($name)) {
                 Response::json(['success' => false, 'message' => 'Main Category name is required.'], 400);
                 return;
@@ -8428,8 +9196,8 @@ class WarehouseController {
 
             $existing = Database::fetchOne("SELECT id, name, code, is_active FROM warehouse_categories WHERE name = ? OR slug = ?", [$name, $slug]);
             if ($existing) {
-                Database::execute("UPDATE warehouse_categories SET is_active = 1, name = ?, updated_at = NOW() WHERE id = ?", [$name, $existing['id']]);
-                Response::json(['success' => true, 'id' => (int)$existing['id'], 'name' => $name, 'code' => $existing['code'] ?? '']);
+                Database::execute("UPDATE warehouse_categories SET is_active = 1, name = ?, category_type = ?, updated_at = NOW() WHERE id = ?", [$name, $categoryType, $existing['id']]);
+                Response::json(['success' => true, 'id' => (int)$existing['id'], 'name' => $name, 'category_type' => $categoryType, 'code' => $existing['code'] ?? '']);
                 return;
             }
 
@@ -8445,11 +9213,11 @@ class WarehouseController {
             }
 
             Database::execute(
-                "INSERT INTO warehouse_categories (name, code, slug, sort_order, is_active) VALUES (?, ?, ?, ?, 1)",
-                [$name, $code, $slug, ((int)$maxSort + 1)]
+                "INSERT INTO warehouse_categories (name, category_type, code, slug, sort_order, is_active) VALUES (?, ?, ?, ?, ?, 1)",
+                [$name, $categoryType, $code, $slug, ((int)$maxSort + 1)]
             );
             $id = (int)Database::lastInsertId();
-            Response::json(['success' => true, 'id' => $id, 'name' => $name, 'code' => $code]);
+            Response::json(['success' => true, 'id' => $id, 'name' => $name, 'category_type' => $categoryType, 'code' => $code]);
         } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => 'Error creating category: ' . $e->getMessage()], 500);
         }
@@ -8458,6 +9226,10 @@ class WarehouseController {
     public function ajaxUpdateCategory(int $id): void {
         try {
             $name = mb_strtoupper(trim($_POST['name'] ?? ''));
+            $categoryType = strtoupper(trim($_POST['category_type'] ?? 'NORMAL'));
+            if (!in_array($categoryType, ['NORMAL', 'COMPLEMENTARY', 'SERIES'])) {
+                $categoryType = 'NORMAL';
+            }
             if (empty($name)) {
                 Response::json(['success' => false, 'message' => 'Main Category name is required.'], 400);
                 return;
@@ -8474,10 +9246,10 @@ class WarehouseController {
             }
 
             Database::execute(
-                "UPDATE warehouse_categories SET name = ?, slug = ?, is_active = 1, updated_at = NOW() WHERE id = ?",
-                [$name, $slug, $id]
+                "UPDATE warehouse_categories SET name = ?, category_type = ?, slug = ?, is_active = 1, updated_at = NOW() WHERE id = ?",
+                [$name, $categoryType, $slug, $id]
             );
-            Response::json(['success' => true, 'id' => $id, 'name' => $name]);
+            Response::json(['success' => true, 'id' => $id, 'name' => $name, 'category_type' => $categoryType]);
         } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => 'Error updating category: ' . $e->getMessage()], 500);
         }
@@ -9873,16 +10645,30 @@ class WarehouseController {
              ORDER BY p.name ASC, pv.sku ASC"
         );
 
+        $brands = Database::fetchAll("SELECT id, name FROM brands WHERE is_active = 1 ORDER BY name ASC");
+
+        $existingSuppliers = Database::fetchAll(
+            "SELECT s.id, s.name, s.company, s.brand_id, b.name as brand_name, s.phone, s.email, s.gst_number, s.address, s.city, s.state, s.payment_terms, s.material_type, s.seller_type
+             FROM warehouse_suppliers s
+             LEFT JOIN brands b ON s.brand_id = b.id
+             WHERE s.is_active = 1
+             ORDER BY COALESCE(NULLIF(s.company, ''), s.name) ASC"
+        );
+        $selectedSellerId = !empty($_GET['seller_id']) ? (int)$_GET['seller_id'] : 0;
+
         Response::view('warehouse.sellers.create', [
-            'pageTitle'    => 'Register New Third-Party Seller / Vendor',
-            'activeModule' => 'warehouse',
-            'activeMenu'   => 'wh-sellers',
-            'warehouses'   => $warehouses,
-            'variants'     => $variants,
-            'breadcrumb'   => [
+            'pageTitle'         => 'Register / Inward Third-Party Supplier',
+            'activeModule'      => 'warehouse',
+            'activeMenu'        => 'wh-sellers',
+            'warehouses'        => $warehouses,
+            'variants'          => $variants,
+            'brands'            => $brands,
+            'existingSuppliers' => $existingSuppliers,
+            'selectedSellerId'  => $selectedSellerId,
+            'breadcrumb'        => [
                 ['label' => 'Warehouse', 'url' => url('warehouse/dashboard')],
                 ['label' => 'Sellers', 'url' => url('warehouse/sellers')],
-                ['label' => 'Register Supplier'],
+                ['label' => 'Supplier Inward Setup'],
             ],
         ]);
     }
@@ -11301,10 +12087,9 @@ class WarehouseController {
                     s.name as shop_name, s.code as shop_code,
                     sc.name as channel_name, sc.code as channel_code, sc.channel_type,
                     CASE 
-                        WHEN wa.allocation_number LIKE 'IND-%' OR (wa.destination_type = 'SHOP' AND wa.allocation_number LIKE 'IND-%') THEN 'SHOP'
-                        WHEN wa.destination_type = 'SHOP' AND wa.allocation_number LIKE 'IND-%' THEN 'SHOP'
-                        WHEN wa.destination_type = 'CHANNEL' AND sc.channel_type = 'WHATSAPP' THEN 'WHATSAPP'
-                        WHEN wa.destination_type = 'CHANNEL' AND sc.channel_type = 'WEBSITE' THEN 'WEBSITE'
+                        WHEN wa.allocation_number LIKE 'IND-%' OR (wa.destination_type = 'SHOP' AND (wa.allocation_number LIKE 'IND-%' OR wa.allocation_number LIKE 'REQ-%')) THEN 'SHOP'
+                        WHEN wa.allocation_number LIKE 'WREQ-%' OR (wa.destination_type = 'CHANNEL' AND sc.channel_type = 'WHATSAPP') THEN 'WHATSAPP'
+                        WHEN wa.allocation_number LIKE 'WEBREQ-%' OR (wa.destination_type = 'CHANNEL' AND sc.channel_type = 'WEBSITE') THEN 'WEBSITE'
                         ELSE 'SHOP'
                     END as request_type,
                     (SELECT COUNT(*) FROM allocation_items WHERE allocation_id = wa.id) as item_count,
@@ -11320,8 +12105,8 @@ class WarehouseController {
              LEFT JOIN shops s ON (wa.shop_id = s.id OR (wa.destination_type = 'SHOP' AND wa.destination_id = s.id))
              LEFT JOIN sales_channels sc ON (wa.destination_type = 'CHANNEL' AND wa.destination_id = sc.id)
              LEFT JOIN users u ON wa.requested_by = u.id
-             WHERE (wa.allocation_number LIKE 'IND-%' 
-                OR (wa.destination_type = 'CHANNEL' AND sc.channel_type IN ('WHATSAPP', 'WEBSITE')))$whWhere
+             WHERE ((wa.allocation_number LIKE 'IND-%' OR wa.allocation_number LIKE 'WREQ-%' OR wa.allocation_number LIKE 'WEBREQ-%' OR wa.allocation_number LIKE 'REQ-%')
+                OR (wa.allocation_number NOT LIKE 'ALC-%' AND wa.destination_type = 'CHANNEL' AND sc.channel_type IN ('WHATSAPP', 'WEBSITE')))$whWhere
              ORDER BY wa.created_at DESC"
         );
 
@@ -11473,7 +12258,7 @@ class WarehouseController {
             return;
         }
 
-        $allocationNumber = WarehouseAllocation::generateNumber();
+        $allocationNumber = WarehouseAllocation::generateRequestNumber('REQ-');
         $allocationId = WarehouseAllocation::create([
             'allocation_number' => $allocationNumber,
             'warehouse_id'      => $warehouseId,
@@ -11853,6 +12638,1125 @@ class WarehouseController {
         } catch (\Throwable $e) {
             error_log('[resolveOrCreateProductVariant] Error: ' . $e->getMessage());
             return 0;
+        }
+    }
+
+    // =========================================================================
+    // 21. WAREHOUSE CATALOG ATTRIBUTES & SUPPLIER 2-PHASE WIZARD
+    // =========================================================================
+
+    /**
+     * AJAX: Get full 3-level warehouse category tree with attribute and product counts.
+     */
+    public function ajaxGetCategoryTree(): void {
+        try {
+            $categories = Database::fetchAll("SELECT * FROM warehouse_categories WHERE is_active = 1 ORDER BY sort_order ASC, name ASC");
+            $subcategories = Database::fetchAll("SELECT * FROM warehouse_subcategories WHERE is_active = 1 ORDER BY sort_order ASC, name ASC");
+            $subSubcategories = Database::fetchAll("SELECT * FROM warehouse_sub_subcategories WHERE is_active = 1 ORDER BY sort_order ASC, name ASC");
+
+            // Fetch attribute counts and list grouped by category level
+            $attrCounts = Database::fetchAll("SELECT category_id, subcategory_id, sub_subcategory_id, COUNT(id) as total_attrs FROM wh_category_attributes WHERE is_active = 1 GROUP BY category_id, subcategory_id, sub_subcategory_id");
+            $attrMap = [];
+            foreach ($attrCounts as $ac) {
+                $k = ($ac['category_id'] ?? 0) . '_' . ($ac['subcategory_id'] ?? 0) . '_' . ($ac['sub_subcategory_id'] ?? 0);
+                $attrMap[$k] = (int)$ac['total_attrs'];
+            }
+
+            $allAttrs = Database::fetchAll("SELECT category_id, subcategory_id, sub_subcategory_id, attr_name, attr_type, attr_options, is_required FROM wh_category_attributes WHERE is_active = 1 ORDER BY sort_order ASC, attr_name ASC");
+            $attrListMap = [];
+            foreach ($allAttrs as $a) {
+                $k = ($a['category_id'] ?? 0) . '_' . ($a['subcategory_id'] ?? 0) . '_' . ($a['sub_subcategory_id'] ?? 0);
+                $attrListMap[$k][] = $a;
+            }
+
+            // Fetch default product template counts for sub-sub categories
+            $templateCounts = Database::fetchAll("SELECT sub_subcategory_id, COUNT(id) as total_templates FROM wh_category_default_products WHERE is_active = 1 GROUP BY sub_subcategory_id");
+            $templateMap = [];
+            foreach ($templateCounts as $tc) {
+                $templateMap[$tc['sub_subcategory_id']] = (int)$tc['total_templates'];
+            }
+
+            // Group sub-subcategories by subcategory_id
+            $subSubBySub = [];
+            foreach ($subSubcategories as $ssc) {
+                $k = ($ssc['category_id'] ?? 0) . '_' . ($ssc['subcategory_id'] ?? 0) . '_' . $ssc['id'];
+                $ssc['attr_count'] = $attrMap[$k] ?? 0;
+                $ssc['attributes'] = $attrListMap[$k] ?? [];
+                $ssc['template_count'] = $templateMap[$ssc['id']] ?? 0;
+                $subSubBySub[$ssc['subcategory_id']][] = $ssc;
+            }
+
+            // Group subcategories by category_id
+            $subByCat = [];
+            foreach ($subcategories as $sc) {
+                $k = $sc['category_id'] . '_' . $sc['id'] . '_0';
+                $sc['attr_count'] = $attrMap[$k] ?? 0;
+                $sc['attributes'] = $attrListMap[$k] ?? [];
+                $sc['sub_subcategories'] = $subSubBySub[$sc['id']] ?? [];
+                $subByCat[$sc['category_id']][] = $sc;
+            }
+
+            // Final nested tree
+            $tree = [];
+            foreach ($categories as $cat) {
+                $k = $cat['id'] . '_0_0';
+                $cat['attr_count'] = $attrMap[$k] ?? 0;
+                $cat['attributes'] = $attrListMap[$k] ?? [];
+                $cat['subcategories'] = $subByCat[$cat['id']] ?? [];
+                $tree[] = $cat;
+            }
+
+            Response::json(['success' => true, 'tree' => $tree]);
+        } catch (\Throwable $e) {
+            Response::json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * AJAX: Get pre-set attributes for a category level.
+     */
+    public function ajaxGetCategoryAttributes(int $categoryId): void {
+        try {
+            $subcategoryId = !empty($_GET['subcategory_id']) ? (int)$_GET['subcategory_id'] : null;
+            $subSubcategoryId = !empty($_GET['sub_subcategory_id']) ? (int)$_GET['sub_subcategory_id'] : null;
+            $exact = !empty($_GET['exact']) || !empty($_GET['strict']);
+
+            $sql = "SELECT * FROM wh_category_attributes WHERE category_id = ?";
+            $params = [$categoryId];
+
+            if ($exact) {
+                // Strict exact-level scoping: strictly the attributes belonging to this specific level, no global fallback!
+                if ($subSubcategoryId) {
+                    $sql .= " AND subcategory_id = ? AND sub_subcategory_id = ?";
+                    $params[] = $subcategoryId;
+                    $params[] = $subSubcategoryId;
+                } elseif ($subcategoryId) {
+                    $sql .= " AND subcategory_id = ? AND sub_subcategory_id IS NULL";
+                    $params[] = $subcategoryId;
+                } else {
+                    $sql .= " AND subcategory_id IS NULL AND sub_subcategory_id IS NULL";
+                }
+            } else {
+                if ($subSubcategoryId) {
+                    $sql .= " AND (sub_subcategory_id = ? OR (subcategory_id = ? AND sub_subcategory_id IS NULL) OR (subcategory_id IS NULL AND sub_subcategory_id IS NULL))";
+                    $params[] = $subSubcategoryId;
+                    $params[] = $subcategoryId;
+                } elseif ($subcategoryId) {
+                    $sql .= " AND (subcategory_id = ? OR (subcategory_id IS NULL AND sub_subcategory_id IS NULL))";
+                    $params[] = $subcategoryId;
+                } else {
+                    $sql .= " AND subcategory_id IS NULL AND sub_subcategory_id IS NULL";
+                }
+            }
+
+            $sql .= " AND is_active = 1 ORDER BY sort_order ASC, id ASC";
+            $attributes = Database::fetchAll($sql, $params);
+
+            Response::json(['success' => true, 'attributes' => $attributes]);
+        } catch (\Throwable $e) {
+            Response::json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * AJAX: Save pre-set attributes for a category level.
+     */
+    public function ajaxSaveCategoryAttributes(): void {
+        try {
+            $categoryId = (int)($_POST['category_id'] ?? 0);
+            $subcategoryId = !empty($_POST['subcategory_id']) ? (int)$_POST['subcategory_id'] : null;
+            $subSubcategoryId = !empty($_POST['sub_subcategory_id']) ? (int)$_POST['sub_subcategory_id'] : null;
+
+            if ($categoryId <= 0) {
+                Response::json(['success' => false, 'message' => 'Valid Category ID is required.'], 400);
+                return;
+            }
+
+            $attributesJson = $_POST['attributes'] ?? '[]';
+            $attributes = is_array($attributesJson) ? $attributesJson : json_decode($attributesJson, true);
+            if (!is_array($attributes)) {
+                $attributes = [];
+            }
+
+            Database::beginTransaction();
+
+            if ($subSubcategoryId) {
+                Database::execute(
+                    "DELETE FROM wh_category_attributes WHERE category_id = ? AND subcategory_id = ? AND sub_subcategory_id = ?",
+                    [$categoryId, $subcategoryId, $subSubcategoryId]
+                );
+            } elseif ($subcategoryId) {
+                Database::execute(
+                    "DELETE FROM wh_category_attributes WHERE category_id = ? AND subcategory_id = ? AND sub_subcategory_id IS NULL",
+                    [$categoryId, $subcategoryId]
+                );
+            } else {
+                Database::execute(
+                    "DELETE FROM wh_category_attributes WHERE category_id = ? AND subcategory_id IS NULL AND sub_subcategory_id IS NULL",
+                    [$categoryId]
+                );
+            }
+
+            foreach ($attributes as $idx => $attr) {
+                $attrName = trim($attr['attr_name'] ?? '');
+                if (empty($attrName)) continue;
+                $attrType = in_array($attr['attr_type'] ?? '', ['TEXT', 'NUMBER', 'SELECT', 'MULTI_SELECT']) ? $attr['attr_type'] : 'SELECT';
+                $attrOptions = !empty($attr['attr_options']) ? (is_array($attr['attr_options']) ? implode(',', $attr['attr_options']) : trim($attr['attr_options'])) : null;
+                $isRequired = !empty($attr['is_required']) ? 1 : 0;
+                $sortOrder = (int)($attr['sort_order'] ?? ($idx + 1));
+
+                Database::execute(
+                    "INSERT INTO wh_category_attributes (category_id, subcategory_id, sub_subcategory_id, attr_name, attr_type, attr_options, is_required, sort_order, is_active, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
+                    [$categoryId, $subcategoryId, $subSubcategoryId, $attrName, $attrType, $attrOptions, $isRequired, $sortOrder]
+                );
+            }
+
+            Database::commit();
+            Response::json(['success' => true, 'message' => 'Attributes saved successfully.']);
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            Response::json(['success' => false, 'message' => 'Error saving attributes: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * AJAX: Get default product templates for a sub-subcategory.
+     */
+    public function ajaxGetDefaultProducts(int $sscId): void {
+        try {
+            $products = Database::fetchAll(
+                "SELECT * FROM wh_category_default_products WHERE sub_subcategory_id = ? AND is_active = 1 ORDER BY sort_order ASC, id ASC",
+                [$sscId]
+            );
+            Response::json(['success' => true, 'products' => $products]);
+        } catch (\Throwable $e) {
+            Response::json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * AJAX: Save default product templates for a sub-subcategory.
+     */
+    public function ajaxSaveDefaultProducts(): void {
+        try {
+            $categoryId = (int)($_POST['category_id'] ?? 0);
+            $subcategoryId = (int)($_POST['subcategory_id'] ?? 0);
+            $subSubcategoryId = (int)($_POST['sub_subcategory_id'] ?? 0);
+
+            if ($subSubcategoryId <= 0) {
+                Response::json(['success' => false, 'message' => 'Valid Sub-Subcategory is required.'], 400);
+                return;
+            }
+
+            $productsJson = $_POST['products'] ?? '[]';
+            $products = is_array($productsJson) ? $productsJson : json_decode($productsJson, true);
+            if (!is_array($products)) {
+                $products = [];
+            }
+
+            Database::beginTransaction();
+
+            Database::execute("DELETE FROM wh_category_default_products WHERE sub_subcategory_id = ?", [$subSubcategoryId]);
+
+            foreach ($products as $idx => $p) {
+                $templateName = trim($p['product_template_name'] ?? '');
+                if (empty($templateName)) continue;
+                $hsn = trim($p['hsn_code'] ?? '');
+                $gstPct = (float)($p['default_gst_pct'] ?? 5.00);
+                $weight = (float)($p['default_weight_kg'] ?? 0.000);
+                $sortOrder = (int)($p['sort_order'] ?? ($idx + 1));
+
+                Database::execute(
+                    "INSERT INTO wh_category_default_products (category_id, subcategory_id, sub_subcategory_id, product_template_name, hsn_code, default_gst_pct, default_weight_kg, sort_order, is_active, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
+                    [$categoryId, $subcategoryId, $subSubcategoryId, $templateName, $hsn ?: null, $gstPct, $weight, $sortOrder]
+                );
+            }
+
+            Database::commit();
+            Response::json(['success' => true, 'message' => 'Default product templates saved successfully.']);
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            Response::json(['success' => false, 'message' => 'Error saving default products: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Supplier Phase 1: Store supplier commercial details & settlement setup.
+     */
+    public function storeSellerPhase1(): void {
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+                  || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'));
+
+        if (!CSRF::validateRequest()) {
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Invalid security token.'], 400);
+                return;
+            }
+            Session::flash('error', 'Invalid security token.');
+            Response::redirect(url('warehouse/sellers/create'));
+            return;
+        }
+
+        if (!hasPermission('wh_sellers', 'create') && !hasPermission('purchases', 'create') && !hasPermission('warehouse', 'create')) {
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Access denied.'], 403);
+                return;
+            }
+            Session::flash('error', 'Access denied.');
+            Response::redirect(url('warehouse/sellers'));
+            return;
+        }
+
+        $name = trim($_POST['name'] ?? '');
+        $company = trim($_POST['company'] ?? '');
+        $brandId = !empty($_POST['brand_id']) && $_POST['brand_id'] !== '__NEW__' ? (int)$_POST['brand_id'] : null;
+        $newBrandName = trim($_POST['new_brand_name'] ?? '');
+        $phone = trim($_POST['phone'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $gstNumber = trim($_POST['gst_number'] ?? '');
+        $address = trim($_POST['address'] ?? '');
+        $city = trim($_POST['city'] ?? '');
+        $state = trim($_POST['state'] ?? 'Tamil Nadu');
+        $paymentTerms = trim($_POST['payment_terms'] ?? '');
+        $materialType = trim($_POST['material_type'] ?? 'Third-Party Garments & Products');
+        $sellerType = trim($_POST['seller_type'] ?? 'PRODUCT_SELLER');
+        $notes = trim($_POST['notes'] ?? '');
+
+        if (empty($name)) {
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Supplier name is required.'], 400);
+                return;
+            }
+            Session::flash('error', 'Supplier name is required.');
+            Response::redirect(url('warehouse/sellers/create'));
+            return;
+        }
+
+        // Resolve or newly create Brand
+        $resolvedBrandName = '';
+        if (!empty($newBrandName)) {
+            $existingBrand = Database::fetchOne("SELECT id, name FROM brands WHERE UPPER(TRIM(name)) = UPPER(TRIM(?)) LIMIT 1", [$newBrandName]);
+            if ($existingBrand) {
+                $brandId = (int)$existingBrand['id'];
+                $resolvedBrandName = $existingBrand['name'];
+            } else {
+                $brandCode = strtoupper(preg_replace('/[^A-Z0-9]/', '', substr($newBrandName, 0, 6)));
+                Database::execute(
+                    "INSERT INTO brands (name, code, is_active, created_at) VALUES (?, ?, 1, NOW())",
+                    [$newBrandName, $brandCode ?: null]
+                );
+                $brandId = (int)Database::lastInsertId();
+                $resolvedBrandName = $newBrandName;
+            }
+        } elseif ($brandId) {
+            $bRow = Database::fetchOne("SELECT name FROM brands WHERE id = ?", [$brandId]);
+            if ($bRow) {
+                $resolvedBrandName = $bRow['name'];
+            }
+        }
+
+        // Fallback brand if not explicitly provided
+        if (empty($resolvedBrandName)) {
+            $fallbackName = $company ?: $name;
+            $existingBrand = Database::fetchOne("SELECT id, name FROM brands WHERE UPPER(TRIM(name)) = UPPER(TRIM(?)) LIMIT 1", [$fallbackName]);
+            if ($existingBrand) {
+                $brandId = (int)$existingBrand['id'];
+                $resolvedBrandName = $existingBrand['name'];
+            } else {
+                Database::execute(
+                    "INSERT INTO brands (name, is_active, created_at) VALUES (?, 1, NOW())",
+                    [$fallbackName]
+                );
+                $brandId = (int)Database::lastInsertId();
+                $resolvedBrandName = $fallbackName;
+            }
+        }
+
+        // Check if user selected an already registered supplier
+        $existingSupplierId = !empty($_POST['existing_supplier_id']) ? (int)$_POST['existing_supplier_id'] : 0;
+
+        // Handle Bill Image / Invoice Upload
+        $billUrl = null;
+        $billPublicId = null;
+        if (!empty($_FILES['bill_image']['name']) && $_FILES['bill_image']['error'] === UPLOAD_ERR_OK) {
+            require_once BASE_PATH . '/app/Services/CloudinaryService.php';
+            $uploadedUrl = CloudinaryService::upload(
+                $_FILES['bill_image'],
+                'grm_inventory/bills',
+                'image'
+            );
+            if ($uploadedUrl) {
+                $billUrl = $uploadedUrl;
+                $billPublicId = CloudinaryService::extractPublicId($uploadedUrl) ?? ('bill_' . time());
+            }
+        }
+
+        Database::beginTransaction();
+        try {
+            $isExisting = false;
+            if ($existingSupplierId > 0) {
+                $checkSeller = Database::fetchOne("SELECT id FROM warehouse_suppliers WHERE id = ?", [$existingSupplierId]);
+                if ($checkSeller) {
+                    $sellerId = $existingSupplierId;
+                    $isExisting = true;
+                    // Update supplier credentials with any edits provided on the form
+                    Database::execute(
+                        "UPDATE warehouse_suppliers 
+                         SET name = ?, company = ?, brand_id = ?, phone = ?, email = ?, gst_number = ?, address = ?, city = ?, state = ?, payment_terms = ?, material_type = ?, seller_type = ?, notes = COALESCE(?, notes), updated_at = NOW()
+                         WHERE id = ?",
+                        [$name, $company ?: null, $brandId, $phone ?: null, $email ?: null, $gstNumber ?: null, $address ?: null, $city ?: null, $state ?: null, $paymentTerms ?: null, $materialType ?: null, $sellerType, $notes ?: null, $sellerId]
+                    );
+                    AuditService::log('WAREHOUSE', 'USE_EXISTING_SELLER_PHASE1', 'warehouse_suppliers', $sellerId, null, [
+                        'name' => $name,
+                        'company' => $company,
+                        'brand_id' => $brandId,
+                        'phone' => $phone,
+                        'seller_type' => $sellerType,
+                    ]);
+                }
+            }
+
+            if (!$isExisting) {
+                Database::execute(
+                    "INSERT INTO warehouse_suppliers (name, company, brand_id, phone, email, gst_number, address, city, state, payment_terms, material_type, seller_type, document_url, notes, is_active, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
+                    [$name, $company ?: null, $brandId, $phone ?: null, $email ?: null, $gstNumber ?: null, $address ?: null, $city ?: null, $state ?: null, $paymentTerms ?: null, $materialType ?: null, $sellerType, $billUrl, $notes ?: null]
+                );
+                $sellerId = (int)Database::lastInsertId();
+
+                AuditService::log('WAREHOUSE', 'CREATE_SELLER_PHASE1', 'warehouse_suppliers', $sellerId, null, [
+                    'name' => $name,
+                    'company' => $company,
+                    'brand_id' => $brandId,
+                    'phone' => $phone,
+                    'seller_type' => $sellerType,
+                ]);
+            }
+
+            // Save Phase 1 Bill & Settlement setup into session for Phase 2
+            Session::set('seller_bill_setup_' . $sellerId, [
+                'warehouse_id'     => (int)($_POST['warehouse_id'] ?? 1),
+                'order_date'       => !empty($_POST['order_date']) ? $_POST['order_date'] : date('Y-m-d'),
+                'expected_date'    => !empty($_POST['expected_date']) ? $_POST['expected_date'] : date('Y-m-d'),
+                'payment_method'   => $_POST['payment_method'] ?? 'CASH',
+                'payment_status'   => $_POST['payment_status'] ?? 'PAID',
+                'gst_type'         => $_POST['gst_type'] ?? 'CGST_SGST',
+                'bill_number'      => trim($_POST['bill_number'] ?? ''),
+                'notes'            => $notes,
+                'bill_url'         => $billUrl,
+                'bill_public_id'   => $billPublicId,
+                'brand_id'         => $brandId,
+                'brand_name'       => $resolvedBrandName,
+            ]);
+
+            Database::commit();
+
+            $nextUrl = url("warehouse/sellers/{$sellerId}/add-products");
+
+            if ($isAjax) {
+                Response::json([
+                    'success'   => true,
+                    'seller_id' => $sellerId,
+                    'redirect'  => $nextUrl,
+                    'message'   => $isExisting ? 'Existing supplier selected. Proceeding to Product Selection.' : 'Supplier details saved. Proceeding to Product Selection.'
+                ]);
+                return;
+            }
+
+            Session::flash('success', $isExisting ? 'Existing supplier selected successfully. Now add products for this bill.' : 'Supplier created successfully. Now add products for this supplier.');
+            Response::redirect($nextUrl);
+
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            error_log('[storeSellerPhase1] Error: ' . $e->getMessage());
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Failed to save supplier: ' . $e->getMessage()], 500);
+                return;
+            }
+            Session::flash('error', 'Failed to save supplier: ' . $e->getMessage());
+            Response::redirect(url('warehouse/sellers/create'));
+        }
+    }
+
+    /**
+     * Supplier Phase 2: Render Product Selection page.
+     */
+    public function sellerAddProducts(int $id): void {
+        if (!hasPermission('wh_sellers', 'create') && !hasPermission('wh_sellers', 'edit') && !hasPermission('warehouse', 'create')) {
+            Session::flash('error', 'Access denied.');
+            Response::redirect(url('warehouse/sellers'));
+            return;
+        }
+
+        $seller = Database::fetchOne("SELECT * FROM warehouse_suppliers WHERE id = ?", [$id]);
+        if (!$seller) {
+            Session::flash('error', 'Supplier not found.');
+            Response::redirect(url('warehouse/sellers'));
+            return;
+        }
+
+        $billSetup = Session::get('seller_bill_setup_' . $id) ?? [];
+
+        // Fetch categories with full sub and sub-sub hierarchy
+        $categories = Database::fetchAll("SELECT * FROM warehouse_categories WHERE is_active = 1 ORDER BY sort_order ASC, name ASC");
+        $subcategories = Database::fetchAll("SELECT * FROM warehouse_subcategories WHERE is_active = 1 ORDER BY sort_order ASC, name ASC");
+        $subSubcategories = Database::fetchAll("SELECT * FROM warehouse_sub_subcategories WHERE is_active = 1 ORDER BY sort_order ASC, name ASC");
+
+        // Fetch warehouses, sizes, colors, brands
+        $warehouses = Database::fetchAll("SELECT * FROM warehouses WHERE is_active = 1 ORDER BY name ASC");
+        $sizes = Database::fetchAll("SELECT * FROM sizes WHERE is_active = 1 ORDER BY sort_order ASC, name ASC");
+        $colors = Database::fetchAll("SELECT * FROM colors WHERE is_active = 1 ORDER BY name ASC");
+        $brands = Database::fetchAll("SELECT * FROM brands WHERE is_active = 1 ORDER BY name ASC");
+
+        // Pre-fetch attributes and default products map for immediate client responsiveness
+        $allAttributes = Database::fetchAll("SELECT * FROM wh_category_attributes WHERE is_active = 1 ORDER BY sort_order ASC, id ASC");
+        $allDefaultProducts = Database::fetchAll("SELECT * FROM wh_category_default_products WHERE is_active = 1 ORDER BY sort_order ASC, id ASC");
+
+        // Build nested hierarchy
+        $subSubBySub = [];
+        foreach ($subSubcategories as $ssc) {
+            $subSubBySub[$ssc['subcategory_id']][] = $ssc;
+        }
+        $subByCat = [];
+        foreach ($subcategories as $sc) {
+            $sc['sub_subcategories'] = $subSubBySub[$sc['id']] ?? [];
+            $subByCat[$sc['category_id']][] = $sc;
+        }
+        foreach ($categories as &$cat) {
+            $cat['subcategories'] = $subByCat[$cat['id']] ?? [];
+        }
+        unset($cat);
+
+        Response::view('warehouse.sellers.add_products', [
+            'pageTitle'          => 'Add Products — ' . ($seller['company'] ?: $seller['name']),
+            'activeModule'       => 'warehouse',
+            'activeMenu'         => 'wh-sellers',
+            'seller'             => $seller,
+            'billSetup'          => $billSetup,
+            'categories'         => $categories,
+            'warehouses'         => $warehouses,
+            'sizes'              => $sizes,
+            'colors'             => $colors,
+            'brands'             => $brands,
+            'allAttributes'      => $allAttributes,
+            'allDefaultProducts' => $allDefaultProducts,
+            'breadcrumb'         => [
+                ['label' => 'Warehouse', 'url' => url('warehouse/dashboard')],
+                ['label' => 'Suppliers', 'url' => url('warehouse/sellers')],
+                ['label' => $seller['name'], 'url' => url('warehouse/sellers/view/' . $seller['id'])],
+                ['label' => 'Phase 2: Add Products'],
+            ],
+        ]);
+    }
+
+    /**
+     * Supplier Phase 2: Store selected products, create purchase order & credit warehouse stock.
+     */
+    public function storeSellerProducts(int $id): void {
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+                  || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'));
+
+        if (!CSRF::validateRequest()) {
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Invalid security token.'], 400);
+                return;
+            }
+            Session::flash('error', 'Invalid security token.');
+            Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+            return;
+        }
+
+        if (!hasPermission('wh_sellers', 'create') && !hasPermission('purchases', 'create') && !hasPermission('warehouse', 'create')) {
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Access denied.'], 403);
+                return;
+            }
+            Session::flash('error', 'Access denied.');
+            Response::redirect(url('warehouse/sellers'));
+            return;
+        }
+
+        $seller = Database::fetchOne("SELECT * FROM warehouse_suppliers WHERE id = ?", [$id]);
+        if (!$seller) {
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Supplier not found.'], 404);
+                return;
+            }
+            Session::flash('error', 'Supplier not found.');
+            Response::redirect(url('warehouse/sellers'));
+            return;
+        }
+
+        $billSetup = Session::get('seller_bill_setup_' . $id) ?? [];
+        $warehouseId = (int)($_POST['warehouse_id'] ?? $billSetup['warehouse_id'] ?? 1);
+        $orderDate = !empty($_POST['order_date']) ? $_POST['order_date'] : ($billSetup['order_date'] ?? date('Y-m-d'));
+        $expectedDate = !empty($_POST['expected_date']) ? $_POST['expected_date'] : ($billSetup['expected_date'] ?? $orderDate);
+        $paymentMethod = $_POST['payment_method'] ?? ($billSetup['payment_method'] ?? 'CASH');
+        $paymentStatus = $_POST['payment_status'] ?? ($billSetup['payment_status'] ?? 'PAID');
+        $gstType = $_POST['gst_type'] ?? ($billSetup['gst_type'] ?? 'CGST_SGST');
+        $billNumberInput = trim($_POST['bill_number'] ?? ($billSetup['bill_number'] ?? ''));
+        $billNotes = trim($_POST['notes'] ?? ($billSetup['notes'] ?? ''));
+        $billUrl = $billSetup['bill_url'] ?? null;
+        $billPublicId = $billSetup['bill_public_id'] ?? null;
+
+        // Parse items from either JSON payload or standard arrays
+        $itemsRaw = $_POST['items'] ?? null;
+        $productsToInsert = [];
+
+        if (!empty($itemsRaw)) {
+            $parsed = is_array($itemsRaw) ? $itemsRaw : json_decode($itemsRaw, true);
+            if (is_array($parsed)) {
+                $productsToInsert = $parsed;
+            }
+        }
+
+        // Fallback to array parameters
+        if (empty($productsToInsert) && !empty($_POST['product_name']) && is_array($_POST['product_name'])) {
+            foreach ($_POST['product_name'] as $idx => $pName) {
+                $productsToInsert[] = [
+                    'product_name'          => $pName,
+                    'category_id'           => $_POST['category_id'][$idx] ?? null,
+                    'subcategory_id'        => $_POST['subcategory_id'][$idx] ?? null,
+                    'sub_subcategory_id'    => $_POST['sub_subcategory_id'][$idx] ?? null,
+                    'hsn_code'              => $_POST['hsn_code'][$idx] ?? '',
+                    'weight'                => $_POST['weight'][$idx] ?? 0.000,
+                    'mrp'                   => $_POST['mrp'][$idx] ?? 0.00,
+                    'selling_price'         => $_POST['selling_price'][$idx] ?? 0.00,
+                    'purchase_price'        => $_POST['purchase_price'][$idx] ?? ($_POST['unit_price'][$idx] ?? 0.00),
+                    'gst_percentage'        => $_POST['gst_percentage'][$idx] ?? 5.00,
+                    'quantity'              => $_POST['quantity'][$idx] ?? 1,
+                    'color_name'            => $_POST['color_name'][$idx] ?? '',
+                    'size_name'             => $_POST['size_name'][$idx] ?? '',
+                    'brand_id'              => $_POST['brand_id'][$idx] ?? null,
+                    'qr_type'               => $_POST['qr_type'][$idx] ?? 'INDIVIDUAL',
+                    'pack_quantity'         => $_POST['pack_quantity'][$idx] ?? 1,
+                    'series_start_code'     => $_POST['series_start_code'][$idx] ?? null,
+                    'series_end_code'       => $_POST['series_end_code'][$idx] ?? null,
+                    'is_complementary'      => !empty($_POST['is_complementary'][$idx]) ? 1 : 0,
+                ];
+            }
+        }
+
+        if (empty($productsToInsert)) {
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Please add at least one product line item.'], 400);
+                return;
+            }
+            Session::flash('error', 'Please add at least one product line item.');
+            Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+            return;
+        }
+
+        // Validate mandatory product fields
+        foreach ($productsToInsert as $idx => $item) {
+            $lineNum = $idx + 1;
+            $pName = trim($item['product_name'] ?? '');
+            $hsn = trim($item['hsn_code'] ?? '');
+            $weight = (float)($item['weight'] ?? 0);
+            $mrp = (float)($item['mrp'] ?? 0);
+            $sellingPrice = (float)($item['selling_price'] ?? 0);
+            $purchasePrice = (float)($item['purchase_price'] ?? ($item['unit_price'] ?? 0));
+            $qty = (int)($item['quantity'] ?? 0);
+
+            if (empty($pName)) {
+                $err = "Line #{$lineNum}: Product Name is required.";
+                if ($isAjax) { Response::json(['success' => false, 'message' => $err], 400); return; }
+                Session::flash('error', $err);
+                Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+                return;
+            }
+            if (empty($hsn)) {
+                $err = "Line #{$lineNum} ({$pName}): HSN Code is mandatory.";
+                if ($isAjax) { Response::json(['success' => false, 'message' => $err], 400); return; }
+                Session::flash('error', $err);
+                Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+                return;
+            }
+            if ($weight <= 0) {
+                $err = "Line #{$lineNum} ({$pName}): Weight (kg) is mandatory and must be greater than 0.";
+                if ($isAjax) { Response::json(['success' => false, 'message' => $err], 400); return; }
+                Session::flash('error', $err);
+                Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+                return;
+            }
+            if ($mrp <= 0) {
+                $err = "Line #{$lineNum} ({$pName}): MRP Price is mandatory and must be greater than 0.";
+                if ($isAjax) { Response::json(['success' => false, 'message' => $err], 400); return; }
+                Session::flash('error', $err);
+                Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+                return;
+            }
+            if ($sellingPrice <= 0) {
+                $err = "Line #{$lineNum} ({$pName}): Selling Price is mandatory and must be greater than 0.";
+                if ($isAjax) { Response::json(['success' => false, 'message' => $err], 400); return; }
+                Session::flash('error', $err);
+                Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+                return;
+            }
+            if ($purchasePrice <= 0) {
+                $err = "Line #{$lineNum} ({$pName}): Supplier Cost is mandatory and must be greater than 0.";
+                if ($isAjax) { Response::json(['success' => false, 'message' => $err], 400); return; }
+                Session::flash('error', $err);
+                Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+                return;
+            }
+            if ($sellingPrice <= $purchasePrice) {
+                $err = "Line #{$lineNum} ({$pName}): Selling Price (₹{$sellingPrice}) must be greater than Supplier Cost (₹{$purchasePrice}).";
+                if ($isAjax) { Response::json(['success' => false, 'message' => $err], 400); return; }
+                Session::flash('error', $err);
+                Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+                return;
+            }
+            if ($sellingPrice >= $mrp) {
+                $err = "Line #{$lineNum} ({$pName}): Selling Price (₹{$sellingPrice}) must be less than Base MRP (₹{$mrp}).";
+                if ($isAjax) { Response::json(['success' => false, 'message' => $err], 400); return; }
+                Session::flash('error', $err);
+                Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+                return;
+            }
+            if ($qty <= 0) {
+                $err = "Line #{$lineNum} ({$pName}): Quantity must be at least 1.";
+                if ($isAjax) { Response::json(['success' => false, 'message' => $err], 400); return; }
+                Session::flash('error', $err);
+                Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+                return;
+            }
+        }
+
+        Database::beginTransaction();
+        try {
+            $createdVariants = [];
+            $grossSubtotal = 0.00;
+            $totalCgst = 0.00;
+            $totalSgst = 0.00;
+            $totalIgst = 0.00;
+            $grandTotal = 0.00;
+            $itemsForPo = [];
+
+            foreach ($productsToInsert as $item) {
+                $pName = trim($item['product_name']);
+                $hsn = trim($item['hsn_code']);
+                $weight = (float)$item['weight'];
+                $mrp = (float)$item['mrp'];
+                $sellingPrice = (float)$item['selling_price'];
+                $costPrice = (float)($item['purchase_price'] ?? $item['unit_price']);
+                $qty = max(1, (int)$item['quantity']);
+                $gstPct = (float)($item['gst_percentage'] ?? 5.00);
+
+                $catId = !empty($item['category_id']) ? (int)$item['category_id'] : null;
+                $subcatId = !empty($item['subcategory_id']) ? (int)$item['subcategory_id'] : null;
+                $subSubcatId = !empty($item['sub_subcategory_id']) ? (int)$item['sub_subcategory_id'] : null;
+                $brandId = !empty($item['brand_id']) ? (int)$item['brand_id'] : (!empty($billSetup['brand_id']) ? (int)$billSetup['brand_id'] : (!empty($seller['brand_id']) ? (int)$seller['brand_id'] : null));
+
+                $colorName = trim($item['color_name'] ?? '');
+                $sizeName = trim($item['size_name'] ?? '');
+                $qrType = in_array($item['qr_type'] ?? '', ['INDIVIDUAL', 'SERIES_BATCH']) ? $item['qr_type'] : 'INDIVIDUAL';
+                $packQty = max(1, (int)($item['pack_quantity'] ?? 1));
+                $startCode = !empty($item['series_start_code']) ? trim($item['series_start_code']) : (!empty($item['series_from']) ? trim((string)$item['series_from']) : null);
+                $endCode = !empty($item['series_end_code']) ? trim($item['series_end_code']) : (!empty($item['series_end']) ? trim((string)$item['series_end']) : null);
+                $isComp = !empty($item['is_complementary']) ? 1 : 0;
+
+                $catType = strtoupper(trim($item['category_type'] ?? ''));
+                if ($catType === 'COMPLEMENTARY') {
+                    $isComp = 1;
+                } elseif ($catType === 'SERIES') {
+                    $qrType = 'SERIES_BATCH';
+                }
+
+                if ($catType === 'SERIES' || $catType === 'COMPLEMENTARY' || $isComp || $qrType === 'SERIES_BATCH') {
+                    if (!empty($item['series_from']) && !empty($item['series_end'])) {
+                        $sFrom = (int)$item['series_from'];
+                        $sEnd = (int)$item['series_end'];
+                        if ($sEnd >= $sFrom) {
+                            $packQty = max(1, ($sEnd - $sFrom + 1));
+                        }
+                    }
+                }
+
+                // Resolve Color ID
+                $colorId = null;
+                if (!empty($colorName)) {
+                    $cRow = Database::fetchOne("SELECT id FROM colors WHERE UPPER(name) = ? LIMIT 1", [strtoupper($colorName)]);
+                    if ($cRow) {
+                        $colorId = (int)$cRow['id'];
+                    } else {
+                        Database::execute("INSERT INTO colors (name, is_active, created_at) VALUES (?, 1, NOW())", [$colorName]);
+                        $colorId = (int)Database::lastInsertId();
+                    }
+                }
+
+                // Resolve Size ID
+                $sizeId = null;
+                if (!empty($sizeName)) {
+                    $sUpper = strtoupper($sizeName);
+                    $sRow = Database::fetchOne("SELECT id FROM sizes WHERE UPPER(name) = ? OR UPPER(code) = ? LIMIT 1", [$sUpper, $sUpper]);
+                    if ($sRow) {
+                        $sizeId = (int)$sRow['id'];
+                    } else {
+                        $sCode = substr(preg_replace('/[^A-Z0-9]/', '', $sUpper), 0, 10) ?: $sUpper;
+                        Database::execute("INSERT INTO sizes (name, code, is_active, created_at) VALUES (?, ?, 1, NOW())", [$sUpper, $sCode]);
+                        $sizeId = (int)Database::lastInsertId();
+                    }
+                }
+
+                // Generate Unique Product & Catalog Code based on Brand Name (falling back to product name)
+                $maxProdId = (int)(Database::fetchOne("SELECT MAX(id) as m FROM products")['m'] ?? 0);
+                $prodCount = (int)(Database::fetchOne("SELECT COUNT(*) as c FROM products")['c'] ?? 0);
+                $uniqueSeq = max($maxProdId + 1, $prodCount + 1);
+
+                $brandPrefix = '';
+                if (!empty($brandId)) {
+                    $bRow = Database::fetchOne("SELECT name FROM brands WHERE id = ?", [$brandId]);
+                    if ($bRow && !empty($bRow['name'])) {
+                        $brandPrefix = strtoupper(preg_replace('/[^A-Z0-9]/', '', substr(trim($bRow['name']), 0, 6)));
+                    }
+                }
+                $cleanPrefix = $brandPrefix ?: (strtoupper(preg_replace('/[^A-Z0-9]/', '', substr($pName, 0, 5))) ?: 'PROD');
+                $productCode = 'CAT-' . $cleanPrefix . '-' . str_pad((string)$uniqueSeq, 4, '0', STR_PAD_LEFT);
+                $tries = 0;
+                while (Database::fetchOne("SELECT id FROM products WHERE code = ? OR catalog_code = ?", [$productCode, $productCode])) {
+                    $tries++;
+                    $productCode = 'CAT-' . $cleanPrefix . '-' . str_pad((string)($uniqueSeq + $tries), 4, '0', STR_PAD_LEFT);
+                }
+
+                // Insert Product
+                Database::execute(
+                    "INSERT INTO products (name, code, catalog_code, warehouse_category_id, warehouse_subcategory_id, warehouse_sub_subcategory_id, brand_id, warehouse_supplier_id, source_type, hsn_code, weight, gst_percentage, quantity, min_stock, max_stock, is_complementary, is_active, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'EXTERNAL_PURCHASE', ?, ?, ?, ?, 0, 9999, ?, 1, NOW())",
+                    [$pName, $productCode, $productCode, $catId, $subcatId, $subSubcatId, $brandId, $id, $hsn, $weight, $gstPct, $qty, $isComp]
+                );
+                $productId = (int)Database::lastInsertId();
+
+                // Generate Variant SKU
+                $baseSku = 'SKU-' . $productCode;
+                if ($sizeName) $baseSku .= '-' . substr(strtoupper(preg_replace('/[^A-Z0-9]/', '', $sizeName)), 0, 4);
+                if ($colorName) $baseSku .= '-' . substr(strtoupper(preg_replace('/[^A-Z0-9]/', '', $colorName)), 0, 4);
+                $variantSku = $baseSku;
+                $vTries = 0;
+                while (Database::fetchOne("SELECT id FROM product_variants WHERE sku = ?", [$variantSku])) {
+                    $vTries++;
+                    $variantSku = $baseSku . '-' . $vTries;
+                }
+
+                $isSeriesOrComp = ($qrType === 'SERIES_BATCH' || !empty($isComp));
+                $effectiveStart = $isSeriesOrComp ? ($startCode ?: ($variantSku . '-001')) : null;
+                $effectiveEnd = $isSeriesOrComp ? ($endCode ?: ($variantSku . '-' . sprintf('%03d', $packQty))) : null;
+
+                // Insert Variant
+                Database::execute(
+                    "INSERT INTO product_variants (product_id, size_id, color_id, sku, hsn_code, weight, mrp, purchase_price, production_cost, selling_price, qr_code, qr_type, pack_quantity, series_start_code, series_end_code, is_complementary, is_active, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
+                    [$productId, $sizeId, $colorId, $variantSku, $hsn, $weight, $mrp, $costPrice, $costPrice, $sellingPrice, $variantSku, $qrType, $packQty, $effectiveStart, $effectiveEnd, $isComp]
+                );
+                $variantId = (int)Database::lastInsertId();
+
+                // Calculations for Purchase Order
+                $lineGross = $qty * $costPrice;
+                $grossSubtotal += $lineGross;
+
+                if ($gstType === 'IGST') {
+                    $lineIgst = ($lineGross * $gstPct) / 100;
+                    $lineCgst = 0.00;
+                    $lineSgst = 0.00;
+                } else {
+                    $halfGst = $gstPct / 2;
+                    $lineCgst = ($lineGross * $halfGst) / 100;
+                    $lineSgst = ($lineGross * $halfGst) / 100;
+                    $lineIgst = 0.00;
+                }
+
+                $totalCgst += $lineCgst;
+                $totalSgst += $lineSgst;
+                $totalIgst += $lineIgst;
+                $lineTotal = $lineGross + $lineCgst + $lineSgst + $lineIgst;
+                $grandTotal += $lineTotal;
+
+                $itemsForPo[] = [
+                    'variant_id'          => $variantId,
+                    'quantity'            => $qty,
+                    'unit_price'          => $costPrice,
+                    'discount_percentage' => 0.00,
+                    'gst_percentage'      => $gstPct,
+                    'cgst_amount'         => $lineCgst,
+                    'sgst_amount'         => $lineSgst,
+                    'igst_amount'         => $lineIgst,
+                    'total_amount'        => $lineTotal,
+                    'mrp'                 => $mrp,
+                ];
+
+                // Note: Stock is NOT directly credited here!
+                // Stock will only be inwarded via warehouse/sellers/inward-bill/{poId} after QR labels are generated.
+            }
+
+            // Generate Purchase Order in DRAFT status awaiting QR generation & stock inward
+            $poNumber = !empty($billNumberInput) ? $billNumberInput : WarehouseService::generateSequenceNumber('purchase_orders', 'po_number', 'PO-WH');
+            $poId = PurchaseOrder::create([
+                'po_number'                    => $poNumber,
+                'customer_id'                  => null,
+                'seller_id'                    => null,
+                'warehouse_supplier_id'        => $id,
+                'warehouse_id'                 => $warehouseId,
+                'order_date'                   => $orderDate,
+                'expected_date'                => $expectedDate,
+                'subtotal'                     => $grossSubtotal,
+                'discount_amount'              => 0.00,
+                'cgst_amount'                  => $totalCgst,
+                'sgst_amount'                  => $totalSgst,
+                'igst_amount'                  => $totalIgst,
+                'total_amount'                 => $grandTotal,
+                'payment_status'               => $paymentStatus,
+                'payment_method'               => $paymentMethod,
+                'payment_screenshot_url'       => $billUrl,
+                'payment_screenshot_public_id' => $billPublicId,
+                'status'                       => 'DRAFT',
+                'notes'                        => $billNotes ?: "Inward bill products from {$seller['name']} (Awaiting QR & Inward)",
+                'created_by'                   => Session::userId(),
+            ]);
+
+            // Insert Purchase Order Items
+            foreach ($itemsForPo as $item) {
+                $item['purchase_order_id'] = $poId;
+                PurchaseItem::create($item);
+            }
+
+            // Clear session bill setup
+            Session::remove('seller_bill_setup_' . $id);
+
+            AuditService::log('WAREHOUSE', 'STORE_SELLER_PRODUCTS_PENDING_QR', 'purchase_orders', $poId, null, [
+                'supplier_id'    => $id,
+                'total_products' => count($productsToInsert),
+                'total_amount'   => $grandTotal,
+                'po_number'      => $poNumber,
+                'status'         => 'DRAFT',
+            ]);
+
+            Database::commit();
+
+            $successMsg = "Successfully saved " . count($productsToInsert) . " product(s) for {$seller['name']}. You can now review QR batches below and generate/inward inventory.";
+            $redirectUrl = url("warehouse/labels?view=batches");
+
+            if ($isAjax) {
+                Response::json([
+                    'success'     => true,
+                    'message'     => $successMsg,
+                    'po_id'       => $poId,
+                    'redirect'    => $redirectUrl,
+                ]);
+                return;
+            }
+
+            Session::flash('success', $successMsg);
+            Response::redirect($redirectUrl);
+
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            error_log('[storeSellerProducts] Error: ' . $e->getMessage());
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Failed to store products: ' . $e->getMessage()], 500);
+                return;
+            }
+            Session::flash('error', 'Failed to store products: ' . $e->getMessage());
+            Response::redirect(url("warehouse/sellers/{$id}/add-products"));
+        }
+    }
+
+    /**
+     * AJAX: Get Products filtered by Category, Subcategory, or Sub-Subcategory.
+     */
+    public function ajaxGetProductsByCategory(): void {
+        try {
+            $catId = !empty($_GET['category_id']) ? (int)$_GET['category_id'] : 0;
+            $subcatId = !empty($_GET['subcategory_id']) ? (int)$_GET['subcategory_id'] : 0;
+            $subSubcatId = !empty($_GET['sub_subcategory_id']) ? (int)$_GET['sub_subcategory_id'] : 0;
+
+            $sql = "SELECT p.*, 
+                           COALESCE(wc.name, c_old.name, '') as category_name, 
+                           COALESCE(wsc.name, sc_old.name, '') as subcategory_name, 
+                           COALESCE(wssc.name, ssc_old.name, '') as sub_subcategory_name,
+                           COALESCE(s.company, s.name, '') as seller_name,
+                           COALESCE(b.name, '') as brand_name,
+                           COALESCE((
+                               SELECT COUNT(*) FROM product_variants pv WHERE pv.product_id = p.id AND pv.is_active = 1
+                           ), 0) as variants_count,
+                           COALESCE((
+                               SELECT MIN(pv.purchase_price) FROM product_variants pv WHERE pv.product_id = p.id AND pv.is_active = 1
+                           ), 0) as min_cost_price,
+                           COALESCE((
+                               SELECT MAX(pv.mrp) FROM product_variants pv WHERE pv.product_id = p.id AND pv.is_active = 1
+                           ), 0) as max_mrp,
+                           COALESCE((
+                               SELECT MAX(pv.selling_price) FROM product_variants pv WHERE pv.product_id = p.id AND pv.is_active = 1
+                           ), 0) as max_selling_price,
+                           COALESCE((
+                               SELECT SUM(sb.quantity) FROM stock_balances sb 
+                               JOIN product_variants pv ON sb.variant_id = pv.id
+                               WHERE pv.product_id = p.id AND sb.stock_state = 'AVAILABLE' AND sb.location_type = 'WAREHOUSE'
+                           ), 0) as live_stock
+                    FROM products p
+                    LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                    LEFT JOIN warehouse_subcategories wsc ON p.warehouse_subcategory_id = wsc.id
+                    LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
+                    LEFT JOIN categories c_old ON p.category_id = c_old.id
+                    LEFT JOIN subcategories sc_old ON p.subcategory_id = sc_old.id
+                    LEFT JOIN sub_subcategories ssc_old ON p.sub_subcategory_id = ssc_old.id
+                    LEFT JOIN warehouse_suppliers s ON p.warehouse_supplier_id = s.id
+                    LEFT JOIN brands b ON p.brand_id = b.id
+                    WHERE p.is_active = 1";
+            $params = [];
+
+            if ($subSubcatId > 0) {
+                $sql .= " AND (p.warehouse_sub_subcategory_id = ? OR p.sub_subcategory_id = ?)";
+                $params[] = $subSubcatId;
+                $params[] = $subSubcatId;
+            } elseif ($subcatId > 0) {
+                $sql .= " AND (p.warehouse_subcategory_id = ? OR p.subcategory_id = ?)";
+                $params[] = $subcatId;
+                $params[] = $subcatId;
+            } elseif ($catId > 0) {
+                $sql .= " AND (p.warehouse_category_id = ? OR p.category_id = ?)";
+                $params[] = $catId;
+                $params[] = $catId;
+            }
+
+            $sql .= " ORDER BY p.id DESC LIMIT 100";
+
+            $products = Database::fetchAll($sql, $params);
+            Response::json(['success' => true, 'products' => $products]);
+        } catch (\Throwable $e) {
+            Response::json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * AJAX: Unified creation of Category > Subcategory > Sub-Subcategory > Pre-set Attributes.
+     */
+    public function ajaxCreateFullHierarchy(): void {
+        try {
+            $catName = mb_strtoupper(trim($_POST['category_name'] ?? ''));
+            $categoryType = strtoupper(trim($_POST['category_type'] ?? 'NORMAL'));
+            if (!in_array($categoryType, ['NORMAL', 'COMPLEMENTARY', 'SERIES'])) {
+                $categoryType = 'NORMAL';
+            }
+            $subcatName = mb_strtoupper(trim($_POST['subcategory_name'] ?? ''));
+            $subSubcatName = mb_strtoupper(trim($_POST['sub_subcategory_name'] ?? ''));
+            $attributesJson = $_POST['attributes'] ?? '[]';
+            $attributes = is_array($attributesJson) ? $attributesJson : json_decode($attributesJson, true);
+            if (!is_array($attributes)) {
+                $attributes = [];
+            }
+
+            if (empty($catName)) {
+                Response::json(['success' => false, 'message' => 'Main Category name is required.'], 400);
+                return;
+            }
+
+            Database::beginTransaction();
+
+            // 1. Main Category
+            $catSlug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $catName), '-'));
+            $existingCat = Database::fetchOne("SELECT id, name, code FROM warehouse_categories WHERE name = ? OR slug = ?", [$catName, $catSlug]);
+            if ($existingCat) {
+                $catId = (int)$existingCat['id'];
+                Database::execute("UPDATE warehouse_categories SET is_active = 1, category_type = ?, updated_at = NOW() WHERE id = ?", [$categoryType, $catId]);
+            } else {
+                $maxSort = Database::fetchOne("SELECT MAX(sort_order) as m FROM warehouse_categories")['m'] ?? 0;
+                $codeBase = strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $catName), 0, 3)) ?: 'CAT';
+                $code = $codeBase;
+                $counter = 1;
+                while (Database::fetchOne("SELECT id FROM warehouse_categories WHERE code = ?", [$code])) {
+                    $code = $codeBase . $counter++;
+                }
+                Database::execute(
+                    "INSERT INTO warehouse_categories (name, category_type, code, slug, sort_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, NOW())",
+                    [$catName, $categoryType, $code, $catSlug, ((int)$maxSort + 1)]
+                );
+                $catId = (int)Database::lastInsertId();
+            }
+
+            // 2. Subcategory (if provided)
+            $subcatId = null;
+            if (!empty($subcatName)) {
+                $subSlug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $subcatName), '-'));
+                $existingSub = Database::fetchOne("SELECT id, name, code FROM warehouse_subcategories WHERE category_id = ? AND (name = ? OR slug = ?)", [$catId, $subcatName, $subSlug]);
+                if ($existingSub) {
+                    $subcatId = (int)$existingSub['id'];
+                    Database::execute("UPDATE warehouse_subcategories SET is_active = 1, updated_at = NOW() WHERE id = ?", [$subcatId]);
+                } else {
+                    $maxSortSub = Database::fetchOne("SELECT MAX(sort_order) as m FROM warehouse_subcategories WHERE category_id = ?", [$catId])['m'] ?? 0;
+                    $codeBaseSub = strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $subcatName), 0, 3)) ?: 'SUB';
+                    $codeSub = $codeBaseSub;
+                    $counter = 1;
+                    while (Database::fetchOne("SELECT id FROM warehouse_subcategories WHERE code = ?", [$codeSub])) {
+                        $codeSub = $codeBaseSub . $counter++;
+                    }
+                    Database::execute(
+                        "INSERT INTO warehouse_subcategories (category_id, name, code, slug, sort_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, NOW())",
+                        [$catId, $subcatName, $codeSub, $subSlug, ((int)$maxSortSub + 1)]
+                    );
+                    $subcatId = (int)Database::lastInsertId();
+                }
+            }
+
+            // 3. Sub-Subcategory (if provided)
+            $subSubcatId = null;
+            if ($subcatId && !empty($subSubcatName)) {
+                $subSubSlug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $subSubcatName), '-'));
+                $existingSubSub = Database::fetchOne("SELECT id, name, code FROM warehouse_sub_subcategories WHERE subcategory_id = ? AND (name = ? OR slug = ?)", [$subcatId, $subSubcatName, $subSubSlug]);
+                if ($existingSubSub) {
+                    $subSubcatId = (int)$existingSubSub['id'];
+                    Database::execute("UPDATE warehouse_sub_subcategories SET is_active = 1, updated_at = NOW() WHERE id = ?", [$subSubcatId]);
+                } else {
+                    $maxSortSubSub = Database::fetchOne("SELECT MAX(sort_order) as m FROM warehouse_sub_subcategories WHERE subcategory_id = ?", [$subcatId])['m'] ?? 0;
+                    $codeBaseSubSub = strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $subSubcatName), 0, 3)) ?: 'SSC';
+                    $codeSubSub = $codeBaseSubSub;
+                    $counter = 1;
+                    while (Database::fetchOne("SELECT id FROM warehouse_sub_subcategories WHERE code = ?", [$codeSubSub])) {
+                        $codeSubSub = $codeBaseSubSub . $counter++;
+                    }
+                    Database::execute(
+                        "INSERT INTO warehouse_sub_subcategories (subcategory_id, name, code, slug, sort_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, NOW())",
+                        [$subcatId, $subSubcatName, $codeSubSub, $subSubSlug, ((int)$maxSortSubSub + 1)]
+                    );
+                    $subSubcatId = (int)Database::lastInsertId();
+                }
+            }
+
+            // 4. Save Pre-set Attributes (if provided)
+            if (!empty($attributes)) {
+                foreach ($attributes as $idx => $attr) {
+                    $attrName = trim($attr['attr_name'] ?? '');
+                    if (empty($attrName)) continue;
+                    $attrType = in_array($attr['attr_type'] ?? '', ['TEXT', 'NUMBER', 'SELECT', 'MULTI_SELECT']) ? $attr['attr_type'] : 'SELECT';
+                    $attrOptions = !empty($attr['attr_options']) ? (is_array($attr['attr_options']) ? implode(',', $attr['attr_options']) : trim($attr['attr_options'])) : null;
+                    $isRequired = !empty($attr['is_required']) ? 1 : 0;
+                    $sortOrder = (int)($attr['sort_order'] ?? ($idx + 1));
+
+                    Database::execute(
+                        "INSERT INTO wh_category_attributes (category_id, subcategory_id, sub_subcategory_id, attr_name, attr_type, attr_options, is_required, sort_order, is_active, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
+                        [$catId, $subcatId, $subSubcatId, $attrName, $attrType, $attrOptions, $isRequired, $sortOrder]
+                    );
+                }
+            }
+
+            Database::commit();
+
+            Response::json([
+                'success'              => true,
+                'message'              => 'Category hierarchy and pre-set attributes created successfully!',
+                'category_id'          => $catId,
+                'category_name'        => $catName,
+                'subcategory_id'       => $subcatId,
+                'subcategory_name'     => $subcatName,
+                'sub_subcategory_id'   => $subSubcatId,
+                'sub_subcategory_name' => $subSubcatName,
+            ]);
+
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            Response::json(['success' => false, 'message' => 'Error creating hierarchy: ' . $e->getMessage()], 500);
         }
     }
 }

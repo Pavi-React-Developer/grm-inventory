@@ -8995,11 +8995,11 @@ class ProductionController {
             'maintenance_cost'       => $maintenanceCost,
             'operations_cost'        => $operationsCost,
             'count_paid'             => count(array_filter($allExpenses, fn($e) => $e['payment_status'] === 'PAID')),
-            'count_partial'          => count(array_filter($allExpenses, fn($e) => $e['payment_status'] === 'PARTIAL')),
             'count_pending'          => count(array_filter($allExpenses, fn($e) => $e['payment_status'] === 'PENDING')),
         ];
 
         $programs = Database::fetchAll("SELECT id, program_number, name FROM production_programs ORDER BY id DESC LIMIT 50");
+        $expenseItems = Database::fetchAll("SELECT id, name, category, unit_type, default_rate FROM production_expense_items ORDER BY name ASC");
 
         Response::view('production.expenses.index', [
             'pageTitle'      => 'Production Expenses & Assets Management',
@@ -9008,6 +9008,7 @@ class ProductionController {
             'expenses'       => $expenses,
             'stats'          => $stats,
             'programs'       => $programs,
+            'expenseItems'   => $expenseItems,
             'search'         => $search,
             'productionUnit' => $unitFilter,
             'category'       => $categoryFilter,
@@ -9029,61 +9030,40 @@ class ProductionController {
         }
 
         $itemName = trim($_POST['item_name'] ?? '');
-        $productionUnit = trim($_POST['production_unit'] ?? 'PRODUCTION_1');
-        $category = trim($_POST['category'] ?? 'SEWING_MATERIALS');
-        $itemType = trim($_POST['item_type'] ?? '');
-        $assetTagOrSerial = trim($_POST['asset_tag_or_serial'] ?? '');
         $quantity = max(0.01, (float)($_POST['quantity'] ?? 1.0));
-        $unitType = trim($_POST['unit_type'] ?? 'PCS');
         $unitCost = max(0.0, (float)($_POST['unit_cost'] ?? 0.0));
         $totalCost = max(0.0, (float)($_POST['total_cost'] ?? round($quantity * $unitCost, 2)));
         if ($totalCost <= 0.0 && $quantity > 0 && $unitCost > 0) {
             $totalCost = round($quantity * $unitCost, 2);
         }
 
-        $paidAmount = max(0.0, (float)($_POST['paid_amount'] ?? 0.0));
-        if ($paidAmount > $totalCost && $totalCost > 0) {
-            $paidAmount = $totalCost;
-        }
-
-        $paymentStatus = trim($_POST['payment_status'] ?? '');
-        if (empty($paymentStatus)) {
-            if ($totalCost > 0 && $paidAmount >= $totalCost) {
-                $paymentStatus = 'PAID';
-            } elseif ($paidAmount > 0) {
-                $paymentStatus = 'PARTIAL';
-            } else {
-                $paymentStatus = 'PENDING';
-            }
-        }
-
-        $paymentMethod = trim($_POST['payment_method'] ?? 'CASH');
-        $paymentReference = trim($_POST['payment_reference'] ?? '');
-        $vendorName = trim($_POST['vendor_name'] ?? '');
-        $vendorPhone = trim($_POST['vendor_phone'] ?? '');
-        $vendorCompany = trim($_POST['vendor_company'] ?? '');
-        $invoiceNumber = trim($_POST['invoice_number'] ?? '');
-        $expenseDate = trim($_POST['expense_date'] ?? date('Y-m-d'));
-        $programId = !empty($_POST['program_id']) ? (int)$_POST['program_id'] : null;
-        $notes = trim($_POST['notes'] ?? '');
-
         if (empty($itemName)) {
-            Session::flash('error', 'Item or Expense Name is required.');
+            Session::flash('error', 'Expense Type is required.');
             Response::back();
             return;
         }
 
-        if (empty($vendorName)) {
-            Session::flash('error', 'Supplier / Vendor / Technician Name is required.');
-            Response::back();
-            return;
+        // Auto-register item into production_expense_items
+        try {
+            $existingItem = Database::fetchOne("SELECT id FROM production_expense_items WHERE name = ?", [$itemName]);
+            if (!$existingItem) {
+                Database::execute(
+                    "INSERT INTO production_expense_items (name, category, unit_type, default_rate) VALUES (?, 'GENERAL', 'PCS', ?)",
+                    [$itemName, $unitCost]
+                );
+            }
+        } catch (\Throwable $e) {
+            // Ignore duplicate
         }
 
-        // Photo or Bill Upload (Cloudinary Storage)
-        $photoUrl = null;
-        if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
-            $photoUrl = CloudinaryService::upload($_FILES['photo'], 'grm_inventory/expenses/production', 'auto');
-        }
+        $productionUnit = trim($_POST['production_unit'] ?? 'PRODUCTION_1');
+        $category = 'GENERAL';
+        $unitType = 'PCS';
+        $vendorName = 'Direct';
+        $paidAmount = $totalCost;
+        $paymentStatus = 'PAID';
+        $paymentMethod = 'CASH';
+        $expenseDate = trim($_POST['expense_date'] ?? date('Y-m-d'));
 
         // Generate sequential expense number e.g. EXP-2026-0001
         $count = Database::fetchOne("SELECT COUNT(*) as cnt FROM production_expenses");
@@ -9095,18 +9075,15 @@ class ProductionController {
         try {
             Database::execute(
                 "INSERT INTO production_expenses
-                    (expense_number, production_unit, category, item_name, item_type, asset_tag_or_serial,
+                    (expense_number, production_unit, category, item_name,
                      quantity, unit_type, unit_cost, total_cost, paid_amount, payment_status,
-                     payment_method, payment_reference, vendor_name, vendor_phone, vendor_company,
-                     invoice_number, expense_date, program_id, photo_url, notes, created_by, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+                     payment_method, vendor_name, expense_date, created_by, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
                 [
                     $expenseNumber,
                     $productionUnit,
                     $category,
                     $itemName,
-                    $itemType ?: null,
-                    $assetTagOrSerial ?: null,
                     $quantity,
                     $unitType,
                     $unitCost,
@@ -9114,31 +9091,17 @@ class ProductionController {
                     $paidAmount,
                     $paymentStatus,
                     $paymentMethod,
-                    $paymentReference ?: null,
                     $vendorName,
-                    $vendorPhone ?: null,
-                    $vendorCompany ?: null,
-                    $invoiceNumber ?: null,
                     $expenseDate,
-                    $programId,
-                    $photoUrl,
-                    $notes ?: null,
                     $userId
                 ]
             );
+
             $expenseId = (int)Database::lastInsertId();
 
-            AuditService::log('production', 'create', 'production_expenses', $expenseId, null, [
-                'expense_number'  => $expenseNumber,
-                'item_name'       => $itemName,
-                'production_unit' => $productionUnit,
-                'category'        => $category,
-                'total_cost'      => $totalCost
-            ]);
-
-            Session::flash('success', "Production expense {$expenseNumber} ({$itemName}) recorded successfully for ₹" . number_format($totalCost, 2));
+            Session::flash('success', "Expense {$expenseNumber} ({$itemName} - Qty: {$quantity}, Price: ₹" . number_format($totalCost, 2) . ") recorded successfully.");
             Response::redirect(url('production/expenses'));
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             Session::flash('error', 'Error recording production expense: ' . $e->getMessage());
             Response::back();
         }
@@ -9160,126 +9123,42 @@ class ProductionController {
         }
 
         $itemName = trim($_POST['item_name'] ?? $existing['item_name']);
-        $productionUnit = trim($_POST['production_unit'] ?? $existing['production_unit']);
-        $category = trim($_POST['category'] ?? $existing['category']);
-        $itemType = trim($_POST['item_type'] ?? $existing['item_type']);
-        $assetTagOrSerial = trim($_POST['asset_tag_or_serial'] ?? $existing['asset_tag_or_serial']);
         $quantity = max(0.01, (float)($_POST['quantity'] ?? $existing['quantity']));
-        $unitType = trim($_POST['unit_type'] ?? $existing['unit_type']);
         $unitCost = max(0.0, (float)($_POST['unit_cost'] ?? $existing['unit_cost']));
-        $totalCost = max(0.0, (float)($_POST['total_cost'] ?? $existing['total_cost']));
+        $totalCost = max(0.0, (float)($_POST['total_cost'] ?? round($quantity * $unitCost, 2)));
         if ($totalCost <= 0.0 && $quantity > 0 && $unitCost > 0) {
             $totalCost = round($quantity * $unitCost, 2);
         }
 
-        $paidAmount = max(0.0, (float)($_POST['paid_amount'] ?? $existing['paid_amount']));
-        if ($paidAmount > $totalCost && $totalCost > 0) {
-            $paidAmount = $totalCost;
-        }
-
-        $paymentStatus = trim($_POST['payment_status'] ?? $existing['payment_status']);
-        if (empty($paymentStatus)) {
-            if ($totalCost > 0 && $paidAmount >= $totalCost) {
-                $paymentStatus = 'PAID';
-            } elseif ($paidAmount > 0) {
-                $paymentStatus = 'PARTIAL';
-            } else {
-                $paymentStatus = 'PENDING';
-            }
-        }
-
-        $paymentMethod = trim($_POST['payment_method'] ?? $existing['payment_method']);
-        $paymentReference = trim($_POST['payment_reference'] ?? '');
-        $vendorName = trim($_POST['vendor_name'] ?? $existing['vendor_name']);
-        $vendorPhone = trim($_POST['vendor_phone'] ?? '');
-        $vendorCompany = trim($_POST['vendor_company'] ?? '');
-        $invoiceNumber = trim($_POST['invoice_number'] ?? '');
-        $expenseDate = trim($_POST['expense_date'] ?? $existing['expense_date']);
-        $programId = !empty($_POST['program_id']) ? (int)$_POST['program_id'] : null;
-        $notes = trim($_POST['notes'] ?? '');
-
         if (empty($itemName)) {
-            Session::flash('error', 'Item or Expense Name is required.');
+            Session::flash('error', 'Expense Type is required.');
             Response::back();
             return;
-        }
-
-        if (empty($vendorName)) {
-            Session::flash('error', 'Supplier / Vendor / Technician Name is required.');
-            Response::back();
-            return;
-        }
-
-        $photoUrl = $existing['photo_url'];
-        if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
-            $uploaded = CloudinaryService::upload($_FILES['photo'], 'grm_inventory/expenses/production', 'auto');
-            if ($uploaded) {
-                $photoUrl = $uploaded;
-            }
         }
 
         try {
             Database::execute(
                 "UPDATE production_expenses SET
-                    production_unit = ?,
-                    category = ?,
                     item_name = ?,
-                    item_type = ?,
-                    asset_tag_or_serial = ?,
                     quantity = ?,
-                    unit_type = ?,
                     unit_cost = ?,
                     total_cost = ?,
                     paid_amount = ?,
-                    payment_status = ?,
-                    payment_method = ?,
-                    payment_reference = ?,
-                    vendor_name = ?,
-                    vendor_phone = ?,
-                    vendor_company = ?,
-                    invoice_number = ?,
-                    expense_date = ?,
-                    program_id = ?,
-                    photo_url = ?,
-                    notes = ?,
                     updated_at = NOW()
                  WHERE id = ?",
                 [
-                    $productionUnit,
-                    $category,
                     $itemName,
-                    $itemType ?: null,
-                    $assetTagOrSerial ?: null,
                     $quantity,
-                    $unitType,
                     $unitCost,
                     $totalCost,
-                    $paidAmount,
-                    $paymentStatus,
-                    $paymentMethod,
-                    $paymentReference ?: null,
-                    $vendorName,
-                    $vendorPhone ?: null,
-                    $vendorCompany ?: null,
-                    $invoiceNumber ?: null,
-                    $expenseDate,
-                    $programId,
-                    $photoUrl,
-                    $notes ?: null,
+                    $totalCost,
                     $expenseId
                 ]
             );
 
-            AuditService::log('production', 'update', 'production_expenses', $expenseId, $existing, [
-                'item_name'       => $itemName,
-                'production_unit' => $productionUnit,
-                'total_cost'      => $totalCost,
-                'paid_amount'     => $paidAmount
-            ]);
-
             Session::flash('success', "Production expense #{$existing['expense_number']} updated successfully.");
             Response::redirect(url('production/expenses'));
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             Session::flash('error', 'Error updating expense record: ' . $e->getMessage());
             Response::back();
         }
@@ -9334,6 +9213,53 @@ class ProductionController {
             'success' => true,
             'expense' => $expense
         ]);
+    }
+
+    public function ajaxQuickAddExpenseItem(): void {
+        $name = trim($_POST['name'] ?? '');
+        $category = trim($_POST['category'] ?? 'GENERAL');
+        $unitType = trim($_POST['unit_type'] ?? 'PCS');
+        $defaultRate = max(0.0, (float)($_POST['default_rate'] ?? 0.0));
+
+        if (empty($name)) {
+            Response::json(['success' => false, 'message' => 'Expense type name is required.'], 400);
+            return;
+        }
+
+        $existing = Database::fetchOne("SELECT id, name, category, unit_type, default_rate FROM production_expense_items WHERE name = ?", [$name]);
+        if ($existing) {
+            Response::json([
+                'success' => true,
+                'message' => 'Expense type already exists.',
+                'item' => $existing,
+                'is_existing' => true
+            ]);
+            return;
+        }
+
+        Database::execute(
+            "INSERT INTO production_expense_items (name, category, unit_type, default_rate) VALUES (?, ?, ?, ?)",
+            [$name, $category, $unitType, $defaultRate]
+        );
+        $id = (int)Database::lastInsertId();
+
+        Response::json([
+            'success' => true,
+            'message' => 'Expense type created successfully.',
+            'item' => [
+                'id' => $id,
+                'name' => $name,
+                'category' => $category,
+                'unit_type' => $unitType,
+                'default_rate' => $defaultRate
+            ],
+            'is_existing' => false
+        ]);
+    }
+
+    public function ajaxGetExpenseItems(): void {
+        $items = Database::fetchAll("SELECT id, name, category, unit_type, default_rate FROM production_expense_items ORDER BY name ASC");
+        Response::json(['success' => true, 'items' => $items]);
     }
 }
 

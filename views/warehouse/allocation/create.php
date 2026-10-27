@@ -59,8 +59,13 @@
         <h2 class="h3 mb-0 text-gray-800"><i class="bi bi-plus-circle me-2 text-primary"></i>New Shop Allocation Requisition</h2>
         <p class="text-muted small mb-0">Reserve available warehouse inventory for dispatching to retail stores or online sales channels.</p>
     </div>
-    <div>
-        <a href="<?= url('warehouse/allocation') ?>" class="btn btn-outline-secondary">Back to Allocations</a>
+    <div class="d-flex gap-2">
+        <a href="<?= url('warehouse/allocation?tab=batches') ?>" class="btn btn-outline-success">
+            <i class="bi bi-boxes me-1"></i> Batches
+        </a>
+        <a href="<?= url('warehouse/allocation') ?>" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i> Back to Allocations
+        </a>
     </div>
 </div>
 
@@ -163,8 +168,9 @@
                        class="form-control form-control-lg border-primary border-opacity-25 font-monospace fw-bold" 
                        placeholder="Scan QR Code or Type Piece Tag / SKU (e.g. TTS092601, RMT092606)..." 
                        autocomplete="off" 
+                       onkeydown="if(event.key === 'Enter') { event.preventDefault(); if (window.handleQrScanInput) window.handleQrScanInput(this.value); }"
                        autofocus>
-                <button type="button" class="btn btn-primary px-4 fw-bold d-flex align-items-center gap-2" id="triggerScanBtn">
+                <button type="button" class="btn btn-primary px-4 fw-bold d-flex align-items-center gap-2" id="triggerScanBtn" onclick="if (window.handleQrScanInput) { window.handleQrScanInput(document.getElementById('allocation_qr_input') ? document.getElementById('allocation_qr_input').value : ''); }">
                     <i class="bi bi-lightning-charge-fill"></i> Scan / Add
                 </button>
                 <button type="button" class="btn btn-outline-secondary px-3" id="clearScanInputBtn" title="Clear input">
@@ -584,6 +590,19 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function getRowScannedQrs(row) {
+    if (!row || !row.dataset || !row.dataset.scannedQrs) return [];
+    try {
+        const val = row.dataset.scannedQrs;
+        if (typeof val === 'string' && val.startsWith('[')) {
+            return JSON.parse(val);
+        }
+        return val ? [val] : [];
+    } catch(e) {
+        return [];
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const warehouseSelect = document.getElementById('warehouse_select');
     const scanInput = document.getElementById('allocation_qr_input');
@@ -747,7 +766,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (row) {
             // Remove scanned tags from global tracking registry
-            let scannedQrs = row.dataset.scannedQrs ? JSON.parse(row.dataset.scannedQrs) : [];
+            let scannedQrs = getRowScannedQrs(row);
             scannedQrs.forEach(q => SCANNED_ALLOCATION_TAGS.delete(q));
 
             if (rows.length <= 1) {
@@ -868,7 +887,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const cell = row.querySelector('.qr-sku-cell');
         if (!cell) return;
 
-        let scannedQrs = row.dataset.scannedQrs ? JSON.parse(row.dataset.scannedQrs) : [];
+        let scannedQrs = getRowScannedQrs(row);
         const scannedVal = scannedQrs.join(',');
 
         let html = '';
@@ -925,13 +944,18 @@ document.addEventListener('DOMContentLoaded', function() {
         rawCode = (rawCode || '').trim();
         if (!rawCode) return;
 
-        const whId = warehouseSelect ? warehouseSelect.value : '';
+        const whId = (warehouseSelect && warehouseSelect.value ? warehouseSelect.value : '') 
+                  || (document.querySelector('input[name="warehouse_id"]') ? document.querySelector('input[name="warehouse_id"]').value : '') 
+                  || '1';
+
         if (!whId) {
             playDuplicateSound();
             showScanAlert('warning', '⚠️ <strong>Select Source Warehouse First:</strong> Please choose a Source Warehouse at top before scanning QR codes.');
-            warehouseSelect.focus();
-            warehouseSelect.classList.add('scanner-active-glow');
-            setTimeout(() => warehouseSelect.classList.remove('scanner-active-glow'), 2500);
+            if (warehouseSelect) {
+                warehouseSelect.focus();
+                warehouseSelect.classList.add('scanner-active-glow');
+                setTimeout(() => warehouseSelect.classList.remove('scanner-active-glow'), 2500);
+            }
             return;
         }
 
@@ -954,6 +978,46 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // 1. DUPLICATE CHECK
         if (SCANNED_ALLOCATION_TAGS.has(tagCode)) {
+            // Check if this tag belongs to an existing row that is a series product
+            let existingSeriesRow = null;
+            const rows = document.querySelectorAll('#orderItemsContainer tr.item-row');
+            rows.forEach(r => {
+                let scannedQrs = getRowScannedQrs(r);
+                if (scannedQrs.map(s => s.toUpperCase()).includes(tagCode)) {
+                    const sel = r.querySelector('.variant-select');
+                    const vId = sel ? sel.value : null;
+                    const vObj = variantsList.find(v => String(v.id) === String(vId));
+                    const isSeries = vObj && (vObj.is_series == 1 || vObj.qr_type === 'SERIES_BATCH' || (vObj.pack_quantity && parseInt(vObj.pack_quantity) > 1) || vObj.category_type === 'SERIES');
+                    if (isSeries) {
+                        existingSeriesRow = r;
+                    }
+                }
+            });
+
+            if (existingSeriesRow) {
+                // For series products, re-scanning increments the quantity allocated up to available warehouse stock
+                const qtyInput = existingSeriesRow.querySelector('.qty-input');
+                const sel = existingSeriesRow.querySelector('.variant-select');
+                const opt = sel ? sel.options[sel.selectedIndex] : null;
+                const totalStock = opt ? parseFloat(opt.getAttribute('data-stock') || 0) : 0;
+                let currentVal = parseInt(qtyInput ? qtyInput.value : 1) || 1;
+
+                if (currentVal + 1 <= totalStock) {
+                    qtyInput.value = currentVal + 1;
+                    updateRowStockCalculations(existingSeriesRow);
+                    playSuccessSound();
+                    showScanAlert('success', `📦 Series QR <code>${tagCode}</code> re-scanned: Allocated quantity increased to <strong>${currentVal + 1} pcs</strong> (Remaining in warehouse: ${totalStock - (currentVal + 1)} pcs).`);
+                    existingSeriesRow.classList.add('row-scan-highlight');
+                    setTimeout(() => existingSeriesRow.classList.remove('row-scan-highlight'), 1500);
+                    existingSeriesRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    playDuplicateSound();
+                    showScanAlert('warning', `⚠️ <strong>Warehouse Stock Limit:</strong> Series Tag <code>${tagCode}</code> has only <strong>${totalStock} pcs</strong> available in this warehouse. All available pieces are already allocated!`);
+                }
+                clearAndRefocusScanInput();
+                return;
+            }
+
             playDuplicateSound();
             showScanAlert('duplicate', `⚠️ <strong>Duplicate Scan Blocked:</strong> Piece Tag <code>${tagCode}</code> has already been added in this requisition!`);
             clearAndRefocusScanInput();
@@ -964,7 +1028,10 @@ document.addEventListener('DOMContentLoaded', function() {
         function applyScannedVariant(data, resolvedTag) {
             resolvedTag = (resolvedTag || tagCode).toUpperCase();
 
-            if (SCANNED_ALLOCATION_TAGS.has(resolvedTag)) {
+            // Determine if this is a series or complementary product pack
+            const isSeriesOrComp = !!(data.is_series || (data.qr_type === 'SERIES_BATCH') || parseInt(data.is_complementary || 0) === 1 || (data.pack_quantity && parseInt(data.pack_quantity) > 1) || data.category_type === 'SERIES');
+
+            if (SCANNED_ALLOCATION_TAGS.has(resolvedTag) && !isSeriesOrComp) {
                 playDuplicateSound();
                 showScanAlert('duplicate', `⚠️ <strong>Duplicate Scan Blocked:</strong> Piece Tag <code>${resolvedTag}</code> has already been added in this requisition!`);
                 clearAndRefocusScanInput();
@@ -975,10 +1042,28 @@ document.addEventListener('DOMContentLoaded', function() {
             const rows = document.querySelectorAll('#orderItemsContainer tr.item-row');
             let targetRow = null;
 
-            // Determine if this is a series or complementary product pack
-            const isSeriesOrComp = !!(data.is_series || (data.qr_type === 'SERIES_BATCH') || parseInt(data.is_complementary || 0) === 1 || (data.pack_quantity && parseInt(data.pack_quantity) > 1));
             const packQty = parseInt(data.scan_qty || data.pack_quantity || 1);
-            const targetQty = isSeriesOrComp ? packQty : 1;
+            // For series products, allocate 1 piece initially so remainder is retained in warehouse
+            const targetQty = isSeriesOrComp ? (data.is_series ? 1 : packQty) : 1;
+
+            // Ensure variant exists in variantsList cache
+            if (vId && !variantsList.some(v => String(v.id) === String(vId))) {
+                variantsList.push({
+                    id: vId,
+                    sku: data.sku || '',
+                    barcode: data.barcode || data.sku || '',
+                    product_name: data.product_name || data.sku || '',
+                    size_name: data.size_name || 'Free',
+                    color_name: data.color_name || '',
+                    category_name: data.category_name || '',
+                    subcategory_name: data.subcategory_name || '',
+                    sub_subcategory_name: data.sub_subcategory_name || '',
+                    total_warehouse_stock: parseFloat(data.available_stock || data.total_stock || 0),
+                    is_series: isSeriesOrComp ? 1 : 0,
+                    qr_type: data.qr_type || (isSeriesOrComp ? 'SERIES_BATCH' : 'INDIVIDUAL'),
+                    pack_quantity: packQty
+                });
+            }
 
             // If first row is completely empty, use it; otherwise create a brand new distinct row
             let emptyRow = null;
@@ -1000,6 +1085,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 const sel = targetRow.querySelector('.variant-select');
                 if (sel) {
+                    if (!sel.querySelector(`option[value="${vId}"]`)) {
+                        const opt = document.createElement('option');
+                        opt.value = vId;
+                        opt.textContent = `${data.product_name} | SKU: ${data.sku} (${data.color_name ? data.color_name + ' | ' : ''}Size: ${data.size_name || 'Std'}, Stock: ${data.available_stock || data.total_stock || 0} pcs)`;
+                        opt.setAttribute('data-sku', data.sku || '');
+                        opt.setAttribute('data-qr', data.barcode || data.sku || '');
+                        opt.setAttribute('data-category', data.hierarchy || data.category_name || 'General');
+                        opt.setAttribute('data-size', data.size_name || 'Free');
+                        opt.setAttribute('data-stock', data.available_stock || data.total_stock || 0);
+                        sel.appendChild(opt);
+                    }
                     sel.value = vId;
                     onVariantChange(sel);
                 }
@@ -1028,7 +1124,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             playSuccessSound();
-            const packBadge = isSeriesOrComp ? ` <span class="badge bg-primary ms-1">📦 Master Pack (${targetQty} Pcs in Warehouse)</span>` : '';
+            const packBadge = isSeriesOrComp ? ` <span class="badge bg-primary ms-1">📦 Series (${data.available_stock || data.total_stock || packQty} Pcs in Warehouse)</span>` : '';
             showScanAlert('success', `✅ Scanned <strong class="font-monospace">${resolvedTag}</strong> &rarr; ${data.product_name || data.sku} (${data.size_name || 'Std'})${packBadge} added! You can adjust/split the allocation quantity as needed.`);
             updateGlobalScannedCounter();
             clearAndRefocusScanInput();
@@ -1078,6 +1174,9 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
+    // Expose globally for inline event handlers and scanner calls
+    window.handleQrScanInput = handleQrScanInput;
+
     if (scanInput) {
         scanInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
@@ -1088,7 +1187,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (triggerScanBtn) {
-        triggerScanBtn.addEventListener('click', function() {
+        triggerScanBtn.addEventListener('click', function(e) {
+            e.preventDefault();
             if (scanInput) handleQrScanInput(scanInput.value);
         });
     }

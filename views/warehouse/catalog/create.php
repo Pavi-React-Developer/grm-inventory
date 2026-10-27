@@ -93,7 +93,7 @@
                                     <i class="bi bi-plus-circle-fill text-success"></i> + Add
                                 </button>
                             </div>
-                            <select name="brand_id" id="brand_id" class="form-select">
+                            <select name="brand_id" id="brand_id" class="form-select" onchange="regenerateCatalogCode(true)">
                                 <option value="">-- Select Brand / Label --</option>
                                 <?php foreach ($brands as $b): ?>
                                     <option value="<?= $b['id'] ?>"><?= e($b['name']) ?></option>
@@ -1110,11 +1110,18 @@ window.regenerateCatalogCode = function(force = false) {
     if (!catalogCodeInp) return;
     if (!force && catalogCodeInp.dataset.userEdited && catalogCodeInp.value.trim().length > 0) return;
 
+    const brandSelect = document.getElementById('brand_id');
     const sellerSelect = document.getElementById('seller_id');
     const isThirdParty = document.getElementById('srcPurchased')?.checked;
     let prefix = 'CAT-STY';
 
-    if (isThirdParty && sellerSelect && sellerSelect.value) {
+    if (brandSelect && brandSelect.value) {
+        const brandText = brandSelect.options[brandSelect.selectedIndex]?.text || '';
+        const cleanBrand = brandText.split(/[\(\-\—]/)[0].replace(/[^A-Za-z0-9]/g, '').trim().toUpperCase();
+        if (cleanBrand.length >= 2) {
+            prefix = 'CAT-' + cleanBrand.substring(0, 6);
+        }
+    } else if (isThirdParty && sellerSelect && sellerSelect.value) {
         const selText = sellerSelect.options[sellerSelect.selectedIndex]?.text || '';
         const cleanName = selText.split(/[\(\-\—]/)[0].replace(/[^A-Za-z0-9]/g, '').trim().toUpperCase();
         if (cleanName.length >= 3) {

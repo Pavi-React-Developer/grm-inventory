@@ -134,9 +134,41 @@ class WarehouseDamage {
     }
 
     /**
+     * Generate unique damage case number (e.g., DMG-20261026-0001).
+     */
+    public static function generateDamageNumber(string $prefix = 'DMG'): string {
+        $today = date('Ymd');
+        $fullPrefix = $prefix . '-' . $today . '-';
+        $last = Database::fetchOne(
+            "SELECT damage_number FROM warehouse_damages WHERE damage_number LIKE ? ORDER BY id DESC LIMIT 1",
+            [$fullPrefix . '%']
+        );
+        $seq = 1;
+        if ($last && !empty($last['damage_number'])) {
+            $parts = explode('-', $last['damage_number']);
+            $seq = (int)end($parts) + 1;
+        }
+
+        do {
+            $num = sprintf('%s%04d', $fullPrefix, $seq);
+            $exists = Database::fetchOne("SELECT id FROM warehouse_damages WHERE damage_number = ? LIMIT 1", [$num]);
+            if (!$exists) {
+                return $num;
+            }
+            $seq++;
+        } while ($seq < 9999);
+
+        return sprintf('%s%04d', $fullPrefix, $seq);
+    }
+
+    /**
      * Create damage entry record.
      */
     public static function create(array $data): int {
+        if (empty($data['damage_number'])) {
+            $data['damage_number'] = self::generateDamageNumber();
+        }
+
         Database::execute(
             "INSERT INTO warehouse_damages 
              (damage_number, warehouse_id, variant_id, tag_code, source_type, reference_id, quantity, cost_per_unit, total_loss, damage_reason, defect_notes, photo_url, status, reported_by, production_unit_id)

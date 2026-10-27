@@ -727,13 +727,17 @@ class ShopService {
         $baseSql = "SELECT pv.*, p.name as product_name, p.code as product_code, p.gst_percentage,
                            p.image_url as product_image, pv.image_url as variant_image,
                            s.name as size_name, c.name as color_name, b.name as brand_name,
-                           cat.name as category_name
+                           cat.name as category_name,
+                           wc.category_type as warehouse_category_type,
+                           p.is_complementary as p_is_comp,
+                           p.warehouse_category_id
                     FROM product_variants pv
                     JOIN products p ON pv.product_id = p.id
                     LEFT JOIN sizes s ON pv.size_id = s.id
                     LEFT JOIN colors c ON pv.color_id = c.id
                     LEFT JOIN brands b ON p.brand_id = b.id
                     LEFT JOIN categories cat ON p.category_id = cat.id
+                    LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
                     WHERE pv.is_active = 1 ";
 
         foreach ($candidates as $cand) {
@@ -839,14 +843,29 @@ class ShopService {
         // Resolve prices with rich multi-table fallback & self-healing
         self::resolveVariantPrices($variant, $scannedTag, $parsedMrp, $parsedSellingPrice);
 
-        $variant['gst_percentage'] = (float)($variant['gst_percentage'] ?? 5.00);
+        $isComp = ((isset($variant['warehouse_category_type']) && $variant['warehouse_category_type'] === 'COMPLEMENTARY') || !empty($variant['is_complementary']) || !empty($variant['p_is_comp']));
+        $isSeries = ((isset($variant['warehouse_category_type']) && $variant['warehouse_category_type'] === 'SERIES') || ($variant['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($variant['pack_quantity'] ?? 1) > 1);
+        $variant['is_complementary'] = $isComp ? 1 : 0;
+        $variant['is_series'] = $isSeries ? 1 : 0;
+        $variant['category_type'] = $variant['warehouse_category_type'] ?? 'NORMAL';
+
+        if ($isComp) {
+            $variant['selling_price'] = 0.00;
+            $variant['mrp'] = 0.00;
+            $variant['price'] = 0.00;
+            $variant['discount_price'] = 0.00;
+            $variant['gst_percentage'] = 0.00;
+        } else {
+            $variant['gst_percentage'] = (float)($variant['gst_percentage'] ?? 5.00);
+        }
+
         $variant['scanned_piece_tag'] = $scannedTag;
 
         // Image priority: variant image -> product image -> null
         $variant['image'] = !empty($variant['variant_image']) ? $variant['variant_image'] : ($variant['product_image'] ?? null);
 
-        // Check if this specific piece tag was already sold in a previous invoice
-        if (!empty($scannedTag)) {
+        // Check if this specific piece tag was already sold in a previous invoice (bypass if SERIES QR)
+        if (!empty($scannedTag) && !$isSeries) {
             $alreadySold = Database::fetchOne(
                 "SELECT si.id, s.invoice_number 
                  FROM sale_items si
@@ -989,18 +1008,36 @@ class ShopService {
                 $qty = (int)($item['quantity'] ?? 1);
                 if ($qty <= 0) continue;
 
+                $vRow = Database::fetchOne(
+                    "SELECT pv.*, p.is_complementary as p_is_comp, wc.category_type as warehouse_category_type
+                     FROM product_variants pv
+                     JOIN products p ON pv.product_id = p.id
+                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                     WHERE pv.id = ?",
+                    [$variantId]
+                );
+                $isComp = $vRow && ((isset($vRow['warehouse_category_type']) && $vRow['warehouse_category_type'] === 'COMPLEMENTARY') || !empty($vRow['is_complementary']) || !empty($vRow['p_is_comp']));
+                $isSeries = $vRow && ((isset($vRow['warehouse_category_type']) && $vRow['warehouse_category_type'] === 'SERIES') || ($vRow['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($vRow['pack_quantity'] ?? 1) > 1);
+
                 $originalUnitPrice = (float)($item['original_price'] ?? $item['unit_price'] ?? 0);
                 $billedPrice = isset($item['billed_price']) ? (float)$item['billed_price'] : (float)($item['unit_price'] ?? $originalUnitPrice);
                 $mrp = (float)($item['mrp'] ?? $originalUnitPrice);
                 $gstRate = (float)($item['gst_percentage'] ?? 5.00);
 
+                if ($isComp) {
+                    $billedPrice = 0.00;
+                    $originalUnitPrice = 0.00;
+                    $mrp = 0.00;
+                    $gstRate = 0.00;
+                }
+
                 $itemDiscount = 0.0;
-                if ($billedPrice < $originalUnitPrice) {
+                if (!$isComp && $billedPrice < $originalUnitPrice) {
                     $itemDiscount = round(($originalUnitPrice - $billedPrice) * $qty, 2);
                 }
-                $discountPercent = ($originalUnitPrice * $qty) > 0 ? round(($itemDiscount / ($originalUnitPrice * $qty)) * 100, 2) : 0.0;
+                $discountPercent = (!$isComp && ($originalUnitPrice * $qty) > 0) ? round(($itemDiscount / ($originalUnitPrice * $qty)) * 100, 2) : 0.0;
 
-                // Extract piece tags string & validate against duplicate sales
+                // Extract piece tags string & validate against duplicate sales (bypassed if SERIES)
                 $scannedTagsStr = null;
                 if (!empty($item['scanned_tags'])) {
                     $tagsArray = is_array($item['scanned_tags']) ? $item['scanned_tags'] : explode(',', $item['scanned_tags']);
@@ -1009,17 +1046,19 @@ class ShopService {
                         $t = trim($t);
                         if (empty($t)) continue;
                         
-                        // Check if already sold in any past non-cancelled sale
-                        $alreadySold = Database::fetchOne(
-                            "SELECT s.invoice_number FROM sale_items si 
-                             JOIN sales s ON si.sale_id = s.id 
-                             WHERE s.shop_id = ? AND s.status != 'CANCELLED' 
-                               AND (FIND_IN_SET(?, si.scanned_qr_codes) OR si.scanned_qr_codes = ? OR si.scanned_qr_codes LIKE ?)
-                             LIMIT 1",
-                            [$shopId, $t, $t, '%' . $t . '%']
-                        );
-                        if ($alreadySold && !empty($alreadySold['invoice_number'])) {
-                            throw new RuntimeException("Piece Serial Tag '{$t}' was already sold in Invoice #{$alreadySold['invoice_number']}. Cannot double-bill the same physical garment.");
+                        if (!$isSeries) {
+                            // Check if already sold in any past non-cancelled sale
+                            $alreadySold = Database::fetchOne(
+                                "SELECT s.invoice_number FROM sale_items si 
+                                 JOIN sales s ON si.sale_id = s.id 
+                                 WHERE s.shop_id = ? AND s.status != 'CANCELLED' 
+                                   AND (FIND_IN_SET(?, si.scanned_qr_codes) OR si.scanned_qr_codes = ? OR si.scanned_qr_codes LIKE ?)
+                                 LIMIT 1",
+                                [$shopId, $t, $t, '%' . $t . '%']
+                            );
+                            if ($alreadySold && !empty($alreadySold['invoice_number'])) {
+                                throw new RuntimeException("Piece Serial Tag '{$t}' was already sold in Invoice #{$alreadySold['invoice_number']}. Cannot double-bill the same physical garment.");
+                            }
                         }
                         $validTags[] = $t;
                     }
@@ -1036,12 +1075,12 @@ class ShopService {
                     throw new RuntimeException("Insufficient stock in shop for item '$sku'. Available: $currentStock, Required: $qty");
                 }
 
-                $lineBilledTotal = $qty * $billedPrice;
+                $lineBilledTotal = $isComp ? 0.00 : ($qty * $billedPrice);
                 // Inclusive GST Calculation on Billed Amount: Taxable Base = Billed Total / (1 + GST%)
-                $taxableBase = round($lineBilledTotal / (1 + ($gstRate / 100)), 2);
-                $taxAmount = round($lineBilledTotal - $taxableBase, 2);
-                $cgst = round($taxAmount / 2, 2);
-                $sgst = round($taxAmount - $cgst, 2);
+                $taxableBase = $isComp ? 0.00 : round($lineBilledTotal / (1 + ($gstRate / 100)), 2);
+                $taxAmount = $isComp ? 0.00 : round($lineBilledTotal - $taxableBase, 2);
+                $cgst = $isComp ? 0.00 : round($taxAmount / 2, 2);
+                $sgst = $isComp ? 0.00 : round($taxAmount - $cgst, 2);
 
                 $subtotal += $taxableBase;
                 $cgstTotal += $cgst;

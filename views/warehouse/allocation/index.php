@@ -28,6 +28,19 @@ $isBatchesTab = ($currentTab ?? '') === 'batches';
     </div>
 </div>
 
+<ul class="nav nav-pills mb-3">
+    <li class="nav-item">
+        <a class="nav-link <?= !$isBatchesTab ? 'active bg-primary' : 'bg-white text-dark border' ?> fw-semibold" href="<?= url('warehouse/allocation') ?>">
+            <i class="bi bi-truck-flatbed me-1"></i> Stock Allocations
+        </a>
+    </li>
+    <li class="nav-item ms-2">
+        <a class="nav-link <?= $isBatchesTab ? 'active bg-success text-white' : 'bg-white text-dark border' ?> fw-semibold" href="<?= url('warehouse/allocation?tab=batches') ?>">
+            <i class="bi bi-boxes me-1"></i> Dispatch Batches
+        </a>
+    </li>
+</ul>
+
 <div class="card border-0 shadow-sm rounded-3 mb-4">
     <div class="card-body p-3">
         <form method="GET" action="<?= url('warehouse/allocation') ?>" class="row g-2">
@@ -118,26 +131,22 @@ $isBatchesTab = ($currentTab ?? '') === 'batches';
                             <span class="badge <?= $badgeClass ?> px-2.5 py-1"><?= htmlspecialchars($alc['status']) ?></span>
                         </td>
                         <td class="text-end text-nowrap">
-                            <?php if ($isBatchesTab): ?>
-                                <?php if ($alc['status'] === 'REQUESTED' && (hasPermission('allocation', 'approve') || hasPermission('allocations', 'approve') || hasPermission('allocation', 'create'))): ?>
-                                    <form method="POST" action="<?= url('warehouse/allocation/approve/' . $alc['id']) ?>" class="d-inline">
-                                        <?= CSRF::field() ?>
-                                        <button type="submit" class="btn btn-sm btn-success me-1">
-                                            <i class="bi bi-check-lg me-1"></i> Approve
-                                        </button>
-                                    </form>
-                                <?php endif; ?>
-
-                                <?php if (in_array($alc['status'], ['APPROVED', 'PACKING', 'PICKING']) && (hasPermission('allocation_outward', 'create') || hasPermission('allocation', 'dispatch') || hasPermission('allocations', 'create'))): ?>
-                                    <a href="<?= url('warehouse/allocation/outward') ?>" class="btn btn-sm btn-primary me-1">
-                                        <i class="bi bi-truck me-1"></i> Dispatch Outward
-                                    </a>
-                                <?php endif; ?>
+                            <?php if ($alc['status'] === 'REQUESTED' && (hasPermission('allocation', 'approve') || hasPermission('allocations', 'approve') || hasPermission('allocation', 'create'))): ?>
+                                <form method="POST" action="<?= url('warehouse/allocation/approve/' . $alc['id']) ?>" class="d-inline">
+                                    <?= CSRF::field() ?>
+                                    <button type="submit" class="btn btn-sm btn-success me-1">
+                                        <i class="bi bi-check-lg me-1"></i> Approve
+                                    </button>
+                                </form>
                             <?php endif; ?>
 
+                            <?php if (in_array($alc['status'], ['APPROVED', 'PACKING', 'PICKING']) && (hasPermission('allocation_outward', 'create') || hasPermission('allocation', 'dispatch') || hasPermission('allocations', 'create'))): ?>
+                                <a href="<?= url('warehouse/allocation/outward') ?>" class="btn btn-sm btn-primary me-1">
+                                    <i class="bi bi-truck me-1"></i> Dispatch Outward
+                                </a>
+                            <?php endif; ?>
 
-
-                            <a href="<?= url('warehouse/allocation/view/' . $alc['id']) ?>" class="btn btn-sm btn-outline-primary" title="View Details">
+                            <a href="<?= url('warehouse/allocation/view/' . $alc['id'] . ($isBatchesTab ? '?tab=batches' : '')) ?>" class="btn btn-sm btn-outline-primary" title="View Details">
                                 <i class="bi bi-eye"></i>
                             </a>
                         </td>

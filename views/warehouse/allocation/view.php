@@ -1,29 +1,37 @@
 <?php
 // views/warehouse/allocation/view.php
 $isShopReq = ($isShopRequestView ?? false) 
-    || ($allocation['destination_type'] ?? '') === 'SHOP' 
-    || str_starts_with((string)($allocation['destination_type'] ?? ''), 'SHOP_')
-    || !empty($allocation['shop_id'])
-    || str_contains($_SERVER['REQUEST_URI'] ?? '', 'shop-requests');
+    || str_starts_with($allocation['allocation_number'] ?? '', 'IND-')
+    || str_starts_with($allocation['allocation_number'] ?? '', 'REQ-')
+    || str_starts_with($allocation['allocation_number'] ?? '', 'WREQ-')
+    || str_starts_with($allocation['allocation_number'] ?? '', 'WEBREQ-')
+    || str_contains($_SERVER['REQUEST_URI'] ?? '', 'shop-requests')
+    || (($_GET['from'] ?? '') === 'shop-requests');
 
-$allocBackUrl = $isShopReq ? url('warehouse/shop-requests') : url('warehouse/allocation');
+$isBatches = (($_GET['tab'] ?? '') === 'batches' || in_array($allocation['status'] ?? '', ['APPROVED', 'PICKING', 'PACKING']));
+$allocBackUrl = $isShopReq ? url('warehouse/shop-requests') : url('warehouse/allocation' . ($isBatches ? '?tab=batches' : ''));
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <div>
         <h2 class="h3 mb-0 text-gray-800">
-            <i class="bi <?= $isShopReq ? 'bi-shop text-primary' : 'bi-boxes text-primary' ?> me-2"></i>
-            <?= $isShopReq ? 'Shop Stock Request #' : 'Allocation #' ?><?= htmlspecialchars($allocation['allocation_number']) ?>
+            <i class="bi <?= $isShopReq ? 'bi-shop text-primary' : ($isBatches ? 'bi-boxes text-success' : 'bi-boxes text-primary') ?> me-2"></i>
+            <?= $isShopReq ? 'Shop Stock Request #' : ($isBatches ? 'Allocation Batch #' : 'Allocation #') ?><?= htmlspecialchars($allocation['allocation_number']) ?>
         </h2>
         <p class="text-muted small mb-0">
             <?= $isShopReq 
                 ? 'Stock requisition requested by <strong>' . htmlspecialchars($allocation['destination_name']) . '</strong> to be fulfilled from <strong>' . htmlspecialchars($allocation['warehouse_name']) . '</strong>'
-                : 'Warehouse transfer requisition to <strong>' . htmlspecialchars($allocation['destination_name']) . '</strong> (' . htmlspecialchars($allocation['destination_type']) . ')' ?>
+                : 'Warehouse transfer batch to <strong>' . htmlspecialchars($allocation['destination_name']) . '</strong> (' . htmlspecialchars($allocation['destination_type']) . ')' ?>
         </p>
     </div>
-    <div>
+    <div class="d-flex gap-2">
+        <?php if (!$isShopReq && in_array($allocation['status'], ['APPROVED', 'PICKING', 'PACKING'])): ?>
+            <a href="<?= url('warehouse/allocation/outward') ?>" class="btn btn-primary">
+                <i class="bi bi-truck me-1"></i> Dispatch Outward
+            </a>
+        <?php endif; ?>
         <a href="<?= $allocBackUrl ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-left me-1"></i> <?= $isShopReq ? 'Back to Shop Requests' : 'Back to List' ?>
+            <i class="bi bi-arrow-left me-1"></i> <?= $isShopReq ? 'Back to Shop Requests' : ($isBatches ? 'Back to Batches' : 'Back to Allocations') ?>
         </a>
     </div>
 </div>

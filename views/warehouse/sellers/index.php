@@ -194,10 +194,10 @@
                                 </td>
                                 <td class="text-end">
                                     <div class="btn-group btn-group-sm">
-                                        <?php if (hasPermission('purchases', 'create') || hasPermission('wh_sellers', 'edit')): ?>
-                                        <!-- <a href="<?= url('warehouse/sellers/buy?seller_id=' . $s['id']) ?>" class="btn btn-outline-success" title="Buy Products from this Supplier">
-                                            <i class="bi bi-cart-plus"></i>
-                                        </a> -->
+                                        <?php if (hasPermission('wh_sellers', 'create') || hasPermission('purchases', 'create')): ?>
+                                        <a href="<?= url('warehouse/sellers/create?seller_id=' . $s['id']) ?>" class="btn btn-outline-success" title="Create New Inward Bill for this Supplier">
+                                            <i class="bi bi-box-arrow-in-down"></i>
+                                        </a>
                                         <?php endif; ?>
                                         <a href="<?= url('warehouse/sellers/view/' . $s['id']) ?>" class="btn btn-outline-primary" title="View Profile &amp; Order History">
                                             <i class="bi bi-eye"></i>

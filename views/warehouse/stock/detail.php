@@ -12,9 +12,54 @@
                 <i class="bi bi-printer me-1"></i> Print Stock Stickers
             </button>
         <?php endif; ?>
-        <a href="<?= url('warehouse/stock') ?>" class="btn btn-outline-secondary">
+        <a href="<?= url('warehouse/stock' . (!empty($selectedWarehouseId) ? ('?warehouse_id=' . (int)$selectedWarehouseId) : '')) ?>" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i> Back to Stock Ledger
         </a>
+    </div>
+</div>
+
+<!-- Warehouse Facility Scope Switcher -->
+<div class="card border-0 shadow-sm mb-4 bg-white">
+    <div class="card-body p-3 d-flex align-items-center justify-content-between flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1.5 fs-6">
+                <i class="bi bi-geo-alt-fill me-1"></i>Warehouse Facility
+            </span>
+            <span class="text-muted small">Viewing stock and piece labels for:</span>
+            <?php if (!empty($selectedWarehouse)): ?>
+                <span class="fw-bold text-dark fs-6"><?= e($selectedWarehouse['name']) ?> (<?= e($selectedWarehouse['code']) ?>)</span>
+                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                    <i class="bi bi-check2-circle me-1"></i><?= number_format($totalAvailable ?? 0) ?> pcs available in this warehouse
+                </span>
+            <?php else: ?>
+                <span class="fw-bold text-dark fs-6">All Warehouses (Consolidated View)</span>
+                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">
+                    <i class="bi bi-globe me-1"></i><?= number_format($totalAvailable ?? 0) ?> pcs combined across all facilities
+                </span>
+            <?php endif; ?>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <div class="btn-group btn-group-sm shadow-xs" role="group" aria-label="Warehouse Filter">
+                <a href="<?= url('warehouse/stock/detail/' . $variant['id']) ?>" 
+                   class="btn <?= empty($selectedWarehouseId) ? 'btn-primary active fw-bold' : 'btn-outline-secondary' ?>">
+                    <i class="bi bi-globe me-1"></i> All Facilities (<?= number_format($allWarehouseTotalAvailable ?? 0) ?>)
+                </a>
+                <?php foreach (($warehouses ?? []) as $wh): 
+                    $whAvail = $warehouseAvailMap[$wh['id']] ?? 0;
+                    $isActiveWh = (!empty($selectedWarehouseId) && (int)$selectedWarehouseId === (int)$wh['id']);
+                ?>
+                    <a href="<?= url('warehouse/stock/detail/' . $variant['id'] . '?warehouse_id=' . $wh['id']) ?>" 
+                       class="btn <?= $isActiveWh ? 'btn-primary active fw-bold' : 'btn-outline-secondary' ?>">
+                        <i class="bi bi-buildings me-1"></i> <?= e($wh['name']) ?> (<?= number_format($whAvail) ?>)
+                    </a>
+                <?php endforeach; ?>
+            </div>
+            <?php if (!empty($selectedWarehouseId)): ?>
+                <a href="<?= url('warehouse/stock/detail/' . $variant['id']) ?>" class="btn btn-sm btn-outline-danger" title="Clear filter and view all warehouses">
+                    <i class="bi bi-x-circle me-1"></i> Clear Filter
+                </a>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 
@@ -71,6 +116,22 @@
                             <?php endif; ?>
                         </span>
                     </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span class="text-muted">Category Type:</span>
+                        <span>
+                            <?php 
+                                $isCompVar = (!empty($variant['is_complementary']) || !empty($variant['prod_is_comp']) || ($variant['warehouse_category_type'] ?? '') === 'COMPLEMENTARY');
+                                $isSeriesVar = (($variant['qr_type'] ?? '') === 'SERIES_BATCH' || ($variant['warehouse_category_type'] ?? '') === 'SERIES' || (int)($variant['pack_quantity'] ?? 1) > 1);
+                                if ($isCompVar):
+                            ?>
+                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning fw-semibold px-2 py-1"><i class="bi bi-gift-fill me-1 text-danger"></i>Complementary</span>
+                            <?php elseif ($isSeriesVar): ?>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold px-2 py-1"><i class="bi bi-boxes me-1 text-primary"></i>Series Pack (<?= (int)($variant['pack_quantity'] ?? 10) ?> Pcs)</span>
+                            <?php else: ?>
+                                <span class="badge bg-light text-dark border fw-semibold px-2 py-1"><i class="bi bi-tag me-1 text-secondary"></i>Normal (Individual)</span>
+                            <?php endif; ?>
+                        </span>
+                    </li>
                     <?php if (!empty($variant['material'])): ?>
                     <li class="list-group-item d-flex justify-content-between px-0">
                         <span class="text-muted">Material / Fabric:</span>
@@ -118,29 +179,55 @@
 
         <!-- Balances by Warehouse -->
         <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white py-3">
+            <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
                 <h6 class="card-title mb-0 fw-bold"><i class="bi bi-buildings me-2 text-primary"></i>Stock by Warehouse Location</h6>
+                <?php if (!empty($selectedWarehouseId)): ?>
+                    <a href="<?= url('warehouse/stock/detail/' . $variant['id']) ?>" class="badge bg-secondary-subtle text-secondary border text-decoration-none" title="Show all warehouses combined">
+                        View All
+                    </a>
+                <?php endif; ?>
             </div>
             <div class="card-body p-0">
                 <?php if (empty($balances)): ?>
                     <div class="p-3 text-muted text-center">No active inventory balance records.</div>
                 <?php else: ?>
                     <ul class="list-group list-group-flush">
-                        <?php foreach ($balances as $b): ?>
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <?php foreach ($balances as $b): 
+                            $isThisSelected = (!empty($selectedWarehouseId) && (int)$b['location_id'] === (int)$selectedWarehouseId);
+                        ?>
+                            <li class="list-group-item d-flex justify-content-between align-items-center <?= $isThisSelected ? 'bg-primary bg-opacity-10 border-start border-primary border-4' : '' ?>">
                                 <div>
-                                    <span class="fw-semibold"><?= e($b['warehouse_name']) ?></span>
+                                    <span class="fw-semibold <?= $isThisSelected ? 'text-primary' : '' ?>"><?= e($b['warehouse_name']) ?></span>
+                                    <?php if ($isThisSelected): ?>
+                                        <span class="badge bg-primary text-white ms-1" style="font-size: 0.65rem;"><i class="bi bi-check-circle-fill me-1"></i>Active View</span>
+                                    <?php endif; ?>
                                     <br>
                                     <span class="badge bg-<?= $b['stock_state'] === 'AVAILABLE' ? 'success' : ($b['stock_state'] === 'RESERVED' ? 'warning text-dark' : 'danger') ?> small">
                                         <?= e($b['stock_state']) ?>
                                     </span>
                                 </div>
-                                <span class="fw-bold fs-6"><?= number_format($b['quantity']) ?> pcs</span>
+                                <div class="text-end">
+                                    <span class="fw-bold fs-6"><?= number_format($b['quantity']) ?> pcs</span>
+                                    <?php if (!$isThisSelected): ?>
+                                        <div>
+                                            <a href="<?= url('warehouse/stock/detail/' . $variant['id'] . '?warehouse_id=' . $b['location_id']) ?>" class="btn btn-xs btn-outline-primary py-0 px-2 mt-1" style="font-size: 0.70rem;">
+                                                View Only
+                                            </a>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
                             </li>
                         <?php endforeach; ?>
                     </ul>
                 <?php endif; ?>
             </div>
+            <?php if (!empty($selectedWarehouseId)): ?>
+                <div class="card-footer bg-light p-2 text-center border-top">
+                    <a href="<?= url('warehouse/stock/detail/' . $variant['id']) ?>" class="text-decoration-none small fw-semibold text-primary">
+                        <i class="bi bi-globe me-1"></i>View All Warehouses Combined (<?= number_format($allWarehouseTotalAvailable ?? 0) ?> pcs)
+                    </a>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -272,6 +359,11 @@
                 <div>
                     <h5 class="card-title mb-0 fw-bold text-dark">
                         <i class="bi bi-check2-circle me-1 text-success"></i> <?= (!empty($pieceQRs[0]['is_series']) || !empty($pieceQRs[0]['is_complementary'])) ? 'Master Series / Complementary Pack QR Label' : 'Active Sellable Garment Pieces' ?>
+                        <?php if (!empty($selectedWarehouse)): ?>
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-2 fw-normal fs-6">
+                                <i class="bi bi-geo-alt-fill me-1"></i><?= e($selectedWarehouse['name']) ?> (<?= number_format($totalAvailable) ?> pcs)
+                            </span>
+                        <?php endif; ?>
                     </h5>
                     <small class="text-muted"><?= (!empty($pieceQRs[0]['is_series']) || !empty($pieceQRs[0]['is_complementary'])) ? 'Single 1-Master QR code represents all ' . ($pieceQRs[0]['pack_quantity'] ?? $totalAvailable) . ' pieces in this bundle/pack. Scanning auto-loads the full pack quantity.' : 'Direct piece-by-piece QR stickers & barcodes for each physical garment ready for dispatch or retail' ?></small>
                 </div>
@@ -596,6 +688,11 @@
                 <div>
                     <h5 class="card-title mb-0 fw-bold text-primary">
                         <i class="bi bi-boxes me-1"></i> Batch-Wise Added Stock History
+                        <?php if (!empty($selectedWarehouse)): ?>
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-2 fw-normal fs-6">
+                                <i class="bi bi-geo-alt-fill me-1"></i><?= e($selectedWarehouse['name']) ?>
+                            </span>
+                        <?php endif; ?>
                         <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill ms-2 font-monospace">
                             <?= count($variantBatchHistory ?? []) ?> Inward Batches
                         </span>

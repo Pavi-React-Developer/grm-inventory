@@ -16,12 +16,17 @@ class PurchaseItem {
                     pv.sku, pv.qr_code, pv.selling_price, pv.mrp,
                     p.id as product_id, p.name as product_name, p.code as product_code, p.qr_code_prefix,
                     p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                    cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name,
+                    COALESCE(wh_cat.name, cat.name, '') as category_name, 
+                    COALESCE(wh_subcat.name, subcat.name, '') as subcategory_name, 
+                    COALESCE(wh_subsubcat.name, subsubcat.name, '') as sub_subcategory_name,
                     s.name as size_name, s.code as size_code,
                     c.name as color_name, c.hex_code as color_hex
              FROM purchase_items pi
              JOIN product_variants pv ON pi.variant_id = pv.id
              JOIN products p ON pv.product_id = p.id
+             LEFT JOIN warehouse_categories wh_cat ON p.warehouse_category_id = wh_cat.id
+             LEFT JOIN warehouse_subcategories wh_subcat ON p.warehouse_subcategory_id = wh_subcat.id
+             LEFT JOIN warehouse_sub_subcategories wh_subsubcat ON p.warehouse_sub_subcategory_id = wh_subsubcat.id
              LEFT JOIN categories cat ON p.category_id = cat.id
              LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
              LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id

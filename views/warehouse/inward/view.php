@@ -426,31 +426,36 @@
                                         $initMissing = isset($item['missing_qty']) ? (int)$item['missing_qty'] : max(0, $expected - ($initReceived + $initDamaged));
                                         $initDiff = ($initReceived + $initDamaged) - $expected;
 
-                                        $itemStartSeq = $globalSeqCounter;
-                                        $itemEndSeq = $globalSeqCounter + max(1, $expected) - 1;
-                                        $globalSeqCounter += max(1, $expected);
+                                        $itemStartSeq = !empty($item['start_seq']) ? (int)$item['start_seq'] : $globalSeqCounter;
+                                        $itemEndSeq = !empty($item['end_seq']) ? (int)$item['end_seq'] : ($itemStartSeq + max(1, $expected) - 1);
+                                        $globalSeqCounter = $itemEndSeq + 1;
 
-                                        $c1 = !empty($item['category_name']) ? trim($item['category_name']) : (!empty($item['category_code']) ? trim($item['category_code']) : '');
-                                        $c2 = !empty($item['subcategory_name']) ? trim($item['subcategory_name']) : (!empty($item['subcategory_code']) ? trim($item['subcategory_code']) : '');
-                                        $c3 = !empty($item['sub_subcategory_name']) ? trim($item['sub_subcategory_name']) : (!empty($item['sub_subcategory_code']) ? trim($item['sub_subcategory_code']) : '');
+                                        if (!empty($item['start_code'])) {
+                                            $tagStart = $item['start_code'];
+                                            $tagEnd = !empty($item['end_code']) ? $item['end_code'] : $item['start_code'];
+                                        } else {
+                                            $c1 = !empty($item['category_name']) ? trim($item['category_name']) : (!empty($item['category_code']) ? trim($item['category_code']) : '');
+                                            $c2 = !empty($item['subcategory_name']) ? trim($item['subcategory_name']) : (!empty($item['subcategory_code']) ? trim($item['subcategory_code']) : '');
+                                            $c3 = !empty($item['sub_subcategory_name']) ? trim($item['sub_subcategory_name']) : (!empty($item['sub_subcategory_code']) ? trim($item['sub_subcategory_code']) : '');
 
-                                        $prefix = '';
-                                        if ($c1 !== '') $prefix .= strtoupper($c1[0]);
-                                        if ($c2 !== '') $prefix .= strtoupper($c2[0]);
-                                        if ($c3 !== '') $prefix .= strtoupper($c3[0]);
+                                            $prefix = '';
+                                            if ($c1 !== '') $prefix .= strtoupper($c1[0]);
+                                            if ($c2 !== '') $prefix .= strtoupper($c2[0]);
+                                            if ($c3 !== '') $prefix .= strtoupper($c3[0]);
 
-                                        if (strlen($prefix) < 2) {
-                                            if (!empty($item['qr_code_prefix'])) {
-                                                $clean = preg_replace('/[^A-Za-z0-9]/', '', $item['qr_code_prefix']);
-                                                $prefix = strtoupper(substr($clean, 0, 3));
+                                            if (strlen($prefix) < 2) {
+                                                if (!empty($item['qr_code_prefix'])) {
+                                                    $clean = preg_replace('/[^A-Za-z0-9]/', '', $item['qr_code_prefix']);
+                                                    $prefix = strtoupper(substr($clean, 0, 3));
+                                                }
                                             }
+                                            if (empty($prefix)) $prefix = 'TTS';
+                                            $monthStr = sprintf('%02d', date('n'));
+                                            $yearStr = date('y');
+                                            $tagStart = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemStartSeq);
+                                            $tagEnd = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemEndSeq);
                                         }
-                                        if (empty($prefix)) $prefix = 'TTS';
-                                        $monthStr = sprintf('%02d', date('n'));
-                                        $yearStr = date('y');
-                                        $tagStart = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemStartSeq);
-                                        $tagEnd = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemEndSeq);
-                                        $tagRange = $expected > 1 ? ($tagStart . ' - ' . $tagEnd) : $tagStart;
+                                        $tagRange = ($tagStart !== $tagEnd) ? ($tagStart . ' - ' . $tagEnd) : $tagStart;
                                     ?>
                                     <tr id="row-<?= $vid ?>" data-variant-id="<?= $vid ?>" data-sku="<?= e($item['sku']) ?>" data-qr="<?= e($tagStart) ?>" data-expected="<?= $expected ?>">
                                         <td class="text-muted small fw-semibold"><?= $idx + 1 ?></td>
@@ -979,6 +984,8 @@
     let currentScanMode = 'good'; // 'good' or 'damage'
     const SCANNED_TAGS = new Set();
     const DAMAGED_TAGS = new Set();
+    const PERSISTED_INWARD_TAGS = new Set();
+    const PERSISTED_DAMAGED_TAGS = new Set();
     
     const LIFECYCLE = <?= json_encode($lifecycle ?? null) ?>;
     const QC_EXCLUDED_TAGS = new Set();
@@ -1022,10 +1029,17 @@
     // Initialize global sequence ranges for multi-variant batches
     let currentGlobalSeq = 1;
     ITEMS.forEach(it => {
-        it.startSeq = currentGlobalSeq;
+        if (it.start_seq && it.end_seq) {
+            it.startSeq = parseInt(it.start_seq);
+            it.endSeq = parseInt(it.end_seq);
+            currentGlobalSeq = it.endSeq + 1;
+        } else {
+            it.startSeq = currentGlobalSeq;
+            const qty = parseInt(it.quantity) || 1;
+            it.endSeq = currentGlobalSeq + qty - 1;
+            currentGlobalSeq += qty;
+        }
         const qty = parseInt(it.quantity) || 1;
-        it.endSeq = currentGlobalSeq + qty - 1;
-        currentGlobalSeq += qty;
         
         let excluded = 0;
         for (let p = it.startSeq; p <= it.endSeq; p++) {
@@ -1034,16 +1048,42 @@
         it.quantity = Math.max(0, qty - excluded);
         it.original_quantity = qty;
 
-        // If batch is already received, seed tags based on exact persisted received and damaged quantities
+        // If batch has previously received items, seed tags based on exact persisted received and damaged quantities
         if (BATCH_STATUS === 'RECEIVED') {
-            const recCount = parseInt(it.received_qty) || 0;
-            const dmgCount = parseInt(it.damaged_qty) || 0;
-            let currentP = it.startSeq;
-            for (let i = 0; i < recCount && currentP <= it.endSeq; i++) {
-                SCANNED_TAGS.add(getLabelCode(currentP++, it).toUpperCase());
+            if (it.received_qr_codes && String(it.received_qr_codes).trim()) {
+                String(it.received_qr_codes).split(',').forEach(t => {
+                    const cleanT = t.trim().toUpperCase();
+                    if (cleanT) {
+                        SCANNED_TAGS.add(cleanT);
+                        PERSISTED_INWARD_TAGS.add(cleanT);
+                    }
+                });
+            } else {
+                const recCount = parseInt(it.received_qty) || 0;
+                let currentP = it.startSeq;
+                for (let i = 0; i < recCount && currentP <= it.endSeq; i++) {
+                    const code = getLabelCode(currentP++, it).toUpperCase();
+                    SCANNED_TAGS.add(code);
+                    PERSISTED_INWARD_TAGS.add(code);
+                }
             }
-            for (let i = 0; i < dmgCount && currentP <= it.endSeq; i++) {
-                DAMAGED_TAGS.add(getLabelCode(currentP++, it).toUpperCase());
+
+            if (it.damaged_qr_codes && String(it.damaged_qr_codes).trim()) {
+                String(it.damaged_qr_codes).split(',').forEach(t => {
+                    const cleanT = t.trim().toUpperCase();
+                    if (cleanT) {
+                        DAMAGED_TAGS.add(cleanT);
+                        PERSISTED_DAMAGED_TAGS.add(cleanT);
+                    }
+                });
+            } else {
+                const dmgCount = parseInt(it.damaged_qty) || 0;
+                let currentP = it.startSeq + (parseInt(it.received_qty) || 0);
+                for (let i = 0; i < dmgCount && currentP <= it.endSeq; i++) {
+                    const code = getLabelCode(currentP++, it).toUpperCase();
+                    DAMAGED_TAGS.add(code);
+                    PERSISTED_DAMAGED_TAGS.add(code);
+                }
             }
         }
     });
@@ -1206,6 +1246,28 @@
     }
 
     function getLabelCode(pieceIndex, item) {
+        if (item) {
+            // Priority 1: Match directly from piece_tags array from production QC / labels
+            if (Array.isArray(item.piece_tags) && item.piece_tags.length > 0) {
+                const sSeq = parseInt(item.start_seq || item.startSeq || 1);
+                const tagIdx = pieceIndex - sSeq;
+                if (tagIdx >= 0 && tagIdx < item.piece_tags.length) {
+                    return String(item.piece_tags[tagIdx]).toUpperCase();
+                }
+            }
+            // Priority 2: Derive from item start_code and start_seq
+            if (item.start_code && (item.start_seq || item.startSeq)) {
+                const sSeq = parseInt(item.start_seq || item.startSeq);
+                const sCode = String(item.start_code).trim();
+                const m = sCode.match(/^([A-Z0-9]+?)(\d{2,4})$/i);
+                if (m) {
+                    const prefix = m[1];
+                    const numLen = m[2].length;
+                    const curNum = sSeq + (pieceIndex - sSeq);
+                    return (prefix + String(curNum).padStart(numLen, '0')).toUpperCase();
+                }
+            }
+        }
         const abbr = getCatalogAbbreviation(item);
         const mfgDate = (item && (item.variant_mfg_date || item.mfg_date)) ? new Date(item.variant_mfg_date || item.mfg_date) : (BATCH_CREATED_AT ? new Date(BATCH_CREATED_AT) : new Date());
         const now = isNaN(mfgDate.getTime()) ? new Date() : mfgDate;
@@ -1513,25 +1575,39 @@
         if (inwardForm) {
             inwardForm.addEventListener('submit', function() {
                 try {
-                    // Populate exact damaged piece tags for each variant
+                    // Populate exact verified intact and damaged piece tags for each variant
                     ITEMS.forEach(item => {
                         const vid = item.variant_id;
+                        let vReceivedTags = [];
                         let vDamagedTags = [];
                         for (let p = item.startSeq; p <= item.endSeq; p++) {
                             const t = getLabelCode(p, item).toUpperCase();
-                            if (DAMAGED_TAGS.has(t)) {
+                            if (SCANNED_TAGS.has(t)) {
+                                vReceivedTags.push(t);
+                            } else if (DAMAGED_TAGS.has(t)) {
                                 vDamagedTags.push(t);
                             }
                         }
-                        let inp = document.getElementById(`hidden-dmg-tags-${vid}`);
-                        if (!inp) {
-                            inp = document.createElement('input');
-                            inp.type = 'hidden';
-                            inp.id = `hidden-dmg-tags-${vid}`;
-                            inp.name = `items[${vid}][damaged_tags]`;
-                            inwardForm.appendChild(inp);
+
+                        let inpRecv = document.getElementById(`hidden-recv-tags-${vid}`);
+                        if (!inpRecv) {
+                            inpRecv = document.createElement('input');
+                            inpRecv.type = 'hidden';
+                            inpRecv.id = `hidden-recv-tags-${vid}`;
+                            inpRecv.name = `items[${vid}][received_tags]`;
+                            inwardForm.appendChild(inpRecv);
                         }
-                        inp.value = vDamagedTags.join(',');
+                        inpRecv.value = vReceivedTags.join(',');
+
+                        let inpDmg = document.getElementById(`hidden-dmg-tags-${vid}`);
+                        if (!inpDmg) {
+                            inpDmg = document.createElement('input');
+                            inpDmg.type = 'hidden';
+                            inpDmg.id = `hidden-dmg-tags-${vid}`;
+                            inpDmg.name = `items[${vid}][damaged_tags]`;
+                            inwardForm.appendChild(inpDmg);
+                        }
+                        inpDmg.value = vDamagedTags.join(',');
                     });
                     localStorage.removeItem(SCAN_STORAGE_KEY);
                     localStorage.removeItem(DMG_STORAGE_KEY);
@@ -1663,16 +1739,18 @@
                 playBeep('error');
             } else {
                 let totalAcct = 0;
+                let totalCredited = 0;
                 ITEMS.forEach(it => {
                     totalAcct += (getVariantVerifiedTagCount(it) + getVariantDamagedTagCount(it));
+                    totalCredited += (parseInt(it.received_qty) || 0) + (parseInt(it.damaged_qty) || 0);
                 });
-                if (BATCH_STATUS === 'RECEIVED' || totalAcct >= TOTAL_EXPECTED) {
+                if (totalCredited >= TOTAL_EXPECTED || totalAcct >= TOTAL_EXPECTED) {
                     playBeep('error');
                     showScanFeedback(`🔒 <strong>ALREADY INWARDED:</strong> Master Carton QR for Batch #${BATCH_NUMBER} has ALREADY been fully scanned & inwarded (${TOTAL_EXPECTED} pcs)!`, "warning");
                 } else {
                     autoFillAllExpected();
                     playBeep('double');
-                    showScanFeedback("⚡ Master Carton QR scanned! All " + TOTAL_EXPECTED + " pcs verified intact!", "success");
+                    showScanFeedback("⚡ Master Carton QR scanned! Remaining " + (TOTAL_EXPECTED - totalCredited) + " pcs verified intact!", "success");
                 }
             }
             if (liveInput) { liveInput.value = ''; liveInput.focus(); }
@@ -1845,10 +1923,11 @@
             if (btnToggle) btnToggle.className = 'btn btn-sm btn-outline-danger p-1';
             if (iconToggle) iconToggle.className = 'bi bi-slash-circle';
 
-            // Mark all valid sequential tags as verified intact
+            // Mark all valid sequential tags as verified intact (preserving previously quarantined damaged tags)
             for (let p = item.startSeq; p <= item.endSeq; p++) {
                 const tag = getLabelCode(p, item).toUpperCase();
                 if (QC_EXCLUDED_TAGS.has(tag)) continue;
+                if (PERSISTED_DAMAGED_TAGS.has(tag)) continue;
                 SCANNED_TAGS.add(tag);
                 DAMAGED_TAGS.delete(tag);
             }
@@ -2077,7 +2156,7 @@
                 break;
             }
         }
-        if (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount) {
+        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
             playBeep('error');
             showScanFeedback(`🔒 Piece <span class="badge bg-dark font-monospace">${escapeHtml(normalizedTag)}</span> was already credited to warehouse inventory and cannot be changed to damaged.`, 'warning');
             return;
@@ -2601,7 +2680,7 @@
                 const isGood = SCANNED_TAGS.has(pieceTagCode);
                 const isDamaged = DAMAGED_TAGS.has(pieceTagCode);
                 const isVerified = isGood || isDamaged;
-                const isAlreadyCredited = (BATCH_STATUS === 'RECEIVED') && ((p - item.startSeq) < creditedCount);
+                const isAlreadyCredited = PERSISTED_INWARD_TAGS.has(pieceTagCode);
 
                 // Apply Active Filter: Skip non-matching pieces
                 if (modalPieceFilter === 'mismatched' && isVerified) {
@@ -2884,14 +2963,14 @@
         const currentGood = getVariantVerifiedTagCount(item);
         const currentDmg = getVariantDamagedTagCount(item);
 
-        // 1. Check if variant was already fully credited/inwarded from a completed batch session
-        if (BATCH_STATUS === 'RECEIVED' || (creditedCount > 0 && creditedCount >= expected)) {
+        // 1. Check if variant was already fully credited/inwarded from a previous inward session
+        if (creditedCount > 0 && creditedCount >= expected) {
             playBeep('error');
             if (row) {
                 row.classList.add('table-warning');
                 setTimeout(() => row.classList.remove('table-warning'), 1200);
             }
-            showScanFeedback(`🔒 <strong>ALREADY INWARDED:</strong> Product <strong>${escapeHtml(item.sku)}</strong> (${expected} pcs) has ALREADY been verified and inwarded into <strong>${escapeHtml(WAREHOUSE_NAME)}</strong> inventory (${creditedCount} pcs credited).`, 'warning');
+            showScanFeedback(`🔒 <strong>ALREADY INWARDED:</strong> Product <strong>${escapeHtml(item.sku)}</strong> (${expected} pcs) has ALREADY been fully verified and inwarded into <strong>${escapeHtml(WAREHOUSE_NAME)}</strong> inventory (${creditedCount} pcs credited).`, 'warning');
             return;
         }
 
@@ -2915,7 +2994,7 @@
         // 2. Specific Piece Tag Validations
         if (isValidPieceTag) {
             // Already credited piece check
-            if (pieceSeq !== -1 && (pieceSeq - item.startSeq) < creditedCount) {
+            if (PERSISTED_INWARD_TAGS.has(tagToProcess) || (pieceSeq !== -1 && (pieceSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
                 playBeep('error');
                 showScanFeedback(`🔒 <strong>ALREADY INWARDED:</strong> Piece <span class="badge bg-dark font-monospace">${escapeHtml(tagToProcess)}</span> was already credited to warehouse inventory.`, 'warning');
                 return;
@@ -2979,9 +3058,10 @@
 
             // Find next unverified piece in sequence for this variant
             tagToProcess = '';
-            for (let p = item.startSeq + creditedCount; p <= item.endSeq; p++) {
+            for (let p = item.startSeq; p <= item.endSeq; p++) {
                 const code = getLabelCode(p, item).toUpperCase();
                 if (QC_EXCLUDED_TAGS.has(code)) continue;
+                if (PERSISTED_INWARD_TAGS.has(code) || PERSISTED_DAMAGED_TAGS.has(code)) continue;
                 if (!SCANNED_TAGS.has(code) && !DAMAGED_TAGS.has(code)) {
                     tagToProcess = code;
                     break;
@@ -2989,8 +3069,28 @@
             }
         }
 
-        // 4. Record new scan
-        if (mode === 'damage') {
+        // 4. Record new scan: Inward ALL counts in single scan for Series & Complementary products
+        const isSeriesOrComp = (item.is_series == 1 || item.is_complementary == 1 || item.qr_type === 'SERIES_BATCH' || item.category_type === 'SERIES' || item.category_type === 'COMPLEMENTARY' || (item.pack_quantity && parseInt(item.pack_quantity) > 1));
+
+        if (isSeriesOrComp && mode === 'good') {
+            // Single scan inwards ALL counts for series and complementary products!
+            let newlyAdded = 0;
+            for (let p = item.startSeq; p <= item.endSeq; p++) {
+                const code = getLabelCode(p, item).toUpperCase();
+                if (QC_EXCLUDED_TAGS.has(code)) continue;
+                if (PERSISTED_INWARD_TAGS.has(code) || PERSISTED_DAMAGED_TAGS.has(code)) continue;
+                if (!SCANNED_TAGS.has(code) && !DAMAGED_TAGS.has(code)) {
+                    SCANNED_TAGS.add(code);
+                    newlyAdded++;
+                }
+            }
+            playBeep('success');
+            if (row) {
+                row.classList.add('table-success');
+                setTimeout(() => row.classList.remove('table-success'), 800);
+            }
+            showScanFeedback(`✅ Verified <strong>${escapeHtml(item.sku)}</strong> (Series/Complementary Pack: ALL ${expected} pcs inwarded in single scan)!`, 'success');
+        } else if (mode === 'damage') {
             if (tagToProcess) DAMAGED_TAGS.add(tagToProcess);
             playBeep('error');
             if (row) {
@@ -2999,6 +3099,7 @@
             }
             showScanFeedback(`🔴 Recorded Piece <span class="badge bg-dark font-monospace">${escapeHtml(tagToProcess || 'Item')}</span> as DAMAGED & QUARANTINED for <strong>${escapeHtml(item.sku)}</strong>.`, 'danger');
         } else {
+            // Normal products: 1 piece per scan
             if (tagToProcess) SCANNED_TAGS.add(tagToProcess);
             playBeep('success');
             if (row) {
@@ -3058,7 +3159,7 @@
                 break;
             }
         }
-        if (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount) {
+        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
             playBeep('error');
             showScanFeedback(`🔒 Piece <span class="badge bg-dark font-monospace">${escapeHtml(normalizedTag)}</span> was already credited to warehouse inventory and cannot be un-verified.`, 'warning');
             return;
@@ -3099,21 +3200,24 @@
         const expected = parseInt(item.quantity) || 1;
         const creditedCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.received_qty) || 0) : 0;
 
-        // Reset ONLY uncommitted tags
-        for (let p = item.startSeq + creditedCount; p <= item.endSeq; p++) {
+        // Reset ONLY uncommitted tags (preserving previously persisted tags)
+        for (let p = item.startSeq; p <= item.endSeq; p++) {
             const tag = getLabelCode(p, item).toUpperCase();
-            SCANNED_TAGS.delete(tag);
-            DAMAGED_TAGS.delete(tag);
-        }
-
-        // Ensure credited tags remain intact in SCANNED_TAGS
-        for (let p = item.startSeq; p < item.startSeq + creditedCount; p++) {
-            const tag = getLabelCode(p, item).toUpperCase();
-            if (!QC_EXCLUDED_TAGS.has(tag)) {
-                SCANNED_TAGS.add(tag);
+            if (!PERSISTED_INWARD_TAGS.has(tag) && !PERSISTED_DAMAGED_TAGS.has(tag)) {
+                SCANNED_TAGS.delete(tag);
                 DAMAGED_TAGS.delete(tag);
             }
         }
+
+        // Ensure previously credited tags remain intact in SCANNED_TAGS
+        PERSISTED_INWARD_TAGS.forEach(tag => {
+            SCANNED_TAGS.add(tag);
+            DAMAGED_TAGS.delete(tag);
+        });
+        PERSISTED_DAMAGED_TAGS.forEach(tag => {
+            DAMAGED_TAGS.add(tag);
+            SCANNED_TAGS.delete(tag);
+        });
 
         const recvInput = document.getElementById(`input-recv-${vid}`);
         const dmgInput = document.getElementById(`input-dmg-${vid}`);
@@ -3151,10 +3255,12 @@
         if (recvInput) {
             for (let p = item.startSeq; p <= item.endSeq; p++) {
                 const tag = getLabelCode(p, item).toUpperCase();
+                if (QC_EXCLUDED_TAGS.has(tag)) continue;
+                if (PERSISTED_DAMAGED_TAGS.has(tag)) continue; // keep previously quarantined pieces damaged
                 SCANNED_TAGS.add(tag);
                 DAMAGED_TAGS.delete(tag);
             }
-            recvInput.value = expected;
+            recvInput.value = expected - getVariantDamagedTagCount(item);
             if (dmgInput) {
                 dmgInput.value = 0;
                 dmgInput.readOnly = true;
@@ -3226,25 +3332,39 @@
         if (confirm(confirmMsg)) {
             const form = document.getElementById('inwardForm');
             if (form) {
-                // Populate exact damaged piece tags for each variant before submit
+                // Populate exact intact and damaged piece tags for each variant before submit
                 ITEMS.forEach(item => {
                     const vid = item.variant_id;
+                    let vReceivedTags = [];
                     let vDamagedTags = [];
                     for (let p = item.startSeq; p <= item.endSeq; p++) {
                         const t = getLabelCode(p, item).toUpperCase();
-                        if (DAMAGED_TAGS.has(t)) {
+                        if (SCANNED_TAGS.has(t)) {
+                            vReceivedTags.push(t);
+                        } else if (DAMAGED_TAGS.has(t)) {
                             vDamagedTags.push(t);
                         }
                     }
-                    let inp = document.getElementById(`hidden-dmg-tags-${vid}`);
-                    if (!inp) {
-                        inp = document.createElement('input');
-                        inp.type = 'hidden';
-                        inp.id = `hidden-dmg-tags-${vid}`;
-                        inp.name = `items[${vid}][damaged_tags]`;
-                        form.appendChild(inp);
+
+                    let inpRecv = document.getElementById(`hidden-recv-tags-${vid}`);
+                    if (!inpRecv) {
+                        inpRecv = document.createElement('input');
+                        inpRecv.type = 'hidden';
+                        inpRecv.id = `hidden-recv-tags-${vid}`;
+                        inpRecv.name = `items[${vid}][received_tags]`;
+                        form.appendChild(inpRecv);
                     }
-                    inp.value = vDamagedTags.join(',');
+                    inpRecv.value = vReceivedTags.join(',');
+
+                    let inpDmg = document.getElementById(`hidden-dmg-tags-${vid}`);
+                    if (!inpDmg) {
+                        inpDmg = document.createElement('input');
+                        inpDmg.type = 'hidden';
+                        inpDmg.id = `hidden-dmg-tags-${vid}`;
+                        inpDmg.name = `items[${vid}][damaged_tags]`;
+                        form.appendChild(inpDmg);
+                    }
+                    inpDmg.value = vDamagedTags.join(',');
                 });
 
                 // Clear localStorage scan state since batch is being credited

@@ -1864,7 +1864,7 @@ class WebsiteController {
             return;
         }
 
-        $allocationNumber = WarehouseAllocation::generateNumber();
+        $allocationNumber = WarehouseAllocation::generateRequestNumber('WEBREQ-');
         $allocationId = WarehouseAllocation::create([
             'allocation_number' => $allocationNumber,
             'warehouse_id'      => $warehouseId,
