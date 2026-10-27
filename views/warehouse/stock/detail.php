@@ -1,23 +1,19 @@
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
         <h2 class="mb-1"><i class="bi bi-box-seam me-2 text-primary"></i>Stock Detail: <?= e($variant['sku']) ?></h2>
-        <span class="text-muted">Item inventory breakdown, piece-by-piece QR labels &amp; complete transaction ledger</span>
+        
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <button type="button" class="btn btn-outline-success shadow-sm fw-semibold" onclick="openEditPriceModalFromDetail()">
             <i class="bi bi-pencil-square me-1"></i> Edit Price
         </button>
         <?php if (($totalAvailable ?? 0) > 0): ?>
-            <button type="button" class="btn btn-success shadow-sm" onclick="openPrintModal('all')">
-                <i class="bi bi-printer me-1"></i> Print Stock Stickers
-            </button>
         <?php endif; ?>
         <a href="<?= url('warehouse/stock' . (!empty($selectedWarehouseId) ? ('?warehouse_id=' . (int)$selectedWarehouseId) : '')) ?>" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i> Back to Stock Ledger
         </a>
     </div>
 </div>
-
 <!-- Warehouse Facility Scope Switcher -->
 <div class="card border-0 shadow-sm mb-4 bg-white">
     <div class="card-body p-3 d-flex align-items-center justify-content-between flex-wrap gap-3">
@@ -391,7 +387,7 @@
                         <?php 
                             $fmtMrp = ($pq['mrp'] == (int)$pq['mrp']) ? (int)$pq['mrp'] : number_format($pq['mrp'], 2, '.', '');
                             $fmtSelling = ($pq['selling_price'] == (int)$pq['selling_price']) ? (int)$pq['selling_price'] : number_format($pq['selling_price'], 2, '.', '');
-                            $qrPayload = !empty($pq['qr_payload']) ? $pq['qr_payload'] : "{$pq['tag_code']}|{$pq['sku']}|MRP:{$fmtMrp}|Price:{$fmtSelling}";
+                            $qrPayload = $pq['tag_code'];
                             $isItemSeries = !empty($pq['is_series']) || !empty($pq['is_complementary']);
                             $packQty = (int)($pq['pack_quantity'] ?? $totalAvailable);
                         ?>
@@ -408,12 +404,12 @@
                                     <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 0.68rem;"><i class="bi bi-check-circle me-1"></i>Available</span>
                                 </div>
                                 
-                                <!-- Garment Tag Sticker Layout -->
+                                <!-- Garment Tag Sticker Layout (Inward QR Format) -->
                                 <div class="p-2 border rounded-3 bg-white shadow-xs d-flex align-items-start gap-2 mb-2" style="background: #fafafa;">
                                     <!-- Left: QR Code + Tag Code Badge -->
-                                    <div class="text-center flex-shrink-0" style="min-width: 64px; max-width: 100px;">
-                                        <div class="piece-qr-box bg-white p-1 rounded border shadow-xs d-flex align-items-center justify-content-center mx-auto" id="qr-box-<?= $index ?>" data-json="<?= htmlspecialchars($qrPayload, ENT_QUOTES, 'UTF-8') ?>" style="width: 64px; height: 64px;"></div>
-                                        <div class="badge bg-dark text-white font-monospace mt-1 px-1.5 py-0.5 w-100" style="font-size: 0.70rem; letter-spacing: 0.5px;">
+                                    <div class="text-center flex-shrink-0" style="width: 80px;">
+                                        <div class="piece-qr-box bg-white p-1 rounded border shadow-xs d-flex align-items-center justify-content-center mx-auto" id="qr-box-<?= $index ?>" data-json="<?= htmlspecialchars($qrPayload, ENT_QUOTES, 'UTF-8') ?>" style="width: 72px; height: 72px;"></div>
+                                        <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-0.5 w-100 text-truncate shadow-xs" style="font-size: 0.62rem; letter-spacing: 0.2px;" title="<?= e($pq['tag_code']) ?>">
                                             <?= e($pq['tag_code']) ?>
                                         </div>
                                     </div>
@@ -535,7 +531,7 @@
                                 $fmtSelling = ($dpSelling == (int)$dpSelling) ? (int)$dpSelling : number_format($dpSelling, 2, '.', '');
                                 $dpSku = $dp['sku'] ?? ($variant['sku'] ?? '');
                                 $dpReason = $dp['damage_reason'] ?? 'Defective';
-                                $dmgQrPayload = "{$dp['tag_code']}|{$dpSku}|DAMAGED|{$dpReason}";
+                                $dmgQrPayload = $dp['tag_code'];
                             ?>
                             <div class="col">
                                 <div class="card border border-danger-subtle rounded-3 p-2.5 h-100 shadow-sm bg-white piece-card position-relative" style="background: #fff8f8 !important;">
@@ -548,12 +544,12 @@
                                         </span>
                                     </div>
                                     
-                                    <!-- Garment Tag Sticker Layout with Damaged Overlay -->
+                                    <!-- Garment Tag Sticker Layout with Damaged Overlay (Inward QR Format) -->
                                     <div class="p-2 border border-danger-subtle rounded-3 bg-white shadow-xs d-flex align-items-start gap-2 mb-2">
                                         <!-- Left: QR Code + Tag Code Badge -->
-                                        <div class="text-center flex-shrink-0">
-                                            <div class="piece-qr-box bg-white p-1 rounded border border-danger-subtle shadow-xs d-flex align-items-center justify-content-center" id="dmg-qr-box-<?= $dIndex ?>" data-json="<?= htmlspecialchars($dmgQrPayload, ENT_QUOTES, 'UTF-8') ?>" style="width: 64px; height: 64px;"></div>
-                                            <div class="badge bg-danger text-white font-monospace mt-1 px-1.5 py-0.5 w-100" style="font-size: 0.70rem; letter-spacing: 0.5px;">
+                                        <div class="text-center flex-shrink-0" style="width: 80px;">
+                                            <div class="piece-qr-box bg-white p-1 rounded border border-danger-subtle shadow-xs d-flex align-items-center justify-content-center mx-auto" id="dmg-qr-box-<?= $dIndex ?>" data-json="<?= htmlspecialchars($dmgQrPayload, ENT_QUOTES, 'UTF-8') ?>" style="width: 72px; height: 72px;"></div>
+                                            <div class="badge bg-danger text-white font-monospace mt-1 px-1 py-0.5 w-100 text-truncate shadow-xs" style="font-size: 0.62rem; letter-spacing: 0.2px;" title="<?= e($dp['tag_code']) ?>">
                                                 <?= e($dp['tag_code']) ?>
                                             </div>
                                         </div>
@@ -1824,8 +1820,8 @@ function renderPieceQRCodes() {
             try {
                 new QRCode(box, {
                     text: text,
-                    width: 58,
-                    height: 58,
+                    width: 66,
+                    height: 66,
                     colorDark : "#0f172a",
                     colorLight : "#ffffff",
                     correctLevel : QRCode.CorrectLevel.M
@@ -1896,13 +1892,13 @@ function previewSingleTag(index) {
 
     const qrContainer = document.getElementById('singleQRCanvas');
     qrContainer.innerHTML = '';
-    const qrPayload = item.qr_payload || `${item.tag_code}|${item.sku}|MRP:${fmtMrp}|Price:${fmtSelling}`;
+    const qrPayload = item.tag_code;
 
     try {
         new QRCode(qrContainer, {
             text: qrPayload,
-            width: 72,
-            height: 72,
+            width: 78,
+            height: 78,
             colorDark: "#0f172a",
             colorLight: "#ffffff",
             correctLevel: QRCode.CorrectLevel.M
@@ -1938,13 +1934,13 @@ function previewSingleDamagedTag(index) {
 
     const qrContainer = document.getElementById('singleQRCanvas');
     qrContainer.innerHTML = '';
-    const qrPayload = `${item.tag_code}|${item.sku}|DAMAGED|${item.damage_reason || 'Defective'}`;
+    const qrPayload = item.tag_code;
 
     try {
         new QRCode(qrContainer, {
             text: qrPayload,
-            width: 72,
-            height: 72,
+            width: 78,
+            height: 78,
             colorDark: "#b91c1c",
             colorLight: "#ffffff",
             correctLevel: QRCode.CorrectLevel.M
@@ -1984,13 +1980,13 @@ function previewSingleReturnedTag(index) {
 
     const qrContainer = document.getElementById('singleQRCanvas');
     qrContainer.innerHTML = '';
-    const qrPayload = `${item.tag_code}|${item.sku}|RETURN:${item.return_number}|Condition:${item.item_condition}`;
+    const qrPayload = item.tag_code;
 
     try {
         new QRCode(qrContainer, {
             text: qrPayload,
-            width: 72,
-            height: 72,
+            width: 78,
+            height: 78,
             colorDark: "#d97706",
             colorLight: "#ffffff",
             correctLevel: QRCode.CorrectLevel.M
@@ -2166,7 +2162,7 @@ function openPrintModal(mode = 'all', pieceIndex = 0) {
         itemsToRender.forEach((item, idx) => {
             const fmtMrp = (item.mrp == parseInt(item.mrp)) ? parseInt(item.mrp) : parseFloat(item.mrp).toFixed(2);
             const fmtSelling = (item.selling_price == parseInt(item.selling_price)) ? parseInt(item.selling_price) : parseFloat(item.selling_price).toFixed(2);
-            const qrPayload = `${item.tag_code}|${item.sku}|MRP:${fmtMrp}|Price:${fmtSelling}`;
+            const qrPayload = item.tag_code;
             const isDiscounted = parseFloat(item.mrp) > parseFloat(item.selling_price);
 
             const stickerDiv = document.createElement('div');

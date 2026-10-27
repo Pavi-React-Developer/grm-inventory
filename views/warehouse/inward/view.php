@@ -27,17 +27,23 @@
     .input-qty-box {
         max-width: 80px;
         min-width: 60px;
+        pointer-events: none !important;
+        cursor: not-allowed !important;
+        user-select: none !important;
+        background-color: #f8fafc !important;
     }
     .input-dmg-box {
         max-width: 55px;
         min-width: 45px;
+        pointer-events: none !important;
+        cursor: not-allowed !important;
+        user-select: none !important;
         transition: all 0.2s ease;
     }
     .input-dmg-box.is-locked {
         background-color: #f8fafc !important;
         border-color: #e2e8f0 !important;
         color: #94a3b8 !important;
-        cursor: not-allowed;
     }
     .input-dmg-box.is-active {
         background-color: #fef2f2 !important;
@@ -58,28 +64,10 @@
     }
 </style>
 
-<div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
-    <div>
-        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-            <h2 class="mb-0"><i class="bi bi-qr-code-scan me-2 text-primary"></i>Cross-Check Inward Batch #<?= e($batch['batch_number']) ?></h2>
-            <span class="badge bg-warning bg-opacity-25 text-dark border border-warning border-opacity-50 fs-6 px-3 py-2 shadow-sm">
-                <i class="bi bi-gear-wide-connected me-1 text-warning"></i>Source Unit: <strong><?= e($batch['production_unit_name'] ?? 'Main Apparel Facility') ?> (<?= e($batch['production_unit_code'] ?? 'PU1') ?>)</strong>
-            </span>
-            <span class="badge bg-primary fs-6 px-3 py-2 shadow-sm">
-                <i class="bi bi-building me-1"></i>Receiving Warehouse: <strong><?= e($batch['warehouse_name']) ?> (<?= e($batch['warehouse_code'] ?? '') ?>)</strong>
-            </span>
-        </div>
-        <span class="text-muted">Origin Unit: <strong><?= e($batch['production_unit_name'] ?? 'Manufacturing Unit') ?></strong> &rarr; Inward Receiving Warehouse: <strong><?= e($batch['warehouse_name']) ?></strong></span>
-    </div>
+<div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">  
     <div class="d-flex gap-2 flex-wrap">
-        <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#batchHistoryModal">
-            <i class="bi bi-clock-history me-1"></i> Batch Lifecycle &amp; Logs
-        </button>
-        <a href="<?= url('warehouse/inward/label/' . $batch['id']) ?>" target="_blank" class="btn btn-outline-primary">
-            <i class="bi bi-printer me-1"></i> Print Carton QR Sticker
-        </a>
         <a href="<?= url('warehouse/inward') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-left me-1"></i> Inward Queue
+            <i class="bi bi-arrow-left me-1"></i> Back
         </a>
     </div>
 </div>
@@ -88,15 +76,15 @@
 <!-- 1. LIVE SUMMARY METRIC CARDS (5-CARD RESPONSIVE GRID WITH DAMAGE TRACKER) -->
 <!-- ========================================================================= -->
 <?php
-    $displayRec = $batch['status'] === 'RECEIVED' ? (int)($totalReceived ?? ($batch['received_qty'] ?? $totalExpected)) : 0;
-    $displayDmg = $batch['status'] === 'RECEIVED' ? (int)($totalDamaged ?? ($batch['damaged_qty'] ?? 0)) : 0;
-    $displayMis = $batch['status'] === 'RECEIVED' ? (int)($totalMissing ?? ($batch['missing_qty'] ?? 0)) : $totalExpected;
-    $displayPct = $totalExpected > 0 ? round(($displayRec / $totalExpected) * 100) : ($batch['status'] === 'RECEIVED' ? 100 : 0);
+$displayRec = $batch['status'] === 'RECEIVED' ? (int) ($totalReceived ?? ($batch['received_qty'] ?? $totalExpected)) : 0;
+$displayDmg = $batch['status'] === 'RECEIVED' ? (int) ($totalDamaged ?? ($batch['damaged_qty'] ?? 0)) : 0;
+$displayMis = $batch['status'] === 'RECEIVED' ? (int) ($totalMissing ?? ($batch['missing_qty'] ?? 0)) : $totalExpected;
+$displayPct = $totalExpected > 0 ? round(($displayRec / $totalExpected) * 100) : ($batch['status'] === 'RECEIVED' ? 100 : 0);
 
-    // Can scan or edit only if user has inward verify or create permission AND batch is not fully received
-    $canVerify = (hasPermission('inward', 'verify') || hasPermission('inward', 'create') || hasPermission('inward', 'edit'));
-    $isFullyReceived = ($batch['status'] === 'RECEIVED' && $displayMis === 0 && ($displayRec + $displayDmg) >= $totalExpected);
-    $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyReceived);
+// Can scan or edit only if user has inward verify or create permission AND batch is not fully received
+$canVerify = (hasPermission('inward', 'verify') || hasPermission('inward', 'create') || hasPermission('inward', 'edit'));
+$isFullyReceived = ($batch['status'] === 'RECEIVED' && $displayMis === 0 && ($displayRec + $displayDmg) >= $totalExpected);
+$canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyReceived);
 ?>
 <?php if (!$canVerify): ?>
     <div class="alert alert-secondary border-0 shadow-sm py-2 px-3 mb-4 d-flex align-items-center gap-2">
@@ -152,7 +140,7 @@
                         <i class="bi bi-slash-circle fs-4"></i>
                     </div>
                 </div>
-                <small class="text-danger d-block mt-1 font-monospace" style="font-size: 0.72rem;" id="statDamagedSubtext"><?= $displayDmg > 0 ? "{$displayDmg} quarantined units" : "0 quarantined units" ?></small>
+                <small class="text-danger d-block mt-1 font-monospace" style="font-size: 0.72rem;" id="statDamagedSubtext"><?= $displayDmg > 0 ? "{$displayDmg} quarantined units" : '0 quarantined units' ?></small>
             </div>
         </div>
     </div>
@@ -204,7 +192,7 @@
             <div class="card-body p-4">
                 <div id="batchQrView" class="d-flex justify-content-center mb-3"></div>
                 <div class="font-monospace fw-bold text-primary fs-5"><?= e($batch['batch_number']) ?></div>
-                <small class="text-muted d-block mt-1">Scan this master code to auto-verify the entire carton box.</small>
+                
             </div>
         </div>
 
@@ -241,7 +229,7 @@
                         </div>
                         <div class="fw-bold text-dark small badge-unit-origin"><?= e($batch['production_unit_name'] ?? 'Main Production Facility') ?></div>
                         <?php if (!empty($batch['production_unit_manager']) || !empty($batch['production_unit_phone'])): ?>
-                            <small class="text-muted d-block mt-1"><?= e($batch['production_unit_manager'] ?? '') ?> <?= !empty($batch['production_unit_phone']) ? '('.e($batch['production_unit_phone']).')' : '' ?></small>
+                            <small class="text-muted d-block mt-1"><?= e($batch['production_unit_manager'] ?? '') ?> <?= !empty($batch['production_unit_phone']) ? '(' . e($batch['production_unit_phone']) . ')' : '' ?></small>
                         <?php endif; ?>
                     </li>
                     <li class="list-group-item bg-primary bg-opacity-10 rounded p-2 my-2 border border-primary border-opacity-25">
@@ -262,7 +250,7 @@
                     <?php if (!empty($outward['driver_name']) || !empty($outward['driver_phone'])): ?>
                     <li class="list-group-item d-flex justify-content-between align-items-center small text-muted">
                         <span>Driver:</span>
-                        <span><?= e($outward['driver_name'] ?? 'Driver') ?> <?= !empty($outward['driver_phone']) ? '('.e($outward['driver_phone']).')' : '' ?></span>
+                        <span><?= e($outward['driver_name'] ?? 'Driver') ?> <?= !empty($outward['driver_phone']) ? '(' . e($outward['driver_phone']) . ')' : '' ?></span>
                     </li>
                     <?php endif; ?>
                     <li class="list-group-item d-flex justify-content-between align-items-center">
@@ -297,39 +285,15 @@
                             <label class="form-label fw-bold text-dark mb-0">
                                 <i class="bi bi-upc-scan text-primary me-1"></i> Live Product &amp; QR Cross-Check Scanner
                             </label>
-                            <small class="text-muted d-block" id="scannerModeHint">Toggle mode below to scan intact goods or quarantine damaged pieces</small>
+                            
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
                                 <i class="bi bi-building me-1"></i>Inward to: <strong><?= e($batch['warehouse_name']) ?> (<?= e($batch['warehouse_code'] ?? '') ?>)</strong>
                             </span>
-                            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#cameraScanModal">
-                                <i class="bi bi-camera me-1"></i> Camera Scanner
-                            </button>
+                           
                         </div>
                     </div>
-
-                    <!-- Scan Mode Selector -->
-                    <div class="mb-3">
-                        <label class="small fw-bold text-dark d-block mb-2"><i class="bi bi-sliders me-1"></i>Scanner Mode (Click to Switch):</label>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <input type="radio" class="btn-check" name="scanModeToggle" id="modeGood" value="good" checked autocomplete="off" onchange="setScanMode('good')">
-                            <label class="btn btn-outline-success fw-bold py-2 fs-6 flex-grow-1" for="modeGood">
-                                <i class="bi bi-check-circle-fill me-1"></i> 🟢 Good / Intact Mode
-                            </label>
-
-                            <input type="radio" class="btn-check" name="scanModeToggle" id="modeDamage" value="damage" autocomplete="off" onchange="setScanMode('damage')">
-                            <label class="btn btn-outline-danger fw-bold py-2 fs-6 flex-grow-1" for="modeDamage">
-                                <i class="bi bi-slash-circle-fill me-1"></i> 🔴 Damaged / Inactivate Mode
-                            </label>
-                        </div>
-                        <div id="modeStatusBadge" class="mt-2 text-center">
-                            <span class="badge bg-success-subtle text-success border border-success px-3 py-1.5 w-100 shadow-sm" style="font-size: 0.85rem;">
-                                <i class="bi bi-check2-all me-1"></i>Currently scanning verified sellable stock
-                            </span>
-                        </div>
-                    </div>
-
                     <div class="input-group input-group-lg mb-2">
                         <span class="input-group-text bg-white" id="scannerIconSpan"><i class="bi bi-qr-code text-primary" id="scannerIcon"></i></span>
                         <input type="text" id="liveScannerInput" class="form-control font-monospace" placeholder="Scan Variant QR / Barcode / SKU / Master Carton..." autofocus autocomplete="off">
@@ -338,130 +302,139 @@
                         </button>
                     </div>
 
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 text-muted small">
-                        <span><i class="bi bi-lightning-charge-fill text-warning me-1"></i>Physical USB scanner guns will instantly cross-check on scan.</span>
-                        <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" id="btnAutoFillExpected">
-                            <i class="bi bi-magic me-1"></i> Quick Fill All Expected (Master Scan)
-                        </button>
-                    </div>
+                   
 
                     <div id="scanAlertMsg" class="mt-3 d-none"></div>
                 </div>
             </div>
-
-            <!-- 3. LIVE MISSING PRODUCT QR CODES TRACKER (PROFILE-WISE BREAKDOWN) -->
-            <div class="card border-0 shadow-sm mb-4 border-start border-danger border-4" id="missingProductsCard">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div>
-                        <h6 class="card-title mb-0 fw-bold text-danger">
-                            <i class="bi bi-exclamation-triangle-fill me-2"></i>Missing / Unscanned Products &amp; QR Codes (Profile-Wise)
-                        </h6>
-                        <small class="text-muted">Shows the full product variant profile first, followed by pending missing pieces</small>
-                    </div>
-                    <span class="badge bg-danger rounded-pill px-3 py-2 fs-7" id="missingBadgeCount">0 items pending</span>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive" id="missingTableContainer">
-                        <table class="table table-hover align-middle mb-0" id="missingTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Product Variant Profile</th>
-                                    <th>QR Code / Tag</th>
-                                    <th>Size &amp; Color</th>
-                                    <th class="text-center">Expected</th>
-                                    <th class="text-center">Scanned</th>
-                                    <th class="text-end">Missing Qty</th>
-                                    <th class="text-center">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="missingTableBody">
-                                <!-- Populated by JS with full product profile cards -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="missingEmptyNotice" class="text-center py-4 d-none text-success">
-                        <i class="bi bi-check-circle-fill fs-3 d-block mb-1"></i>
-                        <span class="fw-bold">All outward products matched perfectly! Zero missing items.</span>
-                    </div>
-                </div>
-            </div>
         <?php endif; ?>
 
-        <!-- 4. CROSS-CHECK MATRIX TABLE & FORM -->
+        <?php
+        $damagesByVariant = [];
+        if (!empty($damages)) {
+            foreach ($damages as $dmg) {
+                $vId = (int) ($dmg['variant_id'] ?? 0);
+                if ($vId > 0) {
+                    $damagesByVariant[$vId][] = $dmg;
+                }
+            }
+        }
+        ?>
+
+        <!-- 3. UNIFIED OUTWARD, INWARD & DAMAGED CROSS-CHECK TABLE & FORM -->
         <form method="POST" action="<?= url('warehouse/inward/verify/' . $batch['id']) ?>" id="inwardForm">
             <?= CSRF::input() ?>
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div>
                         <h6 class="card-title mb-0 fw-bold">
-                            <i class="bi bi-table me-2 text-primary"></i>Outward vs Inward Cross-Check Matrix
+                            <i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Inward Verification &amp; Outward Cross-Check
                         </h6>
-                        <small class="text-muted">Scan QR or enter verified units. Damaged items are locked by default &amp; quarantined on inactivate.</small>
+                        
                     </div>
+                    <?php if (!empty($damages)): ?>
+                       
+                    <?php endif; ?>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-hover table-compact align-middle mb-0" id="matrixTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 25px;">#</th>
-                                    <th>SKU &amp; QR Range</th>
-                                    <th>Size &amp; Color</th>
-                                    <th class="text-end" style="width: 90px;">Expected</th>
-                                    <th class="text-center" style="width: 110px;">Inward Recv</th>
-                                    <th class="text-center" style="width: 140px;" title="Damaged pieces are isolated/inactivated from active sellable inventory">Damaged / Inactive</th>
+                                    <th style="width: 30px;">S.NO</th>
+                                    <th style="min-width: 210px;">Product &amp; SKU</th>
+                                    <th style="min-width: 155px;">QR Range &amp; Next Tag</th>
+                                    <th style="min-width: 120px;">Size &amp; Color</th>
+                                    <th class="text-end" style="width: 95px;">Outward Exp</th>
+                                    <th class="text-center" style="min-width: 170px;" title="Verified intact goods and isolated damaged pieces">Verified &amp; Damaged</th>
                                     <th class="text-center" style="width: 85px;">Difference</th>
                                     <th class="text-center" style="width: 95px;">Status</th>
-                                    <th class="text-center" style="width: 120px;">Action</th>
+                                    <th class="text-center" style="width: 125px;">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php 
-                                    $globalSeqCounter = 1;
-                                    foreach ($items as $idx => $item): 
-                                        $vid = $item['variant_id'];
-                                        $expected = (int)$item['quantity'];
-                                        $initReceived = $batch['status'] === 'RECEIVED' ? (isset($item['received_qty']) ? (int)$item['received_qty'] : $expected) : 0;
-                                        $initDamaged = (int)($item['damaged_qty'] ?? 0);
-                                        $initMissing = isset($item['missing_qty']) ? (int)$item['missing_qty'] : max(0, $expected - ($initReceived + $initDamaged));
-                                        $initDiff = ($initReceived + $initDamaged) - $expected;
+                                <?php
+                                $globalSeqCounter = 1;
+                                foreach ($items as $idx => $item):
+                                    $vid = $item['variant_id'];
+                                    $expected = (int) $item['quantity'];
+                                    $initReceived = $batch['status'] === 'RECEIVED' ? (isset($item['received_qty']) ? (int) $item['received_qty'] : $expected) : 0;
+                                    $initDamaged = (int) ($item['damaged_qty'] ?? 0);
+                                    $initMissing = isset($item['missing_qty']) ? (int) $item['missing_qty'] : max(0, $expected - ($initReceived + $initDamaged));
+                                    $initDiff = ($initReceived + $initDamaged) - $expected;
 
-                                        $itemStartSeq = !empty($item['start_seq']) ? (int)$item['start_seq'] : $globalSeqCounter;
-                                        $itemEndSeq = !empty($item['end_seq']) ? (int)$item['end_seq'] : ($itemStartSeq + max(1, $expected) - 1);
-                                        $globalSeqCounter = $itemEndSeq + 1;
+                                    $itemStartSeq = !empty($item['start_seq']) ? (int) $item['start_seq'] : $globalSeqCounter;
+                                    $itemEndSeq = !empty($item['end_seq']) ? (int) $item['end_seq'] : ($itemStartSeq + max(1, $expected) - 1);
+                                    $globalSeqCounter = $itemEndSeq + 1;
 
-                                        if (!empty($item['start_code'])) {
-                                            $tagStart = $item['start_code'];
-                                            $tagEnd = !empty($item['end_code']) ? $item['end_code'] : $item['start_code'];
-                                        } else {
-                                            $c1 = !empty($item['category_name']) ? trim($item['category_name']) : (!empty($item['category_code']) ? trim($item['category_code']) : '');
-                                            $c2 = !empty($item['subcategory_name']) ? trim($item['subcategory_name']) : (!empty($item['subcategory_code']) ? trim($item['subcategory_code']) : '');
-                                            $c3 = !empty($item['sub_subcategory_name']) ? trim($item['sub_subcategory_name']) : (!empty($item['sub_subcategory_code']) ? trim($item['sub_subcategory_code']) : '');
+                                    if (!empty($item['start_code'])) {
+                                        $tagStart = $item['start_code'];
+                                        $tagEnd = !empty($item['end_code']) ? $item['end_code'] : $item['start_code'];
+                                    } else {
+                                        $c1 = !empty($item['category_name']) ? trim($item['category_name']) : (!empty($item['category_code']) ? trim($item['category_code']) : '');
+                                        $c2 = !empty($item['subcategory_name']) ? trim($item['subcategory_name']) : (!empty($item['subcategory_code']) ? trim($item['subcategory_code']) : '');
+                                        $c3 = !empty($item['sub_subcategory_name']) ? trim($item['sub_subcategory_name']) : (!empty($item['sub_subcategory_code']) ? trim($item['sub_subcategory_code']) : '');
 
-                                            $prefix = '';
-                                            if ($c1 !== '') $prefix .= strtoupper($c1[0]);
-                                            if ($c2 !== '') $prefix .= strtoupper($c2[0]);
-                                            if ($c3 !== '') $prefix .= strtoupper($c3[0]);
+                                        $prefix = '';
+                                        if ($c1 !== '')
+                                            $prefix .= strtoupper($c1[0]);
+                                        if ($c2 !== '')
+                                            $prefix .= strtoupper($c2[0]);
+                                        if ($c3 !== '')
+                                            $prefix .= strtoupper($c3[0]);
 
-                                            if (strlen($prefix) < 2) {
-                                                if (!empty($item['qr_code_prefix'])) {
-                                                    $clean = preg_replace('/[^A-Za-z0-9]/', '', $item['qr_code_prefix']);
-                                                    $prefix = strtoupper(substr($clean, 0, 3));
-                                                }
+                                        if (strlen($prefix) < 2) {
+                                            if (!empty($item['qr_code_prefix'])) {
+                                                $clean = preg_replace('/[^A-Za-z0-9]/', '', $item['qr_code_prefix']);
+                                                $prefix = strtoupper(substr($clean, 0, 3));
                                             }
-                                            if (empty($prefix)) $prefix = 'TTS';
-                                            $monthStr = sprintf('%02d', date('n'));
-                                            $yearStr = date('y');
-                                            $tagStart = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemStartSeq);
-                                            $tagEnd = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemEndSeq);
                                         }
-                                        $tagRange = ($tagStart !== $tagEnd) ? ($tagStart . ' - ' . $tagEnd) : $tagStart;
+                                        if (empty($prefix))
+                                            $prefix = 'TTS';
+                                        $monthStr = sprintf('%02d', date('n'));
+                                        $yearStr = date('y');
+                                        $tagStart = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemStartSeq);
+                                        $tagEnd = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemEndSeq);
+                                    }
+                                    $tagRange = ($tagStart !== $tagEnd) ? ($tagStart . ' - ' . $tagEnd) : $tagStart;
                                     ?>
                                     <tr id="row-<?= $vid ?>" data-variant-id="<?= $vid ?>" data-sku="<?= e($item['sku']) ?>" data-qr="<?= e($tagStart) ?>" data-expected="<?= $expected ?>">
                                         <td class="text-muted small fw-semibold"><?= $idx + 1 ?></td>
                                         <td>
-                                            <span class="fw-bold font-monospace text-primary d-block small"><?= e($item['sku']) ?></span>
-                                            <small class="badge bg-dark text-white font-monospace mt-1" style="font-size: 0.72rem;"><i class="bi bi-qr-code me-1 text-warning"></i><?= e($tagRange) ?></small>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <?php if (!empty($item['product_image']) || !empty($item['variant_image'])): ?>
+                                                    <img src="<?= e(uploadUrl(!empty($item['product_image']) ? $item['product_image'] : $item['variant_image'])) ?>" 
+                                                         alt="<?= e($item['product_name'] ?? 'Product') ?>" 
+                                                         class="rounded border shadow-2xs" 
+                                                         style="width: 36px; height: 36px; object-fit: cover;" 
+                                                         loading="lazy">
+                                                <?php else: ?>
+                                                    <div class="rounded bg-primary-subtle text-primary d-flex align-items-center justify-content-center shadow-2xs" style="width: 36px; height: 36px; flex-shrink: 0;">
+                                                        <i class="bi bi-box-seam fs-5"></i>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <div class="min-w-0">
+                                                    <div class="fw-bold text-dark small text-truncate" style="max-width: 200px;" title="<?= e($item['product_name'] ?? 'Finished Garment') ?>">
+                                                        <?= e($item['product_name'] ?? 'Finished Garment') ?>
+                                                    </div>
+                                                    <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
+                                                        <span class="badge bg-dark font-monospace text-white" style="font-size: 0.72rem;"><?= e($item['sku']) ?></span>
+                                                        <?php if (!empty($item['category_name'])): ?>
+                                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size: 0.70rem;"><?= e($item['category_name']) ?></span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div>
+                                                <span class="badge bg-dark text-white font-monospace d-block mb-1 text-truncate" style="font-size: 0.72rem; max-width: 155px;" title="<?= e($tagRange) ?>">
+                                                    <i class="bi bi-qr-code me-1 text-warning"></i><?= e($tagRange) ?>
+                                                </span>
+                                                <small class="text-muted d-block font-monospace" style="font-size: 0.70rem;" id="next-tag-container-<?= $vid ?>">
+                                                    Next: <strong class="text-danger" id="next-tag-val-<?= $vid ?>"><?= e($tagStart) ?></strong>
+                                                </small>
+                                            </div>
                                         </td>
                                         <td>
                                             <div class="d-flex align-items-center gap-1">
@@ -473,18 +446,18 @@
                                                 <?php endif; ?>
                                                 <div>
                                                     <span class="badge bg-light text-dark border"><?= e($item['size_name'] ?? 'Free') ?></span>
-                                                    <span class="ms-1 small fw-semibold"><?= e($item['color_name'] ?? 'Std') ?></span>
+                                                    <span class="ms-1 small fw-semibold text-secondary"><?= e($item['color_name'] ?? 'Std') ?></span>
                                                 </div>
                                             </div>
                                         </td>
                                         <td class="text-end">
                                             <div class="fw-bold fs-6 text-dark"><?= number_format($expected) ?> <small class="text-muted">pcs</small></div>
-                                            <?php 
-                                                $credited = (int)($item['received_qty'] ?? 0);
-                                                $rem = max(0, $expected - $credited);
+                                            <?php
+                                            $credited = (int) ($item['received_qty'] ?? 0);
+                                            $rem = max(0, $expected - $credited);
                                             ?>
                                             <?php if ($batch['status'] === 'RECEIVED' && $credited > 0 && $rem > 0): ?>
-                                                <div class="mt-1 d-flex flex-column align-items-end gap-1" style="font-size: 0.72rem;">
+                                                <div class="mt-1 d-flex flex-column align-items-end gap-1" style="font-size: 0.70rem;">
                                                     <span class="badge bg-success-subtle text-success border border-success-subtle px-1.5 py-0.5" title="Already credited to warehouse inventory">
                                                         <i class="bi bi-check2"></i> <?= number_format($credited) ?> Credited
                                                     </span>
@@ -493,7 +466,7 @@
                                                     </span>
                                                 </div>
                                             <?php elseif ($batch['status'] === 'RECEIVED' && $credited >= $expected): ?>
-                                                <div class="mt-1" style="font-size: 0.72rem;">
+                                                <div class="mt-1" style="font-size: 0.70rem;">
                                                     <span class="badge bg-success text-white px-1.5 py-0.5">
                                                         <i class="bi bi-check-all"></i> All <?= number_format($expected) ?> Credited
                                                     </span>
@@ -502,35 +475,38 @@
                                         </td>
                                         <td class="text-center">
                                             <?php if ($canScanOrEdit): ?>
-                                                <input type="number" name="items[<?= $vid ?>][received_qty]" 
-                                                       class="form-control form-control-sm text-center fw-bold text-success item-received-input input-qty-box mx-auto" 
-                                                       id="input-recv-<?= $vid ?>" 
-                                                       value="<?= $initReceived ?>" min="<?= $batch['status'] === 'RECEIVED' ? $initReceived : 0 ?>" max="99999" data-variant-id="<?= $vid ?>"
-                                                       <?= ($batch['status'] === 'RECEIVED' && $initReceived > 0) ? 'title="Minimum received is ' . $initReceived . ' pcs (already credited to inventory)"' : '' ?>>
-                                            <?php else: ?>
-                                                <span class="fw-bold text-success fs-6"><?= number_format($initReceived) ?> pcs</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td class="text-center">
-                                            <?php if ($canScanOrEdit): ?>
-                                                <div class="d-flex align-items-center justify-content-center gap-1">
-                                                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-1" onclick="adjustDamage(<?= $vid ?>, -1)" title="Decrease Damaged Count" style="min-width: 20px; font-size: 11px; line-height: 1.5;">-</button>
-                                                    <input type="number" name="items[<?= $vid ?>][damaged_qty]" 
-                                                           class="form-control form-control-sm text-center item-damaged-input input-dmg-box <?= $initDamaged > 0 ? 'is-active' : 'is-locked' ?>" 
-                                                           id="input-dmg-<?= $vid ?>" 
-                                                           value="<?= $initDamaged ?>" min="0" max="99999" data-variant-id="<?= $vid ?>" <?= $initDamaged > 0 ? '' : 'readonly' ?>
-                                                           title="Damaged input is locked by default. Click + to report damage.">
-                                                    <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1 fw-bold" onclick="adjustDamage(<?= $vid ?>, 1)" title="Add +1 Damaged Piece & Inactivate" style="min-width: 20px; font-size: 11px; line-height: 1.5;">+</button>
-                                                    <button type="button" class="btn btn-sm <?= $initDamaged > 0 ? 'btn-danger text-white' : 'btn-outline-danger' ?> btn-toggle-damage p-1" 
-                                                            id="btn-toggle-dmg-<?= $vid ?>" 
-                                                            onclick="toggleDamageInput(<?= $vid ?>)" 
-                                                            title="Unlock or lock damage reporting for this variant">
-                                                        <i class="bi <?= $initDamaged > 0 ? 'bi-exclamation-octagon-fill' : 'bi-slash-circle' ?>" id="icon-dmg-<?= $vid ?>"></i>
-                                                    </button>
+                                                <div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">
+                                                    <!-- Verified Intact Units (Non-editable / Updated only via scanning) -->
+                                                    <div class="text-center" title="Verified Good / Intact Quantity (Updated via scanning)">
+                                                        <small class="text-success fw-bold d-block" style="font-size: 0.68rem; line-height: 1.1;">VERIFIED</small>
+                                                        <input type="text" name="items[<?= $vid ?>][received_qty]" 
+                                                               class="form-control form-control-sm text-center fw-bold text-success item-received-input input-qty-box mx-auto" 
+                                                               id="input-recv-<?= $vid ?>" 
+                                                               value="<?= $initReceived ?>" data-variant-id="<?= $vid ?>"
+                                                               readonly tabindex="-1" onkeydown="return false;" onfocus="this.blur();"
+                                                               style="width: 58px; padding: 2px 4px; pointer-events: none; cursor: not-allowed; user-select: none; background-color: #f8fafc;"
+                                                               title="Verified quantity is non-editable and updates only via barcode/QR scanning">
+                                                    </div>
+
+                                                    <!-- Damaged / Quarantined Units (Non-editable / Toggle icon button removed) -->
+                                                    <div class="text-center" title="Quarantined Damaged Quantity (Non-editable)">
+                                                        <small class="text-danger fw-bold d-block" style="font-size: 0.68rem; line-height: 1.1;">DAMAGED</small>
+                                                        <input type="text" name="items[<?= $vid ?>][damaged_qty]" 
+                                                               class="form-control form-control-sm text-center item-damaged-input input-dmg-box mx-auto <?= $initDamaged > 0 ? 'is-active text-danger fw-bold' : 'is-locked text-secondary' ?>" 
+                                                               id="input-dmg-<?= $vid ?>" 
+                                                               value="<?= $initDamaged ?>" data-variant-id="<?= $vid ?>" 
+                                                               readonly tabindex="-1" onkeydown="return false;" onfocus="this.blur();"
+                                                               style="width: 50px; padding: 2px 4px; pointer-events: none; cursor: not-allowed; user-select: none;"
+                                                               title="Damaged quantity is non-editable and updates only via barcode/QR scanning">
+                                                    </div>
                                                 </div>
-                                                <div class="text-danger <?= $initDamaged > 0 ? '' : 'd-none' ?> mt-1 fw-bold font-monospace" id="dmg-label-<?= $vid ?>" style="font-size: 9px; line-height: 1;"><?= $initDamaged ?> QUARANTINED</div>
+                                                <div class="text-danger <?= $initDamaged > 0 ? '' : 'd-none' ?> mt-1 fw-bold font-monospace text-center" id="dmg-label-<?= $vid ?>" style="font-size: 9px; line-height: 1;"><?= $initDamaged ?> QUARANTINED</div>
                                             <?php else: ?>
-                                                <span class="<?= $initDamaged > 0 ? 'badge bg-danger text-white' : 'text-muted' ?>"><?= $initDamaged ?> pcs</span>
+                                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                                    <span class="fw-bold text-success fs-7" title="Verified Good"><?= number_format($initReceived) ?> Good</span>
+                                                    <span class="text-muted">/</span>
+                                                    <span class="<?= $initDamaged > 0 ? 'badge bg-danger text-white' : 'text-muted small' ?>" title="Damaged"><?= $initDamaged ?> Dmg</span>
+                                                </div>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center">
@@ -540,7 +516,7 @@
                                         </td>
                                         <td class="text-center">
                                             <span id="status-badge-<?= $vid ?>" class="badge <?= $initDiff === 0 ? ($initDamaged > 0 ? 'bg-warning text-dark border border-warning' : 'bg-success-subtle text-success border border-success') : 'bg-danger-subtle text-danger border border-danger' ?>" style="font-size: 0.72rem;">
-                                                 <?= $initDiff === 0 ? ($initDamaged > 0 ? "DMG ($initDamaged)" : 'MATCHED') : "SHORT (" . abs($initDiff) . ")" ?>
+                                                 <?= $initDiff === 0 ? ($initDamaged > 0 ? "DMG ($initDamaged)" : 'MATCHED') : 'SHORT (' . abs($initDiff) . ')' ?>
                                             </span>
                                         </td>
                                         <td class="text-center">
@@ -548,14 +524,7 @@
                                                 <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold shadow-sm" onclick="openMissingProductModal(<?= $vid ?>, 'all')" title="View Product Details & QR Breakdown">
                                                     <i class="bi bi-eye me-1"></i> View
                                                 </button>
-                                                <?php if ($canScanOrEdit): ?>
-                                                    <button type="button" class="btn btn-sm btn-outline-danger py-1 px-2 fw-semibold shadow-sm" onclick="adjustDamage(<?= $vid ?>, 1)" title="Add +1 Damaged Piece & Inactivate">
-                                                        <i class="bi bi-slash-circle"></i> +1 Dmg
-                                                    </button>
-                                                    <button type="button" class="btn btn-sm btn-outline-success py-1 px-2 fw-semibold shadow-sm btn-credit-single" onclick="creditSingleItem(<?= $vid ?>)" id="btn-credit-item-<?= $vid ?>" title="Quick Match All Expected Pieces">
-                                                        <i class="bi bi-box-arrow-in-down me-1"></i> All
-                                                    </button>
-                                                <?php endif; ?>
+                                               
                                             </div>
                                         </td>
                                     </tr>
@@ -577,9 +546,7 @@
                         <?php endif; ?>
                         <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
                             <input type="hidden" name="notes" id="inwardNotes" value="">
-                            <div class="text-muted small">
-                                <i class="bi bi-shield-check text-success me-1"></i>Ready for physical piece inspection &amp; instant stock crediting.
-                            </div>
+                           
                             <div>
                                 <button type="button" class="btn btn-success px-4 py-2 fw-bold shadow-sm fs-6" id="btnCreditScannedOnly" onclick="creditScannedOnly();">
                                     <i class="bi bi-box-arrow-in-down me-2"></i> <?= ($batch['status'] === 'RECEIVED' && $displayMis > 0) ? 'Update / Credit Inward Stock (<span id="btnCreditScannedCount">+0</span> pcs)' : 'Credit Scanned Qty (<span id="btnCreditScannedCount">0</span> pcs)' ?> to <?= e($batch['warehouse_name']) ?> Inventory
@@ -598,93 +565,6 @@
                 <?php endif; ?>
             </div>
         </form>
-
-        <?php if (!empty($damages)): ?>
-            <!-- QUARANTINED DAMAGE CASES ASSOCIATED WITH THIS BATCH -->
-            <div class="card border-0 shadow-sm mb-4 border-start border-4 border-danger">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div>
-                        <h6 class="card-title mb-0 fw-bold text-danger">
-                            <i class="bi bi-exclamation-octagon-fill me-2"></i>Quarantined Damaged Pieces (<?= count($damages) ?> Cases Logged)
-                        </h6>
-                        <small class="text-muted">These units were flagged during inward verification and automatically isolated into the Damage Management Module.</small>
-                    </div>
-                    <a href="<?= url('warehouse/damage?search=' . urlencode($batch['batch_number'])) ?>" class="btn btn-sm btn-outline-danger">
-                        <i class="bi bi-shield-exclamation me-1"></i> View All in Damage Module
-                    </a>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="ps-3 text-uppercase fs-7 fw-bold text-muted">Case #</th>
-                                    <th class="text-uppercase fs-7 fw-bold text-muted">Scanned QR Tag</th>
-                                    <th class="text-uppercase fs-7 fw-bold text-muted">Product &amp; Variant</th>
-                                    <th class="text-uppercase fs-7 fw-bold text-muted">Damage Reason</th>
-                                    <th class="text-center text-uppercase fs-7 fw-bold text-muted">Damaged Qty</th>
-                                    <th class="text-uppercase fs-7 fw-bold text-muted">Disposition Status</th>
-                                    <th class="pe-3 text-end text-uppercase fs-7 fw-bold text-muted">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($damages as $dmg): ?>
-                                    <tr>
-                                        <td class="ps-3 text-nowrap">
-                                            <a href="<?= url('warehouse/damage/view/' . $dmg['id']) ?>" class="badge bg-danger-subtle text-danger border border-danger-subtle font-monospace px-2.5 py-1.5 fs-7 fw-bold text-decoration-none shadow-2xs d-inline-flex align-items-center gap-1">
-                                                <i class="bi bi-file-earmark-text text-danger"></i>
-                                                <?= e($dmg['damage_number']) ?>
-                                            </a>
-                                        </td>
-                                        <td class="text-nowrap">
-                                            <?php 
-                                                $displayTag = $dmg['tag_code'] ?? '';
-                                                if (empty($displayTag) || str_contains($displayTag, '-') || str_contains($displayTag, 'SKU')) {
-                                                    $c1 = !empty($dmg['category_name']) ? strtoupper(substr(trim($dmg['category_name']), 0, 1)) : 'M';
-                                                    $c2 = !empty($dmg['subcategory_name']) ? strtoupper(substr(trim($dmg['subcategory_name']), 0, 1)) : 'T';
-                                                    $c3 = !empty($dmg['sub_subcategory_name']) ? strtoupper(substr(trim($dmg['sub_subcategory_name']), 0, 1)) : 'P';
-                                                    $mmyy = date('my', !empty($dmg['created_at']) ? strtotime($dmg['created_at']) : time());
-                                                    $displayTag = $c1 . $c2 . $c3 . $mmyy . '01';
-                                                }
-                                            ?>
-                                            <?php if (!empty($displayTag)): ?>
-                                                <span class="badge bg-dark font-monospace text-warning px-2.5 py-1.5"><i class="bi bi-qr-code me-1 text-warning"></i><?= e($displayTag) ?></span>
-                                            <?php else: ?>
-                                                <span class="badge bg-light text-muted border">&mdash;</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <div class="fw-bold text-dark small"><?= e($dmg['product_name']) ?></div>
-                                            <span class="badge bg-light text-dark border small font-monospace"><?= e($dmg['sku']) ?></span>
-                                            <span class="badge bg-light text-secondary border small"><?= e($dmg['size_name'] ?? 'Std') ?> / <?= e($dmg['color_name'] ?? 'Std') ?></span>
-                                        </td>
-                                        <td>
-                                            <div class="small text-danger fw-semibold"><?= e($dmg['damage_reason']) ?></div>
-                                        </td>
-                                        <td class="text-center text-nowrap">
-                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle fs-7 px-2.5 py-1 fw-bold">
-                                                <?= number_format($dmg['quantity']) ?> pcs
-                                            </span>
-                                        </td>
-                                        <td class="text-nowrap">
-                                            <span class="badge bg-danger text-white px-2.5 py-1 rounded-pill fw-semibold">
-                                                <?= e($dmg['status']) ?>
-                                            </span>
-                                        </td>
-                                        <td class="pe-3 text-end text-nowrap">
-                                            <a href="<?= url('warehouse/damage/view/' . $dmg['id']) ?>" class="btn btn-sm btn-outline-danger px-2.5 py-1 shadow-sm d-inline-flex align-items-center gap-1">
-                                                <i class="bi bi-eye"></i>
-                                                <span>View Case</span>
-                                            </a>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        <?php endif; ?>
     </div>
 </div>
 
@@ -769,42 +649,10 @@
                 <!-- QR Display & Action Box -->
                 <div class="row g-4 align-items-center mb-4">
                     <div class="col-md-5 text-center">
-                        <div class="p-3 bg-white rounded border shadow-sm d-inline-block position-relative">
+                        <div class="p-3 bg-white rounded-3 border shadow-sm d-inline-block position-relative">
                             <div id="modalQrCanvas" class="d-flex justify-content-center"></div>
-                            <div class="mt-2 text-center">
-                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace px-2 py-1" style="font-size: 0.75rem;" id="modalQrTypeLabel">
-                                    <i class="bi bi-qr-code me-1"></i>Exact Product Variant QR
-                                </span>
-                            </div>
-                        </div>
-
-                        <!-- Segmented Switch for QR Code mode -->
-                        <div class="d-flex justify-content-center mt-2">
-                            <div class="btn-group btn-group-sm shadow-sm" role="group" aria-label="QR Code Mode">
-                                <button type="button" class="btn btn-primary active fw-semibold" id="btnModeExactQr" onclick="switchModalQrMode('exact')">
-                                    <i class="bi bi-qr-code me-1"></i>Product Exact QR
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary fw-semibold" id="btnModePieceTag" onclick="switchModalQrMode('piece')">
-                                    <i class="bi bi-tag-fill me-1"></i>Piece Tag
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- QR / Variant Info Card -->
-                        <div class="mt-2 text-start bg-light p-2.5 rounded border" id="modalQrInfoCard">
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <small class="text-muted fw-bold text-uppercase" style="font-size: 0.68rem;"><i class="bi bi-upc-scan me-1 text-primary"></i>Product Exact QR / SKU:</small>
-                                <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2 fw-semibold shadow-xs" onclick="copyExactQrToClipboard()" title="Copy Exact QR Value">
-                                    <i class="bi bi-clipboard me-1"></i>Copy
-                                </button>
-                            </div>
-                            <div class="font-monospace fw-bold text-primary text-break small mb-2 p-1.5 bg-white rounded border d-flex align-items-center justify-content-between" id="modalExactQrBox">
-                                <span id="modalExactQrText">-</span>
-                            </div>
-
-                            <div class="d-flex justify-content-between align-items-center">
-                                <small class="text-muted fw-bold text-uppercase" style="font-size: 0.68rem;"><i class="bi bi-tag-fill me-1 text-secondary"></i>Next Sequential Tag:</small>
-                                <span class="badge bg-dark font-monospace text-warning px-2 py-1" id="modalNextPieceTagText">-</span>
+                            <div class="text-center" id="modalQrTypeLabel">
+                                <div class="font-monospace fw-bold text-primary fs-5 mt-2" style="letter-spacing: 0.5px;">-</div>
                             </div>
                         </div>
                     </div>
@@ -823,32 +671,17 @@
                                         <i class="bi bi-slash-circle-fill me-1"></i> 🔴 Damaged / Inactivate Mode
                                     </label>
                                 </div>
-                                <div id="modalModeStatusBadge" class="mt-2 text-center">
-                                    <span class="badge bg-success-subtle text-success border border-success px-3 py-1.5 w-100 shadow-sm" style="font-size: 0.85rem;">
-                                        <i class="bi bi-check2-all me-1"></i>Currently scanning verified sellable stock
-                                    </span>
-                                </div>
+                               
                             </div>
 
-                            <div class="p-2.5 bg-primary bg-opacity-10 border border-primary border-opacity-25 rounded mb-3">
-                                <small class="text-primary d-block fw-semibold" style="font-size: 0.78rem;">
-                                    <i class="bi bi-info-circle-fill me-1"></i><strong>Live Barcode Gun Target:</strong> Scan the product's exact QR code label (<code class="text-dark bg-white px-1 rounded" id="modalScanTargetSku">-</code>) or piece tag with your USB scanner to auto-verify pieces.
-                                </small>
-                            </div>
+                           
                             <div class="d-flex flex-column gap-2">
                                 <div class="d-flex gap-2 flex-wrap">
                                     <button type="button" class="btn btn-success fw-bold py-2 flex-grow-1 shadow-sm" id="btnModalProcessNext">
                                         <i class="bi bi-check-circle-fill me-1" id="btnModalProcessIcon"></i> <span id="btnModalProcessText">Inward Next Piece (Good Product)</span>
                                     </button>
                                 </div>
-                                <div class="d-flex gap-2 flex-wrap">
-                                    <button type="button" class="btn btn-outline-primary fw-semibold py-2 flex-grow-1 shadow-sm" id="btnModalScanAllMissing">
-                                        <i class="bi bi-check2-all me-1"></i> Quick All Good Products
-                                    </button>
-                                    <button type="button" class="btn btn-outline-danger fw-semibold py-2 shadow-sm" id="btnModalResetItem" title="Reset / Un-verify all scanned pieces for this item">
-                                        <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
-                                    </button>
-                                </div>
+                                
                             </div>
                         <?php else: ?>
                             <div class="alert alert-secondary border-0 text-center py-4 rounded-3">
@@ -867,9 +700,8 @@
                             <h6 class="fw-bold text-dark mb-0" id="modalPiecesSectionTitle">
                                 <i class="bi bi-grid-3x3-gap-fill text-primary me-1"></i> Individual Pieces Breakdown (<span id="modalMissingPiecesCount">0</span> pending)
                             </h6>
-                            <small class="text-muted" id="modalPiecesSubtitle">Click 🟢 Good Product to verify or 🔴 Damage Product to report damage</small>
                         </div>
-                        <!-- Filter Pill Controls: Only Mismatched vs All Pieces vs Verified -->
+                        <!-- Filter Pill Controls: Only Mismatched vs All Pieces vs Verified vs Damaged -->
                         <div class="btn-group btn-group-sm shadow-sm" role="group" aria-label="Piece Filter">
                             <button type="button" class="btn btn-danger btn-sm active fw-semibold" id="btnFilterMismatched" onclick="setModalPieceFilter('mismatched')" title="Show only unverified / mismatched pieces">
                                 <i class="bi bi-exclamation-circle me-1"></i> Only Mismatched (<span id="filterCountMismatched">0</span>)
@@ -877,8 +709,11 @@
                             <button type="button" class="btn btn-outline-secondary btn-sm fw-semibold" id="btnFilterAll" onclick="setModalPieceFilter('all')" title="Show all pieces for this product">
                                 <i class="bi bi-grid-3x3 me-1"></i> All Pieces (<span id="filterCountAll">0</span>)
                             </button>
-                            <button type="button" class="btn btn-outline-success btn-sm fw-semibold" id="btnFilterVerified" onclick="setModalPieceFilter('verified')" title="Show only verified pieces">
+                            <button type="button" class="btn btn-outline-success btn-sm fw-semibold" id="btnFilterVerified" onclick="setModalPieceFilter('verified')" title="Show only verified intact pieces">
                                 <i class="bi bi-check2-circle me-1"></i> Verified (<span id="filterCountVerified">0</span>)
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm fw-semibold" id="btnFilterDamaged" onclick="setModalPieceFilter('damaged')" title="Show only quarantined damaged pieces">
+                                <i class="bi bi-slash-circle me-1"></i> Damaged (<span id="filterCountDamaged">0</span>)
                             </button>
                         </div>
                     </div>
@@ -970,15 +805,16 @@
 
 <script>
     // In-memory data structures
-    const BATCH_ID = <?= (int)$batch['id'] ?>;
+    const BATCH_ID = <?= (int) $batch['id'] ?>;
     const BATCH_NUMBER = <?= json_encode($batch['batch_number']) ?>;
     const BATCH_CREATED_AT = <?= json_encode($batch['created_at'] ?? '') ?>;
     const WAREHOUSE_NAME = <?= json_encode($batch['warehouse_name']) ?>;
     const WAREHOUSE_CODE = <?= json_encode($batch['warehouse_code'] ?? '') ?>;
     const OUTWARD_NUMBER = <?= json_encode($outward['outward_number'] ?? '') ?>;
-    const TOTAL_EXPECTED = <?= (int)$totalExpected ?>;
+    const TOTAL_EXPECTED = <?= (int) $totalExpected ?>;
     const BATCH_STATUS = <?= json_encode($batch['status']) ?>;
     const ITEMS = <?= json_encode($items) ?>;
+    const LOGGED_DAMAGES = <?= json_encode($damages ?? []) ?>;
 
     let activeModalVariantId = null;
     let currentScanMode = 'good'; // 'good' or 'damage'
@@ -1088,8 +924,28 @@
         }
     });
 
+    // Seed any tags from logged damages records
+    if (Array.isArray(LOGGED_DAMAGES)) {
+        LOGGED_DAMAGES.forEach(dmg => {
+            if (dmg.tag_code) {
+                String(dmg.tag_code).split(',').forEach(t => {
+                    const cleanT = t.trim().toUpperCase();
+                    if (cleanT) {
+                        DAMAGED_TAGS.add(cleanT);
+                        PERSISTED_DAMAGED_TAGS.add(cleanT);
+                        SCANNED_TAGS.delete(cleanT);
+                    }
+                });
+            }
+        });
+    }
+
     // Restore previously scanned tags from localStorage (survives page navigation and module switching)
     restoreScanState();
+
+    // Persisted tags always take absolute precedence over restored local storage
+    PERSISTED_INWARD_TAGS.forEach(t => { SCANNED_TAGS.add(t); DAMAGED_TAGS.delete(t); });
+    PERSISTED_DAMAGED_TAGS.forEach(t => { DAMAGED_TAGS.add(t); SCANNED_TAGS.delete(t); });
 
     // Synchronize SCANNED_TAGS & DAMAGED_TAGS with input field values
     function syncVariantTagsWithInput(item) {
@@ -1278,13 +1134,7 @@
     }
 
     function getQRPayload(pieceIndex, item) {
-        const tagCode = getLabelCode(pieceIndex, item);
-        const sku = (item && item.sku) ? item.sku : '';
-        const mrp = parseFloat(item && (item.qc_base_price || item.mrp || item.base_price || item.selling_price) ? (item.qc_base_price || item.mrp || item.base_price || item.selling_price) : 0);
-        const costPrice = parseFloat(item && (item.qc_discount_price || item.purchase_price || item.production_cost || item.cost_price || item.selling_price || mrp) ? (item.qc_discount_price || item.purchase_price || item.production_cost || item.cost_price || item.selling_price || mrp) : 0);
-        const fmtMrp = mrp > 0 ? mrp.toFixed(2) : '—';
-        const fmtDisc = costPrice > 0 ? costPrice.toFixed(2) : '—';
-        return `${tagCode}|${sku}|MRP:${fmtMrp}|Disc:${fmtDisc}`;
+        return getLabelCode(pieceIndex, item).toUpperCase();
     }
 
     // Product Variant Exact QR Code Resolver
@@ -1299,7 +1149,7 @@
         return getLabelCode(item.startSeq || 1, item);
     }
 
-    // 2D QR Code Tag Preview Modal Handler (Matching Single Garment Sticker Mockup)
+    // 2D QR Code Tag Preview Modal Handler (Matching Clean Format of First QR Type)
     window.previewSinglePieceTag = function(variantId, pieceNum, tagCode) {
         const item = ITEMS.find(i => String(i.variant_id) === String(variantId));
         if (!item) return;
@@ -1310,18 +1160,15 @@
         if (isNaN(mrp)) mrp = 0;
         if (isNaN(cost)) cost = 0;
 
-        const fmtMrp = mrp > 0 ? mrp.toFixed(2) : '—';
-        const fmtCost = cost > 0 ? cost.toFixed(2) : '—';
         const finalTag = (tagCode || getLabelCode(item.startSeq + pieceNum - 1, item)).toUpperCase();
 
         const qrContainer = document.getElementById('modalQrCanvas');
         if (qrContainer && typeof QRCode !== 'undefined') {
             qrContainer.innerHTML = '';
-            const qrPayload = `${finalTag}|${item.sku || ''}|MRP:${fmtMrp}|Disc:${fmtCost}`;
             new QRCode(qrContainer, {
-                text: qrPayload,
-                width: 190,
-                height: 190,
+                text: finalTag,
+                width: 150,
+                height: 150,
                 colorDark: "#0f172a",
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.M
@@ -1330,12 +1177,23 @@
         
         const typeLabelEl = document.getElementById('modalQrTypeLabel');
         if (typeLabelEl) {
-            typeLabelEl.innerHTML = `<i class="bi bi-tag-fill me-1 text-warning"></i>Selected Tag: <strong class="text-dark">${escapeHtml(finalTag)}</strong>`;
+            typeLabelEl.innerHTML = `<div class="font-monospace fw-bold text-primary fs-5 mt-2" style="letter-spacing: 0.5px;">${escapeHtml(finalTag)}</div>`;
         }
         
+        const exactQrEl = document.getElementById('modalExactQrText');
+        if (exactQrEl) {
+            exactQrEl.textContent = finalTag;
+            exactQrEl.dataset.qrValue = finalTag;
+        }
+
+        const tagNumBadge = document.getElementById('modalPieceTagNumBadge');
+        if (tagNumBadge) {
+            tagNumBadge.textContent = `Piece #${pieceNum}`;
+        }
+
         const nextTagEl = document.getElementById('modalNextPieceTagText');
         if (nextTagEl) {
-            nextTagEl.textContent = `${finalTag} (Preview)`;
+            nextTagEl.textContent = `${finalTag} (Piece #${pieceNum})`;
         }
 
         const scanTargetSku = document.getElementById('modalScanTargetSku');
@@ -1351,40 +1209,23 @@
         }
     };
 
-    let modalQrDisplayMode = 'exact'; // 'exact' (Product Exact QR) or 'piece' (Sequential Piece Tag)
+    let modalQrDisplayMode = 'piece'; // Default to Piece Tag display mode
 
     window.switchModalQrMode = function(mode) {
         modalQrDisplayMode = mode;
-        const btnExact = document.getElementById('btnModeExactQr');
-        const btnPiece = document.getElementById('btnModePieceTag');
-        if (mode === 'exact') {
-            if (btnExact) {
-                btnExact.className = 'btn btn-primary active fw-semibold';
-            }
-            if (btnPiece) {
-                btnPiece.className = 'btn btn-outline-secondary fw-semibold';
-            }
-        } else {
-            if (btnExact) {
-                btnExact.className = 'btn btn-outline-secondary fw-semibold';
-            }
-            if (btnPiece) {
-                btnPiece.className = 'btn btn-primary active fw-semibold';
-            }
-        }
         if (activeModalVariantId) {
             updateModalState(activeModalVariantId);
         }
     };
 
-    window.copyExactQrToClipboard = function() {
+    window.copyPieceTagToClipboard = function() {
         const textEl = document.getElementById('modalExactQrText');
         const code = textEl ? (textEl.dataset.qrValue || textEl.textContent.trim()) : '';
         if (!code || code === '-') return;
 
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(code).then(() => {
-                showToastMessage(`Copied Product QR: ${code}`);
+                showToastMessage(`Copied Piece Tag: ${code}`);
             }).catch(() => {
                 fallbackCopy(code);
             });
@@ -1392,6 +1233,7 @@
             fallbackCopy(code);
         }
     };
+    window.copyExactQrToClipboard = window.copyPieceTagToClipboard;
 
     function fallbackCopy(text) {
         const tempInp = document.createElement('input');
@@ -1400,9 +1242,9 @@
         tempInp.select();
         try {
             document.execCommand('copy');
-            showToastMessage(`Copied Product QR: ${text}`);
+            showToastMessage(`Copied Piece Tag: ${text}`);
         } catch(e) {
-            prompt('Copy Product QR Code:', text);
+            prompt('Copy Piece Tag Code:', text);
         }
         document.body.removeChild(tempInp);
     }
@@ -1669,17 +1511,19 @@
             if (recvInput) recvInput.value = goodCount;
             if (dmgInput) {
                 dmgInput.value = dmgCount;
+                dmgInput.readOnly = true;
+                dmgInput.setAttribute('readonly', 'readonly');
                 if (dmgCount > 0) {
-                    dmgInput.readOnly = false;
-                    dmgInput.removeAttribute('readonly');
                     dmgInput.classList.remove('is-locked');
                     dmgInput.classList.add('is-active');
                     if (dmgLabel) {
                         dmgLabel.textContent = `${dmgCount} QUARANTINED`;
                         dmgLabel.classList.remove('d-none');
                     }
-                    if (btnToggle) btnToggle.className = 'btn btn-sm btn-danger text-white p-1 shadow-sm';
-                    if (iconToggle) iconToggle.className = 'bi bi-exclamation-octagon-fill';
+                } else {
+                    dmgInput.classList.add('is-locked');
+                    dmgInput.classList.remove('is-active');
+                    if (dmgLabel) dmgLabel.classList.add('d-none');
                 }
             }
         });
@@ -1951,9 +1795,9 @@
         if (!input) return;
 
         if (input.readOnly || input.hasAttribute('readonly')) {
-            // Unlock / Enable damage mode
-            input.readOnly = false;
-            input.removeAttribute('readonly');
+            // Keep input readonly
+            input.readOnly = true;
+            input.setAttribute('readonly', 'readonly');
             input.classList.remove('is-locked');
             input.classList.add('is-active');
 
@@ -2001,11 +1845,18 @@
                 showScanFeedback(`ℹ️ Damage mode locked. All verified pieces for <strong>${escapeHtml(item ? item.sku : 'Product')}</strong> are intact.`, 'info');
             } else {
                 // If user wants to reset to 0 and lock:
+                const persistedDmgCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item ? item.damaged_qty : 0) || 0) : 0;
+                if (persistedDmgCount > 0) {
+                    playBeep('error');
+                    alert(`Cannot reset damaged count: ${persistedDmgCount} piece(s) were already inwarded and quarantined in warehouse records.`);
+                    return;
+                }
                 if (confirm(`Reset damaged count to 0 for ${item ? item.sku : 'this product'} and lock?`)) {
-                    // Remove damaged tags and restore to intact or pending
+                    // Remove damaged tags and restore to intact or pending (skipping persisted tags)
                     for (let p = item.startSeq; p <= item.endSeq; p++) {
                         const tag = getLabelCode(p, item).toUpperCase();
                         if (QC_EXCLUDED_TAGS.has(tag)) continue;
+                        if (PERSISTED_DAMAGED_TAGS.has(tag)) continue;
                         DAMAGED_TAGS.delete(tag);
                     }
                     input.value = 0;
@@ -2082,10 +1933,10 @@
                 }
             }
 
-            // Unlock damage input and show active quarantine badges
+            // Update damage input styling while keeping it permanently readonly
             if (dmgInput) {
-                dmgInput.readOnly = false;
-                dmgInput.removeAttribute('readonly');
+                dmgInput.readOnly = true;
+                dmgInput.setAttribute('readonly', 'readonly');
                 dmgInput.classList.remove('is-locked');
                 dmgInput.classList.add('is-active');
             }
@@ -2100,10 +1951,17 @@
             }
         } else if (delta < 0) {
             // Decreasing damage count (-1)
+            const persistedDmgCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.damaged_qty) || 0) : 0;
+            if (currentDmg <= persistedDmgCount) {
+                playBeep('error');
+                showScanFeedback(`🔒 Cannot decrease: ${persistedDmgCount} damaged piece(s) were already inwarded and quarantined in warehouse records.`, 'warning');
+                return;
+            }
             if (currentDmg <= 0) return;
             for (let p = item.endSeq; p >= item.startSeq; p--) {
                 const tag = getLabelCode(p, item).toUpperCase();
                 if (QC_EXCLUDED_TAGS.has(tag)) continue;
+                if (PERSISTED_DAMAGED_TAGS.has(tag)) continue;
                 if (DAMAGED_TAGS.has(tag)) {
                     DAMAGED_TAGS.delete(tag);
                     break;
@@ -2156,7 +2014,7 @@
                 break;
             }
         }
-        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
+        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (BATCH_STATUS === 'RECEIVED' && SCANNED_TAGS.has(normalizedTag)) || (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
             playBeep('error');
             showScanFeedback(`🔒 Piece <span class="badge bg-dark font-monospace">${escapeHtml(normalizedTag)}</span> was already credited to warehouse inventory and cannot be changed to damaged.`, 'warning');
             return;
@@ -2170,8 +2028,8 @@
         if (recvInput) recvInput.value = getVariantVerifiedTagCount(item);
         if (dmgInput) {
             dmgInput.value = getVariantDamagedTagCount(item);
-            dmgInput.readOnly = false;
-            dmgInput.removeAttribute('readonly');
+            dmgInput.readOnly = true;
+            dmgInput.setAttribute('readonly', 'readonly');
             dmgInput.classList.remove('is-locked');
             dmgInput.classList.add('is-active');
         }
@@ -2191,6 +2049,12 @@
         if (!item) return;
 
         const normalizedTag = tagCode.toUpperCase();
+        if (PERSISTED_DAMAGED_TAGS.has(normalizedTag) || (BATCH_STATUS === 'RECEIVED' && DAMAGED_TAGS.has(normalizedTag))) {
+            playBeep('error');
+            showScanFeedback(`🔒 Piece <span class="badge bg-dark font-monospace">${escapeHtml(normalizedTag)}</span> was already inwarded as damaged/quarantined and cannot be modified.`, 'warning');
+            return;
+        }
+
         DAMAGED_TAGS.delete(normalizedTag);
         SCANNED_TAGS.add(normalizedTag);
 
@@ -2308,6 +2172,27 @@
                 } else {
                     statusBadge.textContent = `EXCESS (+${diff})`;
                     statusBadge.className = 'badge bg-primary-subtle text-primary border border-primary';
+                }
+            }
+
+            // Update next pending QR tag display in the unified table
+            const nextTagVal = document.getElementById(`next-tag-val-${vid}`);
+            const nextTagCont = document.getElementById(`next-tag-container-${vid}`);
+            if (nextTagVal && item.startSeq && item.endSeq) {
+                let firstPending = null;
+                for (let p = item.startSeq; p <= item.endSeq; p++) {
+                    const t = getLabelCode(p, item).toUpperCase();
+                    if (QC_EXCLUDED_TAGS.has(t)) continue;
+                    if (!SCANNED_TAGS.has(t) && !DAMAGED_TAGS.has(t)) {
+                        firstPending = t;
+                        break;
+                    }
+                }
+                if (firstPending) {
+                    nextTagVal.textContent = firstPending;
+                    if (nextTagCont) nextTagCont.classList.remove('d-none');
+                } else {
+                    if (nextTagCont) nextTagCont.classList.add('d-none');
                 }
             }
 
@@ -2534,7 +2419,8 @@
 
         const currentTagCode = getLabelCode(currentTagSeq, item);
         const pieceQrPayload = getQRPayload(currentTagSeq, item);
-        const activeQrPayload = (modalQrDisplayMode === 'exact') ? exactQr : pieceQrPayload;
+        const activeQrPayload = pieceQrPayload;
+        const pieceNum = currentTagSeq - item.startSeq + 1;
 
         // Update modal info elements
         const modalImg = document.getElementById('modalProductImgContainer');
@@ -2555,32 +2441,34 @@
         document.getElementById('modalDamagedQty').textContent = damaged;
         document.getElementById('modalMissingQty').textContent = missing;
 
-        // Update Exact QR Text Box & Next Piece Tag
+        // Update Piece Tag Text Box & Badge in simple Product Exact QR format
         const exactQrEl = document.getElementById('modalExactQrText');
         if (exactQrEl) {
-            exactQrEl.textContent = exactQr;
-            exactQrEl.dataset.qrValue = exactQr;
+            exactQrEl.textContent = currentTagCode;
+            exactQrEl.dataset.qrValue = currentTagCode;
+        }
+
+        const tagNumBadge = document.getElementById('modalPieceTagNumBadge');
+        if (tagNumBadge) {
+            tagNumBadge.textContent = missing > 0 ? `Piece #${pieceNum}` : 'Completed';
         }
 
         const nextTagEl = document.getElementById('modalNextPieceTagText');
         if (nextTagEl) {
-            const pieceNum = currentTagSeq - item.startSeq + 1;
             nextTagEl.textContent = missing > 0 ? `${currentTagCode} (Piece #${pieceNum})` : `${currentTagCode} (Completed)`;
         }
 
         const typeLabelEl = document.getElementById('modalQrTypeLabel');
         if (typeLabelEl) {
-            typeLabelEl.innerHTML = (modalQrDisplayMode === 'exact')
-                ? `<i class="bi bi-qr-code me-1 text-primary"></i>Exact Product QR: <strong class="text-dark">${escapeHtml(exactQr)}</strong>`
-                : `<i class="bi bi-tag-fill me-1 text-warning"></i>Sequential Tag: <strong class="text-dark">${escapeHtml(currentTagCode)}</strong>`;
+            typeLabelEl.innerHTML = `<div class="font-monospace fw-bold text-primary fs-5 mt-2" style="letter-spacing: 0.5px;">${escapeHtml(currentTagCode)}</div>`;
         }
 
         const scanTargetSku = document.getElementById('modalScanTargetSku');
         if (scanTargetSku) {
-            scanTargetSku.textContent = exactQr;
+            scanTargetSku.textContent = currentTagCode;
         }
 
-        // Render QR Code on Canvas (High size 190x190)
+        // Render QR Code on Canvas (Matching clean format of First QR Type)
         const qrContainer = document.getElementById('modalQrCanvas');
         if (qrContainer && typeof QRCode !== 'undefined') {
             qrContainer.innerHTML = '';
@@ -2590,12 +2478,12 @@
                     if (!qrContainer) return;
                     qrContainer.innerHTML = '';
                     new QRCode(qrContainer, {
-                        text: String(activeQrPayload || 'Empty QR Data'),
-                        width: 190,
-                        height: 190,
+                        text: String(currentTagCode || 'Empty'),
+                        width: 150,
+                        height: 150,
                         colorDark: "#0f172a",
                         colorLight: "#ffffff",
-                        correctLevel: QRCode.CorrectLevel.H
+                        correctLevel: QRCode.CorrectLevel.M
                     });
                 }, 50);
             } catch(e) {
@@ -2619,34 +2507,50 @@
         }
 
         if (btnReset) {
-            // Can only reset if there are uncommitted scans or damage beyond creditedCount
-            btnReset.disabled = (scanned <= creditedCount && damaged === 0);
+            // Can only reset if there are uncommitted scans or uncommitted damage
+            let uncommittedGood = 0;
+            let uncommittedDmg = 0;
+            for (let p = item.startSeq; p <= item.endSeq; p++) {
+                const tag = getLabelCode(p, item).toUpperCase();
+                if (QC_EXCLUDED_TAGS.has(tag)) continue;
+                if (SCANNED_TAGS.has(tag) && !PERSISTED_INWARD_TAGS.has(tag)) uncommittedGood++;
+                if (DAMAGED_TAGS.has(tag) && !PERSISTED_DAMAGED_TAGS.has(tag)) uncommittedDmg++;
+            }
+            btnReset.disabled = (uncommittedGood === 0 && uncommittedDmg === 0);
         }
 
         // Update Filter Button Badges and Active Styles
         const filterCountMismatched = document.getElementById('filterCountMismatched');
         const filterCountAll = document.getElementById('filterCountAll');
         const filterCountVerified = document.getElementById('filterCountVerified');
+        const filterCountDamaged = document.getElementById('filterCountDamaged');
         if (filterCountMismatched) filterCountMismatched.textContent = missing;
         if (filterCountAll) filterCountAll.textContent = expected;
-        if (filterCountVerified) filterCountVerified.textContent = scanned + damaged;
+        if (filterCountVerified) filterCountVerified.textContent = scanned;
+        if (filterCountDamaged) filterCountDamaged.textContent = damaged;
 
         const btnFilterMismatched = document.getElementById('btnFilterMismatched');
         const btnFilterAll = document.getElementById('btnFilterAll');
         const btnFilterVerified = document.getElementById('btnFilterVerified');
+        const btnFilterDamaged = document.getElementById('btnFilterDamaged');
         const titleEl = document.getElementById('modalPiecesSectionTitle');
 
         if (btnFilterMismatched && btnFilterAll && btnFilterVerified) {
             btnFilterMismatched.className = (modalPieceFilter === 'mismatched') ? 'btn btn-danger btn-sm active fw-bold' : 'btn btn-outline-danger btn-sm fw-semibold';
             btnFilterAll.className = (modalPieceFilter === 'all') ? 'btn btn-secondary btn-sm active fw-bold' : 'btn btn-outline-secondary btn-sm fw-semibold';
             btnFilterVerified.className = (modalPieceFilter === 'verified') ? 'btn btn-success btn-sm active fw-bold' : 'btn btn-outline-success btn-sm fw-semibold';
+            if (btnFilterDamaged) {
+                btnFilterDamaged.className = (modalPieceFilter === 'damaged') ? 'btn btn-danger btn-sm active fw-bold' : 'btn btn-outline-danger btn-sm fw-semibold';
+            }
         }
 
         if (titleEl) {
             if (modalPieceFilter === 'mismatched') {
                 titleEl.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> Mismatched / Missing Pieces (<span id="modalMissingPiecesCount">${missing}</span> pending)`;
             } else if (modalPieceFilter === 'verified') {
-                titleEl.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i> Verified & Quarantined Pieces (<span id="modalMissingPiecesCount">${scanned + damaged}</span> verified)`;
+                titleEl.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i> Verified Good Pieces (<span id="modalMissingPiecesCount">${scanned}</span> verified)`;
+            } else if (modalPieceFilter === 'damaged') {
+                titleEl.innerHTML = `<i class="bi bi-slash-circle-fill text-danger me-1"></i> Quarantined Damaged Pieces (<span id="modalMissingPiecesCount">${damaged}</span> quarantined)`;
             } else {
                 titleEl.innerHTML = `<i class="bi bi-grid-3x3-gap-fill text-dark me-1"></i> All Individual Pieces (<span id="modalMissingPiecesCount">${expected}</span> total)`;
             }
@@ -2655,7 +2559,7 @@
         // Render Individual Pieces Breakdown Grid Filtered by modalPieceFilter with High-Size QR Display
         const piecesCount = document.getElementById('modalMissingPiecesCount');
         const piecesGrid = document.getElementById('modalMissingPiecesGrid');
-        if (piecesCount) piecesCount.textContent = (modalPieceFilter === 'mismatched') ? missing : ((modalPieceFilter === 'verified') ? (scanned + damaged) : expected);
+        if (piecesCount) piecesCount.textContent = (modalPieceFilter === 'mismatched') ? missing : ((modalPieceFilter === 'verified') ? scanned : ((modalPieceFilter === 'damaged') ? damaged : expected));
 
         if (piecesGrid) {
             let gridHtml = '';
@@ -2680,18 +2584,22 @@
                 const isGood = SCANNED_TAGS.has(pieceTagCode);
                 const isDamaged = DAMAGED_TAGS.has(pieceTagCode);
                 const isVerified = isGood || isDamaged;
-                const isAlreadyCredited = PERSISTED_INWARD_TAGS.has(pieceTagCode);
+                const isAlreadyCredited = PERSISTED_INWARD_TAGS.has(pieceTagCode) || (BATCH_STATUS === 'RECEIVED' && isGood);
+                const isAlreadyDamagedPersisted = PERSISTED_DAMAGED_TAGS.has(pieceTagCode) || (BATCH_STATUS === 'RECEIVED' && isDamaged);
 
                 // Apply Active Filter: Skip non-matching pieces
                 if (modalPieceFilter === 'mismatched' && isVerified) {
                     continue; // Skip already verified pieces when viewing only mismatched!
                 }
-                if (modalPieceFilter === 'verified' && !isVerified) {
-                    continue; // Skip unverified pieces when viewing verified only
+                if (modalPieceFilter === 'verified' && !isGood) {
+                    continue; // Skip non-good pieces when viewing verified only
+                }
+                if (modalPieceFilter === 'damaged' && !isDamaged) {
+                    continue; // Skip non-damaged pieces when viewing damaged only
                 }
 
                 displayedCount++;
-                const pieceQrPayload = `${pieceTagCode}|${item.sku || ''}|MRP:${fmtMrp}|Disc:${fmtCost}`;
+                const pieceQrPayload = pieceTagCode;
 
                 // use globalSeq index for ID numbering
                 const i = p - item.startSeq + 1;
@@ -2703,7 +2611,7 @@
                             <div class="col-12 col-md-6 mb-2">
                                 <div class="p-2.5 border rounded-3 bg-success-subtle border-success border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden" style="background-color: #f0fdf4;">
                                     <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
-                                        <div class="text-center flex-shrink-0" style="width: 82px;">
+                                        <div class="text-center flex-shrink-0" style="width: 88px;">
                                             <div class="inward-piece-qr bg-white p-1 rounded border border-success-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
                                                  id="piece-qr-${i}" 
                                                  data-qr="${escapeHtml(pieceQrPayload)}" 
@@ -2714,7 +2622,7 @@
                                             <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
                                                  onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
                                                  title="${escapeHtml(pieceTagCode)}" 
-                                                 style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
+                                                 style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
                                                 ${escapeHtml(pieceTagCode)}
                                             </div>
                                         </div>
@@ -2738,7 +2646,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
+                                    <div class="d-flex align-items-center gap-1.5 flex-shrink-0">
                                         <button type="button" class="btn btn-sm btn-success d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.95;" disabled title="Good Product (Credited to Inventory)">
                                             <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
                                         </button>
@@ -2754,7 +2662,7 @@
                             <div class="col-12 col-md-6 mb-2">
                                 <div class="p-2.5 border rounded-3 bg-success-subtle border-success border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden">
                                     <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
-                                        <div class="text-center flex-shrink-0" style="width: 82px;">
+                                        <div class="text-center flex-shrink-0" style="width: 88px;">
                                             <div class="inward-piece-qr bg-white p-1 rounded border border-success-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
                                                  id="piece-qr-${i}" 
                                                  data-qr="${escapeHtml(pieceQrPayload)}" 
@@ -2765,7 +2673,7 @@
                                             <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
                                                  onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
                                                  title="${escapeHtml(pieceTagCode)}" 
-                                                 style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
+                                                 style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
                                                 ${escapeHtml(pieceTagCode)}
                                             </div>
                                         </div>
@@ -2789,7 +2697,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
+                                    <div class="d-flex align-items-center gap-1.5 flex-shrink-0">
                                         <button type="button" class="btn btn-sm btn-success d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.9;" disabled title="Good Product">
                                             <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
                                         </button>
@@ -2802,57 +2710,116 @@
                         `;
                     }
                 } else if (isDamaged) {
-                    gridHtml += `
-                        <div class="col-12 col-md-6 mb-2">
-                            <div class="p-2.5 border rounded-3 bg-danger-subtle border-danger border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden">
-                                <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
-                                    <div class="text-center flex-shrink-0" style="width: 82px;">
-                                        <div class="inward-piece-qr bg-white p-1 rounded border border-danger-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
-                                             id="piece-qr-${i}" 
-                                             data-qr="${escapeHtml(pieceQrPayload)}" 
-                                             onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
-                                             title="Click to view full 2D QR Code Tag" 
-                                             style="width: 80px; height: 80px; cursor: pointer;">
+                    if (isAlreadyDamagedPersisted) {
+                        // FULLY LOCKED & DISABLED ACTION FOR ALREADY QUARANTINED DAMAGED PRODUCT
+                        gridHtml += `
+                            <div class="col-12 col-md-6 mb-2">
+                                <div class="p-2.5 border rounded-3 bg-danger-subtle border-danger border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden" style="background-color: #fef2f2;">
+                                    <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                                        <div class="text-center flex-shrink-0" style="width: 88px;">
+                                            <div class="inward-piece-qr bg-white p-1 rounded border border-danger-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
+                                                 id="piece-qr-${i}" 
+                                                 data-qr="${escapeHtml(pieceQrPayload)}" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 title="Click to view full 2D QR Code Tag" 
+                                                 style="width: 80px; height: 80px; cursor: pointer;">
+                                            </div>
+                                            <div class="badge bg-danger text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 title="${escapeHtml(pieceTagCode)}" 
+                                                 style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
+                                                ${escapeHtml(pieceTagCode)}
+                                            </div>
                                         </div>
-                                        <div class="badge bg-danger text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
-                                             onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
-                                             title="${escapeHtml(pieceTagCode)}" 
-                                             style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
-                                            ${escapeHtml(pieceTagCode)}
+                                        <div class="overflow-hidden flex-grow-1 min-w-0" style="line-height: 1.25;">
+                                            <div class="fw-bold text-uppercase text-dark text-truncate" style="font-size: 0.80rem; letter-spacing: 0.2px;" title="${escapeHtml(displayBrand)}">
+                                                ${escapeHtml(displayBrand)}
+                                            </div>
+                                            <div class="fw-bold text-secondary text-truncate mt-0.5" style="font-size: 0.76rem;">
+                                                ${escapeHtml(displayAttr)}
+                                            </div>
+                                            <div class="text-muted text-decoration-line-through mt-0.5" style="font-size: 0.74rem;">
+                                                MRP: ₹${fmtMrp}
+                                            </div>
+                                            <div class="fw-bold text-danger mt-0.5" style="font-size: 0.82rem;">
+                                                <i class="bi bi-exclamation-octagon-fill me-1"></i>QUARANTINED
+                                            </div>
+                                            <div class="mt-1">
+                                                <span class="badge bg-danger text-white py-0.5 px-1.5 shadow-xs" style="font-size: 0.68rem; letter-spacing: 0.2px;">
+                                                    <i class="bi bi-lock-fill me-1"></i>Damage Logged (Locked)
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="overflow-hidden flex-grow-1 min-w-0" style="line-height: 1.25;">
-                                        <div class="fw-bold text-uppercase text-dark text-truncate" style="font-size: 0.80rem; letter-spacing: 0.2px;" title="${escapeHtml(displayBrand)}">
-                                            ${escapeHtml(displayBrand)}
-                                        </div>
-                                        <div class="fw-bold text-secondary text-truncate mt-0.5" style="font-size: 0.76rem;">
-                                            ${escapeHtml(displayAttr)}
-                                        </div>
-                                        <div class="text-muted text-decoration-line-through mt-0.5" style="font-size: 0.74rem;">
-                                            MRP: ₹${fmtMrp}
-                                        </div>
-                                        <div class="fw-bold text-danger mt-0.5" style="font-size: 0.82rem;">
-                                            <i class="bi bi-exclamation-octagon-fill me-1"></i>QUARANTINED
-                                        </div>
+                                    <div class="d-flex align-items-center gap-1.5 flex-shrink-0">
+                                        <button type="button" class="btn btn-sm btn-danger d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.95;" disabled title="Quarantined Damage Product (Locked)">
+                                            <i class="bi bi-slash-circle" style="font-size: 0.95rem;"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.55;" disabled title="Already recorded as damaged in previous inward session (Locked)">
+                                            <i class="bi bi-lock-fill" style="font-size: 0.90rem;"></i>
+                                        </button>
                                     </div>
-                                </div>
-                                <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
-                                    <button type="button" class="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="markPieceIntact(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Change to Good Product">
-                                        <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-danger d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.9;" disabled title="Damage Product">
-                                        <i class="bi bi-slash-circle" style="font-size: 0.95rem;"></i>
-                                    </button>
                                 </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    } else {
+                        gridHtml += `
+                            <div class="col-12 col-md-6 mb-2">
+                                <div class="p-2.5 border rounded-3 bg-danger-subtle border-danger border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden">
+                                    <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                                        <div class="text-center flex-shrink-0" style="width: 88px;">
+                                            <div class="inward-piece-qr bg-white p-1 rounded border border-danger-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
+                                                 id="piece-qr-${i}" 
+                                                 data-qr="${escapeHtml(pieceQrPayload)}" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 title="Click to view full 2D QR Code Tag" 
+                                                 style="width: 80px; height: 80px; cursor: pointer;">
+                                            </div>
+                                            <div class="badge bg-danger text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 title="${escapeHtml(pieceTagCode)}" 
+                                                 style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
+                                                ${escapeHtml(pieceTagCode)}
+                                            </div>
+                                        </div>
+                                        <div class="overflow-hidden flex-grow-1 min-w-0" style="line-height: 1.25;">
+                                            <div class="fw-bold text-uppercase text-dark text-truncate" style="font-size: 0.80rem; letter-spacing: 0.2px;" title="${escapeHtml(displayBrand)}">
+                                                ${escapeHtml(displayBrand)}
+                                            </div>
+                                            <div class="fw-bold text-secondary text-truncate mt-0.5" style="font-size: 0.76rem;">
+                                                ${escapeHtml(displayAttr)}
+                                            </div>
+                                            <div class="text-muted text-decoration-line-through mt-0.5" style="font-size: 0.74rem;">
+                                                MRP: ₹${fmtMrp}
+                                            </div>
+                                            <div class="fw-bold text-danger mt-0.5" style="font-size: 0.82rem;">
+                                                <i class="bi bi-exclamation-octagon-fill me-1"></i>QUARANTINED
+                                            </div>
+                                            <div class="mt-1">
+                                                <span class="badge bg-danger-subtle text-danger border border-danger py-0.5 px-1.5 shadow-xs" style="font-size: 0.68rem; letter-spacing: 0.2px;">
+                                                    <i class="bi bi-exclamation-circle me-1"></i>Newly Marked Damage
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1.5 flex-shrink-0">
+                                        <button type="button" class="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="markPieceIntact(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Change to Good Product">
+                                            <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-danger d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.9;" disabled title="Damage Product">
+                                            <i class="bi bi-slash-circle" style="font-size: 0.95rem;"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
                 } else {
                     gridHtml += `
                         <div class="col-12 col-md-6 mb-2">
                             <div class="p-2.5 border rounded-3 bg-white d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 hover-shadow position-relative overflow-hidden">
                                 <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
-                                    <div class="text-center flex-shrink-0" style="width: 82px;">
+                                    <div class="text-center flex-shrink-0" style="width: 88px;">
                                         <div class="inward-piece-qr bg-white p-1 rounded border shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
                                              id="piece-qr-${i}" 
                                              data-qr="${escapeHtml(pieceQrPayload)}" 
@@ -2863,7 +2830,7 @@
                                         <div class="badge bg-dark text-warning font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
                                              onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
                                              title="${escapeHtml(pieceTagCode)}" 
-                                             style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
+                                             style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
                                             ${escapeHtml(pieceTagCode)}
                                         </div>
                                     </div>
@@ -2882,7 +2849,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
+                                <div class="d-flex align-items-center gap-1.5 flex-shrink-0">
                                     <button type="button" class="btn btn-sm btn-success d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="fastScanVariant(${variantId}, '${escapeHtml(pieceTagCode)}', 'good');" title="Mark Good Product">
                                         <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
                                     </button>
@@ -2912,8 +2879,18 @@
                         <div class="col-12 text-center py-4">
                             <div class="p-3 bg-light text-muted rounded-3 border">
                                 <i class="bi bi-inbox fs-3 d-block mb-1"></i>
-                                <span class="fw-bold">No pieces verified yet</span>
+                                <span class="fw-bold">No good pieces verified yet</span>
                                 <p class="small text-muted mb-0 mt-1">Scan or click pieces to mark them as received.</p>
+                            </div>
+                        </div>
+                    `;
+                } else if (modalPieceFilter === 'damaged') {
+                    gridHtml = `
+                        <div class="col-12 text-center py-4">
+                            <div class="p-3 bg-light text-muted rounded-3 border">
+                                <i class="bi bi-shield-check fs-3 text-success d-block mb-1"></i>
+                                <span class="fw-bold">No damaged pieces</span>
+                                <p class="small text-muted mb-0 mt-1">No damaged pieces quarantined for this product.</p>
                             </div>
                         </div>
                     `;
@@ -2994,9 +2971,16 @@
         // 2. Specific Piece Tag Validations
         if (isValidPieceTag) {
             // Already credited piece check
-            if (PERSISTED_INWARD_TAGS.has(tagToProcess) || (pieceSeq !== -1 && (pieceSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
+            if (PERSISTED_INWARD_TAGS.has(tagToProcess) || (BATCH_STATUS === 'RECEIVED' && SCANNED_TAGS.has(tagToProcess)) || (pieceSeq !== -1 && (pieceSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
                 playBeep('error');
                 showScanFeedback(`🔒 <strong>ALREADY INWARDED:</strong> Piece <span class="badge bg-dark font-monospace">${escapeHtml(tagToProcess)}</span> was already credited to warehouse inventory.`, 'warning');
+                return;
+            }
+
+            // Already quarantined damage piece check
+            if (PERSISTED_DAMAGED_TAGS.has(tagToProcess) || (BATCH_STATUS === 'RECEIVED' && DAMAGED_TAGS.has(tagToProcess))) {
+                playBeep('error');
+                showScanFeedback(`🔒 <strong>ALREADY INWARDED:</strong> Piece <span class="badge bg-dark font-monospace">${escapeHtml(tagToProcess)}</span> was already inwarded as damaged/quarantined (Locked).`, 'warning');
                 return;
             }
 
@@ -3125,14 +3109,12 @@
         if (recvInput) recvInput.value = newGood;
         if (dmgInput) {
             dmgInput.value = newDmg;
+            dmgInput.readOnly = true;
+            dmgInput.setAttribute('readonly', 'readonly');
             if (newDmg > 0) {
-                dmgInput.readOnly = false;
-                dmgInput.removeAttribute('readonly');
                 dmgInput.classList.remove('is-locked');
                 dmgInput.classList.add('is-active');
             } else {
-                dmgInput.readOnly = true;
-                dmgInput.setAttribute('readonly', 'readonly');
                 dmgInput.classList.add('is-locked');
                 dmgInput.classList.remove('is-active');
             }
@@ -3159,9 +3141,14 @@
                 break;
             }
         }
-        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
+        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (BATCH_STATUS === 'RECEIVED' && SCANNED_TAGS.has(normalizedTag)) || (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
             playBeep('error');
             showScanFeedback(`🔒 Piece <span class="badge bg-dark font-monospace">${escapeHtml(normalizedTag)}</span> was already credited to warehouse inventory and cannot be un-verified.`, 'warning');
+            return;
+        }
+        if (PERSISTED_DAMAGED_TAGS.has(normalizedTag) || (BATCH_STATUS === 'RECEIVED' && DAMAGED_TAGS.has(normalizedTag))) {
+            playBeep('error');
+            showScanFeedback(`🔒 Piece <span class="badge bg-dark font-monospace">${escapeHtml(normalizedTag)}</span> was already inwarded as damaged/quarantined and cannot be un-verified.`, 'warning');
             return;
         }
 
@@ -3199,6 +3186,7 @@
 
         const expected = parseInt(item.quantity) || 1;
         const creditedCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.received_qty) || 0) : 0;
+        const persistedDmgCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.damaged_qty) || 0) : 0;
 
         // Reset ONLY uncommitted tags (preserving previously persisted tags)
         for (let p = item.startSeq; p <= item.endSeq; p++) {
@@ -3223,17 +3211,23 @@
         const dmgInput = document.getElementById(`input-dmg-${vid}`);
         if (recvInput) recvInput.value = creditedCount;
         if (dmgInput) {
-            dmgInput.value = 0;
+            dmgInput.value = persistedDmgCount;
             dmgInput.readOnly = true;
             dmgInput.setAttribute('readonly', 'readonly');
-            dmgInput.classList.add('is-locked');
-            dmgInput.classList.remove('is-active');
-            const dmgLabel = document.getElementById(`dmg-label-${vid}`);
-            const btnToggle = document.getElementById(`btn-toggle-dmg-${vid}`);
-            const iconToggle = document.getElementById(`icon-dmg-${vid}`);
-            if (dmgLabel) dmgLabel.classList.add('d-none');
-            if (btnToggle) btnToggle.className = 'btn btn-sm btn-outline-danger p-1';
-            if (iconToggle) iconToggle.className = 'bi bi-slash-circle';
+            if (persistedDmgCount > 0) {
+                dmgInput.classList.remove('is-locked');
+                dmgInput.classList.add('is-active');
+                const dmgLabel = document.getElementById(`dmg-label-${vid}`);
+                if (dmgLabel) {
+                    dmgLabel.classList.remove('d-none');
+                    dmgLabel.textContent = `${persistedDmgCount} QUARANTINED`;
+                }
+            } else {
+                dmgInput.classList.add('is-locked');
+                dmgInput.classList.remove('is-active');
+                const dmgLabel = document.getElementById(`dmg-label-${vid}`);
+                if (dmgLabel) dmgLabel.classList.add('d-none');
+            }
         }
 
         playBeep('double');
@@ -3473,7 +3467,7 @@
         historyContent.classList.add('d-none');
         historyContent.innerHTML = '';
 
-        fetch('<?= url("api/warehouse/inward/batch-history/") ?>' + batchId)
+        fetch('<?= url('api/warehouse/inward/batch-history/') ?>' + batchId)
             .then(res => res.json())
             .then(res => {
                 historyLoading.classList.add('d-none');

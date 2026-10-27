@@ -484,7 +484,7 @@ function renderInspectQR() {
         if (btnPiece) btnPiece.className = 'btn btn-outline-secondary fw-semibold';
         if (btnProd) btnProd.className = 'btn btn-primary active fw-semibold';
     } else {
-        qrText = `${currentInspectData.tag}|${currentInspectData.sku}|MRP:${fmtMrp}|Disc:${fmtDisc}`;
+        qrText = currentInspectData.tag;
         displayTag = currentInspectData.tag;
         if (btnPiece) btnPiece.className = 'btn btn-primary active fw-semibold';
         if (btnProd) btnProd.className = 'btn btn-outline-secondary fw-semibold';

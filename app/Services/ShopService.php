@@ -2818,11 +2818,15 @@ class ShopService {
         // Enhanced Item breakdown with variants, product codes, sizes, colors, and prices
         $rawItems = Database::fetchAll(
             "SELECT ai.*, pv.sku, pv.qr_code, pv.mrp, pv.selling_price,
+                    pv.qr_type, pv.pack_quantity, pv.series_start_code, pv.series_end_code,
+                    COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                    COALESCE(wc.category_type, 'NORMAL') as category_type,
                     p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
                     c.name as category_name, s.name as size_name, col.name as color_name, col.hex_code as color_hex
              FROM allocation_items ai
              JOIN product_variants pv ON ai.variant_id = pv.id
              JOIN products p ON pv.product_id = p.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN categories c ON p.category_id = c.id
              LEFT JOIN sizes s ON pv.size_id = s.id
              LEFT JOIN colors col ON pv.color_id = col.id
@@ -2847,23 +2851,77 @@ class ShopService {
         }
         $items = array_values($consolidatedItems);
 
-        // Parse individual piece-level QR codes if present
+        foreach ($items as &$item) {
+            $isSeries = (
+                ($item['qr_type'] ?? '') === 'SERIES_BATCH' ||
+                strtoupper($item['category_type'] ?? '') === 'SERIES' ||
+                (int)($item['pack_quantity'] ?? 0) > 1 ||
+                !empty($item['is_complementary'])
+            );
+            $item['is_series'] = $isSeries;
+
+            $rawQrStr = trim($item['selected_qr_codes'] ?? '');
+            $parsedTags = [];
+            if (!empty($rawQrStr)) {
+                if (str_starts_with($rawQrStr, '[') && str_ends_with($rawQrStr, ']')) {
+                    $jsonTags = json_decode($rawQrStr, true);
+                    if (is_array($jsonTags)) {
+                        foreach ($jsonTags as $jt) {
+                            $parsedTags[] = is_array($jt) ? ($jt['tag_code'] ?? ($jt['qr_code'] ?? '')) : (string)$jt;
+                        }
+                    }
+                } else {
+                    $parsedTags = array_filter(array_map('trim', explode(',', $rawQrStr)));
+                }
+            }
+            $parsedTags = array_values(array_filter($parsedTags));
+            $item['saved_tags'] = $parsedTags;
+
+            if ($isSeries) {
+                $seriesQr = !empty($parsedTags[0]) ? $parsedTags[0] : (!empty($item['series_start_code']) ? $item['series_start_code'] : (!empty($item['qr_code']) ? $item['qr_code'] : $item['sku']));
+                $item['series_qr_code'] = strtoupper($seriesQr);
+            }
+        }
+        unset($item);
+
+        // Parse piece-level QR codes (for series product, all units share the single series QR code)
         $pieceQRs = [];
         $pieceCounter = 1;
         foreach ($items as $item) {
-            if (!empty($item['selected_qr_codes'])) {
-                $tags = json_decode($item['selected_qr_codes'], true);
-                if (is_array($tags)) {
-                    foreach ($tags as $tag) {
+            $isSeries = !empty($item['is_series']);
+            $allocatedQty = (int)($item['dispatched_qty'] > 0 ? $item['dispatched_qty'] : $item['requested_qty']);
+
+            if ($isSeries) {
+                // A series product has ONLY ONE QR code representing the entire allocated quantity
+                $singleTag = !empty($item['series_qr_code']) ? $item['series_qr_code'] : (!empty($item['saved_tags'][0]) ? $item['saved_tags'][0] : $item['sku']);
+                for ($p = 1; $p <= $allocatedQty; $p++) {
+                    $pieceQRs[] = [
+                        'piece_no'      => $pieceCounter++,
+                        'tag_code'      => $singleTag,
+                        'variant_id'    => $item['variant_id'],
+                        'sku'           => $item['sku'],
+                        'product_name'  => $item['product_name'],
+                        'size_name'     => $item['size_name'] ?? 'Free',
+                        'color_name'    => $item['color_name'] ?? 'Std',
+                        'selling_price' => (float)($item['selling_price'] ?? 0),
+                        'is_series'     => true,
+                        'series_qr'     => $singleTag,
+                        'pack_quantity' => $allocatedQty,
+                    ];
+                }
+            } else {
+                if (!empty($item['saved_tags'])) {
+                    foreach ($item['saved_tags'] as $tag) {
                         $pieceQRs[] = [
                             'piece_no'      => $pieceCounter++,
-                            'tag_code'      => is_array($tag) ? ($tag['tag_code'] ?? ($tag['qr_code'] ?? 'PIECE')) : (string)$tag,
+                            'tag_code'      => $tag,
                             'variant_id'    => $item['variant_id'],
                             'sku'           => $item['sku'],
                             'product_name'  => $item['product_name'],
                             'size_name'     => $item['size_name'] ?? 'Free',
                             'color_name'    => $item['color_name'] ?? 'Std',
                             'selling_price' => (float)($item['selling_price'] ?? 0),
+                            'is_series'     => false,
                         ];
                     }
                 }
@@ -2915,6 +2973,8 @@ class ShopService {
                 if (
                     strcasecmp($item['sku'], $scannedCode) === 0 ||
                     (!empty($item['qr_code']) && strcasecmp($item['qr_code'], $scannedCode) === 0) ||
+                    (!empty($item['series_qr_code']) && strcasecmp($item['series_qr_code'], $scannedCode) === 0) ||
+                    (!empty($item['saved_tags']) && in_array(strtoupper($scannedCode), array_map('strtoupper', $item['saved_tags']))) ||
                     (string)$item['variant_id'] === $scannedCode ||
                     str_contains($scannedCode, $item['sku'])
                 ) {
@@ -2950,7 +3010,12 @@ class ShopService {
             }
 
             $currentCount = (int)($scannedMap[$matchedVariantId] ?? 0);
-            $scannedMap[$matchedVariantId] = $currentCount + 1;
+            if (!empty($matchedItem['is_series'])) {
+                $expQty = (int)($matchedItem['dispatched_qty'] > 0 ? $matchedItem['dispatched_qty'] : $matchedItem['requested_qty']);
+                $scannedMap[$matchedVariantId] = $expQty;
+            } else {
+                $scannedMap[$matchedVariantId] = $currentCount + 1;
+            }
         }
 
         // Build comparison breakdown and shortage statistics
@@ -3075,13 +3140,16 @@ class ShopService {
 
                 // Save/update selected QR codes in allocation_items
                 $allVariantTags = array_values(array_unique(array_merge($scannedTagsList, $damagedTagsList)));
+                $savedQrValue = !empty($allVariantTags) 
+                    ? (count($allVariantTags) === 1 ? $allVariantTags[0] : implode(',', $allVariantTags)) 
+                    : (!empty($item['selected_qr_codes']) ? $item['selected_qr_codes'] : null);
 
                 // Persist variant-level received_qty, damaged_qty, missing_qty in allocation_items
                 Database::execute(
                     "UPDATE allocation_items 
                      SET received_qty = ?, damaged_qty = ?, missing_qty = ?, selected_qr_codes = ? 
                      WHERE allocation_id = ? AND variant_id = ?",
-                    [(int)$recv, (int)$dam, (int)$missing, !empty($allVariantTags) ? json_encode($allVariantTags) : null, $allocationId, $vid]
+                    [(int)$recv, (int)$dam, (int)$missing, $savedQrValue, $allocationId, $vid]
                 );
 
                 // Incremental deltas for AVAILABLE shop stock

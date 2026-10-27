@@ -554,7 +554,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                     $nextSeq = $categoryOffset + $effectiveStock + 1;
                     $seqPad = ($nextSeq > 99) ? 3 : 2;
                     $newTagCode = $baseTagPrefix . sprintf("%0{$seqPad}d", $nextSeq);
-                    $qrPayload = "{$newTagCode}|{$cleanSku}|MRP:{$fmtMrp}|Disc:{$fmtSelling}";
+                    $qrPayload = $newTagCode;
                     $copiesCount = 1;
 
                     $generatedItems[] = [
@@ -584,7 +584,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                 } elseif ($qrAdjustmentType === 'REPRINT_DAMAGED' && !empty($damagedTagCode)) {
                     // Reprint Existing Damaged QR Tag
                     $cleanTagCode = strtoupper($damagedTagCode);
-                    $qrPayload = "{$cleanTagCode}|{$cleanSku}|MRP:{$fmtMrp}|Disc:{$fmtSelling}";
+                    $qrPayload = $cleanTagCode;
                     $copiesCount = 1;
 
                     $generatedItems[] = [
@@ -646,7 +646,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                             'cost_price'           => $costVal,
                             'source_label'         => 'Third-Party: ' . $brandOrSeller . ($isPartiallyInwarded ? " (Remaining {$remainingQty} of {$totalExpectedQty} Pcs)" : (!empty($poNumber) ? " (PO #{$poNumber})" : '')),
                             'badge_class'          => 'bg-warning text-dark',
-                            'qr_payload'           => "{$tagCode}|{$cleanSku}|MRP:{$fmtMrp}|Disc:{$fmtSelling}",
+                            'qr_payload'           => $tagCode,
                             'is_series'            => false,
                             'is_remaining'         => $isPartiallyInwarded,
                             'category_name'        => $activeVar['category_name'] ?? '',
@@ -702,7 +702,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                     'cost_price'           => (float)$pi['unit_price'],
                     'source_label'         => 'Third-Party: ' . $sellerLabel . (!empty($poInfo['po_number']) ? " (PO #{$poInfo['po_number']})" : ''),
                     'badge_class'          => 'bg-warning text-dark',
-                    'qr_payload'           => "{$tagCode}|{$cleanSku}|MRP:{$fmtMrp}|Disc:{$fmtSell}",
+                    'qr_payload'           => $tagCode,
                     'category_name'        => $pi['category_name'] ?? '',
                     'subcategory_name'     => $pi['subcategory_name'] ?? '',
                     'sub_subcategory_name' => $pi['sub_subcategory_name'] ?? '',
@@ -802,7 +802,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                     'cost_price'         => (float)$activeVar['selling_price'],
                     'source_label'       => 'Return (' . $sourceName . '): ' . $tagType . ' • ' . $returnBrand,
                     'badge_class'        => $badgeClass,
-                    'qr_payload'         => "{$tagCode}|{$cleanSku}|MRP:{$fmtMrp}|Disc:{$fmtCost}",
+                    'qr_payload'         => $tagCode,
                     'category_name'      => $activeVar['category_name'] ?? '',
                     'subcategory_name'   => $activeVar['subcategory_name'] ?? '',
                     'sub_subcategory_name' => $activeVar['sub_subcategory_name'] ?? '',
@@ -865,7 +865,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                     'cost_price'         => (float)$ri['selling_price'],
                     'source_label'       => 'Return (' . $sourceName . '): ' . $class . ' • ' . $returnBrand,
                     'badge_class'        => $badgeClass,
-                    'qr_payload'         => "{$tagCode}|{$cleanSku}|MRP:{$fmtMrp}|Disc:{$fmtCost}",
+                    'qr_payload'         => $tagCode,
                     'category_name'      => $ri['category_name'] ?? '',
                     'subcategory_name'   => $ri['subcategory_name'] ?? '',
                     'sub_subcategory_name' => $ri['sub_subcategory_name'] ?? '',
@@ -2098,7 +2098,7 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                         $fmtSell = ($sellNum == (int)$sellNum) ? (int)$sellNum : number_format($sellNum, 2, '.', '');
                         $displayMrp = ($mrpNum == (int)$mrpNum) ? number_format($mrpNum) : number_format($mrpNum, 2);
                         $displaySell = ($sellNum == (int)$sellNum) ? number_format($sellNum) : number_format($sellNum, 2);
-                        $qrPayload = !empty($item['qr_payload']) ? $item['qr_payload'] : "{$item['tag_code']}|{$displaySku}|MRP:{$fmtMrp}|Disc:{$fmtSell}";
+                        $qrPayload = $item['tag_code'];
                     ?>
                     <div class="col sticker-grid-col" id="col-piece-<?= $index ?>" data-code="<?= e(strtoupper($item['tag_code'])) ?>" data-sku="<?= e(strtoupper($displaySku)) ?>" data-piece-no="<?= $item['piece_no'] ?>">
                         <div class="card rounded-3 p-2.5 h-100 shadow-sm bg-white piece-card position-relative <?= !empty($item['is_series']) ? 'border-primary' : '' ?>" id="card-piece-<?= $index ?>">
@@ -2129,9 +2129,9 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                             <!-- Modern Garment Tag Sticker Layout (Matching Production Unit Standard Reference) -->
                             <div class="p-2 border rounded-3 bg-white shadow-xs d-flex align-items-start gap-2 mb-2" style="background: #fafafa;">
                                 <!-- Left: QR Code + Tag Code Badge -->
-                                <div class="text-center flex-shrink-0" style="width: 74px;">
+                                <div class="text-center flex-shrink-0" style="width: 80px;">
                                     <div class="piece-qr-box bg-white p-1 rounded border shadow-xs d-flex align-items-center justify-content-center" id="qr-box-<?= $index ?>" data-json="<?= htmlspecialchars($qrPayload, ENT_QUOTES, 'UTF-8') ?>" style="width: 72px; height: 72px;"></div>
-                                    <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-0.5 w-100 text-truncate" style="font-size: <?= !empty($item['is_series']) ? '0.62rem' : '0.70rem' ?>; letter-spacing: 0.3px;" title="<?= e($item['tag_code']) ?>">
+                                    <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-0.5 w-100 text-truncate" style="font-size: 0.62rem; letter-spacing: 0.2px;" title="<?= e($item['tag_code']) ?>">
                                         <?= e($item['tag_code']) ?>
                                     </div>
                                 </div>
@@ -2656,7 +2656,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const sellVal = parseFloat(item.selling_price || item.cost_price || item.mrp || 0);
             const fmtMrp = (mrpVal % 1 === 0) ? String(Math.round(mrpVal)) : mrpVal.toFixed(2);
             const fmtSell = (sellVal % 1 === 0) ? String(Math.round(sellVal)) : sellVal.toFixed(2);
-            const qrText = qrBox.getAttribute('data-json') || item.qr_payload || `${item.tag_code}|${cleanSku}|MRP:${fmtMrp}|Disc:${fmtSell}`;
+            const qrText = qrBox.getAttribute('data-json') || item.qr_payload || item.tag_code;
             generateQRCodeContainer(qrBox, qrText, 68);
         }
     });
@@ -3165,7 +3165,7 @@ function previewSingleTag(idx) {
     document.getElementById('previewDiscPrice').textContent = `Disc: ₹${(sellVal % 1 === 0) ? sellVal.toLocaleString() : sellVal.toFixed(2)}`;
 
     const canvas = document.getElementById('singleQRCanvas');
-    const qrPayload = item.qr_payload || `${item.tag_code}|${displaySku}|MRP:${fmtMrp}|Disc:${fmtSelling}`;
+    const qrPayload = item.tag_code;
 
     generateQRCodeContainer(canvas, qrPayload, 74);
 
@@ -4008,7 +4008,7 @@ function printSelectedStickers() {
             discountPrice: fmtDisc,
             damageCode: item.tag_code,
             title: (item.brand_name || "GRM CLASSIC").toUpperCase(),
-            qrPayload: item.qr_payload || `${item.tag_code}|${displaySku}|MRP:${fmtMrp}|Disc:${fmtDisc}`,
+            qrPayload: item.qr_payload || item.tag_code,
             quantity: 1
         };
     });
@@ -4050,7 +4050,7 @@ function produceNewAdjustmentQR() {
     const displayMrp = (mrpNum % 1 === 0) ? mrpNum.toLocaleString() : mrpNum.toFixed(2);
     const displaySelling = (sellNum % 1 === 0) ? sellNum.toLocaleString() : sellNum.toFixed(2);
     const displaySku = lastItem.clean_sku || ((lastItem.size_name && lastItem.color_name) ? `${lastItem.size_name}-${lastItem.color_name}` : lastItem.sku);
-    const qrPayload = `${newTagCode}|${displaySku}|MRP:${fmtMrp}|Disc:${fmtSelling}`;
+    const qrPayload = newTagCode;
 
     const newItem = {
         piece_no: newPieceNo,
@@ -4200,7 +4200,7 @@ function reprintDamagedTag(idx) {
         discountPrice: fmtDisc,
         damageCode: item.tag_code,
         title: (item.brand_name || "GRM CLASSIC").toUpperCase(),
-        qrPayload: item.qr_payload || `${item.tag_code}|${displaySku}|MRP:${fmtMrp}|Disc:${fmtDisc}`,
+        qrPayload: item.qr_payload || item.tag_code,
         quantity: 1
     }];
 
@@ -4301,7 +4301,7 @@ function printSinglePieceSticker(idx) {
         discountPrice: fmtDisc,
         damageCode: item.tag_code,
         title: (item.brand_name || "GRM CLASSIC").toUpperCase(),
-        qrPayload: item.qr_payload || `${item.tag_code}|${displaySku}|MRP:${fmtMrp}|Disc:${fmtDisc}`,
+        qrPayload: item.qr_payload || item.tag_code,
         quantity: 1
     }];
 
@@ -4337,7 +4337,7 @@ function printAllGeneratedStickers() {
             discountPrice: fmtDisc,
             damageCode: item.tag_code,
             title: (item.brand_name || "GRM CLASSIC").toUpperCase(),
-            qrPayload: item.qr_payload || `${item.tag_code}|${displaySku}|MRP:${fmtMrp}|Disc:${fmtDisc}`,
+            qrPayload: item.qr_payload || item.tag_code,
             quantity: 1
         };
     });
@@ -4390,7 +4390,7 @@ function openBrowserPrintSheet(labels) {
         const fmtSelling = (sellNum % 1 === 0) ? String(Math.round(sellNum)) : sellNum.toFixed(2);
         const displayMrp = (mrpNum % 1 === 0) ? mrpNum.toLocaleString() : mrpNum.toFixed(2);
         const displaySelling = (sellNum % 1 === 0) ? sellNum.toLocaleString() : sellNum.toFixed(2);
-        const qrPayload = lbl.qrPayload || `${lbl.damageCode}|${lbl.sku}|MRP:${fmtMrp}|Disc:${fmtSelling}`;
+        const qrPayload = lbl.qrPayload || lbl.damageCode;
         const titleText = (lbl.title || 'GRM CLASSIC').toUpperCase();
 
         div.innerHTML = `

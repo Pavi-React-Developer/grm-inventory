@@ -1,12 +1,9 @@
 <style>
-/* Responsive Container & Layout Constraints */
 .inward-wrapper {
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
 }
-
-/* Custom Styling for Inward View Tabs and Batch Cards */
 .custom-inward-pills .nav-link {
     border-radius: 8px;
     padding: 0.5rem 1.1rem;
@@ -66,8 +63,6 @@
 }
 .fs-7 { font-size: 0.825rem; }
 .fs-8 { font-size: 0.75rem; }
-
-/* Responsive adjustments for 100% zoom screens */
 @media (max-width: 1200px) {
     .metric-card-title {
         font-size: 0.72rem !important;
@@ -77,23 +72,17 @@
     }
 }
 </style>
-
 <div class="inward-wrapper">
 <?php
-    $canVerify = (hasPermission('inward', 'verify') || hasPermission('inward', 'create') || hasPermission('inward', 'edit'));
+$canVerify = (hasPermission('inward', 'verify') || hasPermission('inward', 'create') || hasPermission('inward', 'edit'));
 ?>
-
     <!-- Page Header -->
     <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
         <div>
-            <h2 class="mb-1 fs-4 fw-bold"><i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Production Inward &amp; QR Receiving</h2>
-            
+            <h2 class="mb-1 fs-4 fw-bold"><i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Production Inward</h2>
         </div>
         <div class="d-flex gap-2">
-            <?php if ($canVerify): ?>
-                <button type="button" class="btn btn-sm btn-outline-primary fw-semibold px-3" data-bs-toggle="modal" data-bs-target="#cameraScanModal" id="btnOpenCam">
-                    <i class="bi bi-camera me-1"></i> Camera Scanner
-                </button>
+            <?php if ($canVerify): ?>  
             <?php endif; ?>
             <a href="<?= url('warehouse/dashboard') ?>" class="btn btn-sm btn-outline-secondary px-3">
                 <i class="bi bi-arrow-left me-1"></i> Dashboard
@@ -176,50 +165,6 @@
     <!-- 2. LIVE QR CODE SCANNER BAR -->
     <!-- ========================================================================= -->
     <?php if ($canVerify): ?>
-    <div class="card border-0 shadow-sm mb-3 border-start border-primary border-4">
-        <div class="card-body p-3">
-            <div class="row g-3 align-items-center">
-                <!-- Scan Input -->
-                <div class="col-12 col-lg-5">
-                    <label class="form-label fw-bold text-dark mb-1 small">
-                        <i class="bi bi-qr-code-scan me-1 text-primary"></i> Scan Batch / Outward QR Code
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="bi bi-upc-scan text-primary"></i></span>
-                        <input type="text" id="qrInput" class="form-control font-monospace" placeholder="Scan or type Batch # (e.g. BAT-20260912-0001)..." autofocus autocomplete="off">
-                        <button class="btn btn-primary px-3 fw-semibold text-nowrap" type="button" id="btnScanSubmit">
-                            <i class="bi bi-box-arrow-in-down me-1"></i> Process QR
-                        </button>
-                    </div>
-                   
-                </div>
-
-                <!-- Warehouse Select -->
-                <div class="col-12 col-md-6 col-lg-4">
-                    <label class="form-label fw-bold text-dark mb-1 small">
-                        <i class="bi bi-building me-1 text-primary"></i> Receiving Warehouse
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="bi bi-geo-alt-fill text-primary"></i></span>
-                        <select id="scanWarehouseId" class="form-select font-monospace" style="font-size: 0.875rem;" <?= (!empty($scopedWarehouseId) || count($warehouses) <= 1) ? 'disabled' : '' ?>>
-                            <?php if (empty($scopedWarehouseId) && count($warehouses) > 1): ?>
-                                <option value="">⚡ Auto-Detect Batch Destination</option>
-                            <?php endif; ?>
-                            <?php foreach ($warehouses as $wh): ?>
-                                <option value="<?= $wh['id'] ?>" <?= (($warehouseId ?? '') == $wh['id'] || (!empty($scopedWarehouseId) && $scopedWarehouseId == $wh['id'])) ? 'selected' : '' ?>>
-                                    <?= e($wh['name']) ?><?= !empty($wh['code']) ? ' (' . e($wh['code']) . ')' : '' ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    
-                </div>
-            </div>
-
-            <!-- Dynamic Scan Result Feedback Alert -->
-            <div id="scanFeedback" class="mt-2 d-none"></div>
-        </div>
-    </div>
     <?php else: ?>
     <div class="alert alert-light border border-info-subtle d-flex align-items-center gap-2 mb-3 py-2 px-3">
         <i class="bi bi-info-circle-fill text-info fs-5"></i>
@@ -281,14 +226,14 @@
                             <label class="form-label small fw-semibold text-muted mb-1">Search Filter</label>
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text bg-white"><i class="bi bi-search text-secondary"></i></span>
-                                <input type="text" name="search" class="form-control form-control-sm" placeholder="Search batch, unit, vehicle..." value="<?= e($search ?? '') ?>">
+                                <input type="text" name="search" id="mainInwardSearch" class="form-control form-control-sm" placeholder="Search batch, unit, vehicle..." value="<?= e($search ?? '') ?>" autocomplete="off">
                             </div>
                         </div>
 
                         <!-- Source Production Unit -->
                         <div class="col-12 col-sm-6 col-lg-3">
                             <label class="form-label small fw-semibold text-muted mb-1">Source Production Unit</label>
-                            <select name="production_unit_id" class="form-select form-select-sm">
+                            <select name="production_unit_id" id="inwardProductionUnitSelect" class="form-select form-select-sm">
                                 <option value="">All Production Units</option>
                                 <?php foreach ($productionUnits ?? [] as $pu): ?>
                                     <option value="<?= $pu['id'] ?>" <?= ($unitId ?? '') == $pu['id'] ? 'selected' : '' ?>>
@@ -301,7 +246,7 @@
                         <!-- Destination Warehouse -->
                         <div class="col-12 col-sm-6 col-lg-3">
                             <label class="form-label small fw-semibold text-muted mb-1">Destination Warehouse</label>
-                            <select name="warehouse_id" class="form-select form-select-sm" <?= (!empty($scopedWarehouseId) || count($warehouses) <= 1) ? 'disabled' : '' ?>>
+                            <select name="warehouse_id" id="inwardWarehouseSelect" class="form-select form-select-sm" <?= (!empty($scopedWarehouseId) || count($warehouses) <= 1) ? 'disabled' : '' ?>>
                                 <?php if (empty($scopedWarehouseId) && count($warehouses) > 1): ?>
                                     <option value="">All Warehouses</option>
                                 <?php endif; ?>
@@ -319,7 +264,7 @@
                         <!-- Inward Status -->
                         <div class="col-8 col-sm-4 col-lg-2">
                             <label class="form-label small fw-semibold text-muted mb-1">Inward Status</label>
-                            <select name="status" class="form-select form-select-sm">
+                            <select name="status" id="inwardStatusSelect" class="form-select form-select-sm">
                                 <option value="">All Statuses</option>
                                 <option value="DISPATCHED" <?= ($status ?? '') === 'DISPATCHED' ? 'selected' : '' ?>>DISPATCHED (Awaiting GRN)</option>
                                 <option value="RECEIVED" <?= ($status ?? '') === 'RECEIVED' ? 'selected' : '' ?>>RECEIVED (Stocked)</option>
@@ -344,7 +289,7 @@
                         <h6 class="card-title mb-0 fw-bold text-dark"><i class="bi bi-table me-2 text-primary"></i>All Inward Batches Detailed Ledger</h6>
                        
                     </div>
-                    <span class="badge bg-light text-dark border font-monospace fs-8">Showing <?= count($batches) ?> Dispatches</span>
+                    <span class="badge bg-light text-dark border font-monospace fs-8" id="inwardShowingCountBadge">Showing <?= count($batches) ?> Dispatches</span>
                 </div>
                 <div class="card-body p-0">
                     <?php if (empty($batches)): ?>
@@ -355,7 +300,7 @@
                         </div>
                     <?php else: ?>
                         <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0" style="min-width: 800px;">
+                            <table class="table table-hover align-middle mb-0" id="inwardBatchesTable" style="min-width: 800px;">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Batch</th>
@@ -369,7 +314,18 @@
                                 </thead>
                                 <tbody>
                                     <?php foreach ($batches as $b): ?>
-                                        <tr id="row-batch-<?= $b['id'] ?>">
+                                        <?php
+                                        $itemsList = $b['items'] ?? ($batchItemsMap[$b['id']] ?? []);
+                                        $skuSearchTerms = implode(' ', array_map(function ($i) {
+                                            return ($i['sku'] ?? '') . ' ' . ($i['size_name'] ?? '') . ' ' . ($i['color_name'] ?? '');
+                                        }, $itemsList));
+                                        $rowSearchPayload = strtolower(e($b['batch_number'] . ' ' . ($b['outward_number'] ?? '') . ' ' . $b['product_name'] . ' ' . $b['program_number'] . ' ' . ($b['warehouse_name'] ?? '') . ' ' . ($b['warehouse_code'] ?? '') . ' ' . ($b['production_unit_name'] ?? '') . ' ' . ($b['production_unit_code'] ?? '') . ' ' . ($b['vehicle_number'] ?? '') . ' ' . ($b['driver_name'] ?? '') . ' ' . $skuSearchTerms));
+                                        ?>
+                                        <tr id="row-batch-<?= $b['id'] ?>" class="inward-batch-row"
+                                            data-search="<?= $rowSearchPayload ?>"
+                                            data-unit-id="<?= e($b['outward_unit_id'] ?? $b['program_unit_id'] ?? '') ?>"
+                                            data-warehouse-id="<?= e($b['destination_warehouse_id'] ?? '') ?>"
+                                            data-status="<?= e($b['status']) ?>">
                                             <td>
                                                 <div class="d-flex align-items-center gap-2">
                                                     <button type="button" class="btn btn-sm btn-light border p-1 btn-show-qr" data-code="<?= e($b['batch_number']) ?>" data-product="<?= e($b['product_name']) ?>" title="Show QR Code">
@@ -412,13 +368,13 @@
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <?php 
-                                                    $bTot = (int)$b['total_qty'];
-                                                    $bRec = (int)($b['received_qty'] ?? 0);
-                                                    $bDmg = (int)($b['damaged_qty'] ?? 0);
-                                                    $bMis = (int)($b['missing_qty'] ?? max(0, $bTot - ($bRec + $bDmg)));
-                                                    $bIsPartial = ($b['status'] === 'RECEIVED' && $bMis > 0);
-                                                    $bIsFullyStocked = ($b['status'] === 'RECEIVED' && $bMis === 0);
+                                                <?php
+                                                $bTot = (int) $b['total_qty'];
+                                                $bRec = (int) ($b['received_qty'] ?? 0);
+                                                $bDmg = (int) ($b['damaged_qty'] ?? 0);
+                                                $bMis = (int) ($b['missing_qty'] ?? max(0, $bTot - ($bRec + $bDmg)));
+                                                $bIsPartial = ($b['status'] === 'RECEIVED' && $bMis > 0);
+                                                $bIsFullyStocked = ($b['status'] === 'RECEIVED' && $bMis === 0);
                                                 ?>
                                                 <?php if ($b['status'] === 'DISPATCHED'): ?>
                                                     <span class="badge bg-warning text-dark batch-status-badge"><i class="bi bi-hourglass-split me-1"></i>Awaiting GRN</span>
@@ -432,9 +388,6 @@
                                             </td>
                                             <td class="text-end">
                                                 <div class="d-inline-flex gap-1">
-                                                    <a href="<?= url('warehouse/inward/label/' . $b['id']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary" title="Print Carton QR Label">
-                                                        <i class="bi bi-qr-code"></i>
-                                                    </a>
                                                     <button type="button" class="btn btn-sm btn-outline-info btn-batch-history" data-batch-id="<?= $b['id'] ?>" data-batch-number="<?= e($b['batch_number']) ?>" title="Batch History &amp; Traceability Logs">
                                                         <i class="bi bi-clock-history"></i>
                                                     </button>
@@ -486,19 +439,26 @@
                     <?php else: ?>
                         <div class="row g-3" id="batchCardsContainer">
                             <?php foreach ($batches as $b): ?>
-                                <?php 
-                                    $totalQty = (int)$b['total_qty'];
-                                    $recQty = (int)($b['received_qty'] ?? 0);
-                                    $dmgQty = (int)($b['damaged_qty'] ?? 0);
-                                    $misQty = (int)($b['missing_qty'] ?? max(0, $totalQty - ($recQty + $dmgQty)));
-                                    $isFullyCredited = ($b['status'] === 'RECEIVED' && $misQty === 0);
-                                    $isPartial = ($recQty > 0 && $misQty > 0);
-                                    $isDispatched = ($b['status'] === 'DISPATCHED' && $recQty === 0);
-                                    $itemsList = $b['items'] ?? [];
-                                    $skuSearchTerms = implode(' ', array_map(function($i) { return ($i['sku'] ?? '') . ' ' . ($i['size_name'] ?? '') . ' ' . ($i['color_name'] ?? ''); }, $itemsList));
-                                    $searchPayload = strtolower(e($b['batch_number'] . ' ' . $b['product_name'] . ' ' . $b['program_number'] . ' ' . ($b['warehouse_name'] ?? '') . ' ' . ($b['warehouse_code'] ?? '') . ' ' . ($b['production_unit_name'] ?? '') . ' ' . ($b['production_unit_code'] ?? '') . ' ' . ($b['vehicle_number'] ?? '') . ' ' . $skuSearchTerms));
+                                <?php
+                                $totalQty = (int) $b['total_qty'];
+                                $recQty = (int) ($b['received_qty'] ?? 0);
+                                $dmgQty = (int) ($b['damaged_qty'] ?? 0);
+                                $misQty = (int) ($b['missing_qty'] ?? max(0, $totalQty - ($recQty + $dmgQty)));
+                                $isFullyCredited = ($b['status'] === 'RECEIVED' && $misQty === 0);
+                                $isPartial = ($recQty > 0 && $misQty > 0);
+                                $isDispatched = ($b['status'] === 'DISPATCHED' && $recQty === 0);
+                                $itemsList = $b['items'] ?? ($batchItemsMap[$b['id']] ?? []);
+                                $skuSearchTerms = implode(' ', array_map(function ($i) {
+                                    return ($i['sku'] ?? '') . ' ' . ($i['size_name'] ?? '') . ' ' . ($i['color_name'] ?? '');
+                                }, $itemsList));
+                                $searchPayload = strtolower(e($b['batch_number'] . ' ' . ($b['outward_number'] ?? '') . ' ' . $b['product_name'] . ' ' . $b['program_number'] . ' ' . ($b['warehouse_name'] ?? '') . ' ' . ($b['warehouse_code'] ?? '') . ' ' . ($b['production_unit_name'] ?? '') . ' ' . ($b['production_unit_code'] ?? '') . ' ' . ($b['vehicle_number'] ?? '') . ' ' . ($b['driver_name'] ?? '') . ' ' . $skuSearchTerms));
                                 ?>
-                                <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3 batch-card-item" data-status="<?= ($misQty > 0) ? 'missing' : 'stocked' ?>" data-search="<?= $searchPayload ?>">
+                                <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3 batch-card-item" 
+                                     data-status="<?= ($misQty > 0) ? 'missing' : 'stocked' ?>" 
+                                     data-search="<?= $searchPayload ?>"
+                                     data-unit-id="<?= e($b['outward_unit_id'] ?? $b['program_unit_id'] ?? '') ?>"
+                                     data-warehouse-id="<?= e($b['destination_warehouse_id'] ?? '') ?>"
+                                     data-inward-status="<?= e($b['status']) ?>">
                                     <div class="card border shadow-sm h-100 batch-card-hover <?= ($misQty > 0) ? ($isPartial ? 'border-warning border-opacity-75' : 'border-danger border-opacity-50') : 'border-success border-opacity-50' ?>">
                                         <!-- Card Header -->
                                         <div class="card-header <?= ($misQty > 0) ? ($isPartial ? 'bg-warning bg-opacity-10 border-warning border-opacity-25' : 'bg-danger bg-opacity-10 border-danger border-opacity-25') : 'bg-success bg-opacity-10 border-success border-opacity-25' ?> py-2 px-3 d-flex justify-content-between align-items-center">
@@ -581,11 +541,11 @@
                                                     </div>
                                                     <?php if (!empty($itemsList)): ?>
                                                         <?php foreach ($itemsList as $v): ?>
-                                                            <?php 
-                                                                $vExp = (int)($v['quantity'] ?? 0);
-                                                                $vRec = (int)($v['received_qty'] ?? ($b['status'] === 'RECEIVED' ? $vExp : 0));
-                                                                $vDmg = (int)($v['damaged_qty'] ?? 0);
-                                                                $vMis = isset($v['missing_qty']) ? (int)$v['missing_qty'] : max(0, $vExp - ($vRec + $vDmg));
+                                                            <?php
+                                                            $vExp = (int) ($v['quantity'] ?? 0);
+                                                            $vRec = (int) ($v['received_qty'] ?? ($b['status'] === 'RECEIVED' ? $vExp : 0));
+                                                            $vDmg = (int) ($v['damaged_qty'] ?? 0);
+                                                            $vMis = isset($v['missing_qty']) ? (int) $v['missing_qty'] : max(0, $vExp - ($vRec + $vDmg));
                                                             ?>
                                                             <div class="d-flex justify-content-between align-items-center bg-white px-2 py-1.5 rounded border mb-1 fs-8">
                                                                 <div class="text-truncate me-1" style="min-width: 0;" title="<?= e($v['sku']) ?>">
@@ -624,9 +584,6 @@
 
                                         <!-- Card Footer -->
                                         <div class="card-footer bg-light py-2 px-3 d-flex justify-content-between align-items-center gap-1">
-                                            <a href="<?= url('warehouse/inward/label/' . $b['id']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2" title="Print Carton QR Label">
-                                                <i class="bi bi-printer"></i>
-                                            </a>
                                             <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 btn-batch-history" data-batch-id="<?= $b['id'] ?>" data-batch-number="<?= e($b['batch_number']) ?>" title="Batch History &amp; Traceability Logs">
                                                 <i class="bi bi-clock-history"></i> Logs
                                             </button>
@@ -828,7 +785,7 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('auto_receive', isAuto ? '1' : '0');
         formData.append('_csrf_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
 
-        fetch('<?= url("api/warehouse/inward/scan") ?>', {
+        fetch('<?= url('api/warehouse/inward/scan') ?>', {
             method: 'POST',
             body: formData
         })
@@ -942,37 +899,97 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // =========================================================================
-    // 3. INTERACTIVE BATCH CARDS SEARCH & FILTER
+    // 3. LIVE CLIENT-SIDE INWARD SEARCH & INSTANT FILTERING (AS YOU TYPE)
     // =========================================================================
+    const mainSearchInput = document.getElementById('mainInwardSearch');
+    const unitSelect = document.getElementById('inwardProductionUnitSelect');
+    const warehouseSelect = document.getElementById('inwardWarehouseSelect');
+    const statusSelect = document.getElementById('inwardStatusSelect');
+    const tableRows = document.querySelectorAll('.inward-batch-row');
+    const batchCardItems = document.querySelectorAll('.batch-card-item');
+    const showingBadge = document.getElementById('inwardShowingCountBadge');
+    const tableBody = document.querySelector('#inwardBatchesTable tbody');
     const batchFilterBtns = document.querySelectorAll('.btn-batch-filter');
     const batchSearchInput = document.getElementById('batchCardSearch');
-    const batchCardItems = document.querySelectorAll('.batch-card-item');
     const noBatchMatch = document.getElementById('noBatchCardsMatch');
     const btnResetCards = document.getElementById('btnResetCardFilters');
 
-    let currentFilter = 'all';
+    let currentCardFilter = 'all';
 
-    function filterBatchCards() {
-        const query = (batchSearchInput ? batchSearchInput.value : '').toLowerCase().trim();
-        let visibleCount = 0;
+    function performLiveInwardFilter() {
+        const mainQuery = (mainSearchInput ? mainSearchInput.value : '').toLowerCase().trim();
+        const cardQuery = (batchSearchInput ? batchSearchInput.value : '').toLowerCase().trim();
+        const query = mainQuery || cardQuery;
 
-        batchCardItems.forEach(card => {
-            const status = card.getAttribute('data-status');
-            const searchData = card.getAttribute('data-search') || '';
+        const selUnit = (unitSelect ? unitSelect.value : '').trim();
+        const selWarehouse = (warehouseSelect ? warehouseSelect.value : '').trim();
+        const selStatus = (statusSelect ? statusSelect.value : '').trim();
 
-            const matchesStatus = (currentFilter === 'all') || (currentFilter === status);
+        let visibleTableCount = 0;
+        tableRows.forEach(row => {
+            const searchData = row.getAttribute('data-search') || '';
+            const unitId = row.getAttribute('data-unit-id') || '';
+            const whId = row.getAttribute('data-warehouse-id') || '';
+            const st = row.getAttribute('data-status') || '';
+
             const matchesSearch = !query || searchData.includes(query);
+            const matchesUnit = !selUnit || unitId === selUnit;
+            const matchesWh = !selWarehouse || whId === selWarehouse;
+            const matchesStatus = !selStatus || st === selStatus;
 
-            if (matchesStatus && matchesSearch) {
+            if (matchesSearch && matchesUnit && matchesWh && matchesStatus) {
+                row.style.display = '';
+                visibleTableCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        if (showingBadge) {
+            showingBadge.textContent = `Showing ${visibleTableCount} Dispatches`;
+        }
+
+        let noMatchRow = document.getElementById('noBatchTableMatches');
+        if (visibleTableCount === 0 && tableRows.length > 0) {
+            if (!noMatchRow && tableBody) {
+                noMatchRow = document.createElement('tr');
+                noMatchRow.id = 'noBatchTableMatches';
+                noMatchRow.innerHTML = `<td colspan="7" class="text-center py-5 text-muted">
+                    <i class="bi bi-search fs-2 d-block mb-2 text-secondary opacity-50"></i>
+                    <h6 class="fw-bold text-dark mb-1">No matching batches found</h6>
+                    <p class="small text-muted mb-0">No inward shipments match your search criteria. Try a different search term or clear the filter.</p>
+                </td>`;
+                tableBody.appendChild(noMatchRow);
+            }
+            if (noMatchRow) noMatchRow.style.display = '';
+        } else if (noMatchRow) {
+            noMatchRow.style.display = 'none';
+        }
+
+        let visibleCardsCount = 0;
+        batchCardItems.forEach(card => {
+            const searchData = card.getAttribute('data-search') || '';
+            const unitId = card.getAttribute('data-unit-id') || '';
+            const whId = card.getAttribute('data-warehouse-id') || '';
+            const st = card.getAttribute('data-inward-status') || '';
+            const cardStatus = card.getAttribute('data-status') || '';
+
+            const matchesSearch = !query || searchData.includes(query);
+            const matchesUnit = !selUnit || unitId === selUnit;
+            const matchesWh = !selWarehouse || whId === selWarehouse;
+            const matchesStatus = !selStatus || st === selStatus;
+            const matchesCardFilter = (currentCardFilter === 'all') || (currentCardFilter === cardStatus);
+
+            if (matchesSearch && matchesUnit && matchesWh && matchesStatus && matchesCardFilter) {
                 card.classList.remove('d-none');
-                visibleCount++;
+                visibleCardsCount++;
             } else {
                 card.classList.add('d-none');
             }
         });
 
         if (noBatchMatch) {
-            if (visibleCount === 0 && batchCardItems.length > 0) {
+            if (visibleCardsCount === 0 && batchCardItems.length > 0) {
                 noBatchMatch.classList.remove('d-none');
             } else {
                 noBatchMatch.classList.add('d-none');
@@ -980,30 +997,49 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    if (mainSearchInput) {
+        mainSearchInput.addEventListener('input', performLiveInwardFilter);
+        mainSearchInput.addEventListener('keyup', performLiveInwardFilter);
+    }
+    if (unitSelect) {
+        unitSelect.addEventListener('change', performLiveInwardFilter);
+    }
+    if (warehouseSelect) {
+        warehouseSelect.addEventListener('change', performLiveInwardFilter);
+    }
+    if (statusSelect) {
+        statusSelect.addEventListener('change', performLiveInwardFilter);
+    }
+
     if (batchFilterBtns.length > 0) {
         batchFilterBtns.forEach(btn => {
             btn.addEventListener('click', function() {
                 batchFilterBtns.forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
-                currentFilter = this.getAttribute('data-filter');
-                filterBatchCards();
+                currentCardFilter = this.getAttribute('data-filter') || 'all';
+                performLiveInwardFilter();
             });
         });
     }
 
     if (batchSearchInput) {
-        batchSearchInput.addEventListener('input', filterBatchCards);
+        batchSearchInput.addEventListener('input', function() {
+            if (mainSearchInput && !mainSearchInput.value) {
+                performLiveInwardFilter();
+            }
+        });
     }
 
     if (btnResetCards) {
         btnResetCards.addEventListener('click', function() {
             if (batchSearchInput) batchSearchInput.value = '';
-            currentFilter = 'all';
+            if (mainSearchInput) mainSearchInput.value = '';
+            currentCardFilter = 'all';
             batchFilterBtns.forEach(b => {
                 if (b.getAttribute('data-filter') === 'all') b.classList.add('active');
                 else b.classList.remove('active');
             });
-            filterBatchCards();
+            performLiveInwardFilter();
         });
     }
 
@@ -1032,7 +1068,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const modal = new bootstrap.Modal(historyModalEl);
         modal.show();
 
-        fetch('<?= url("api/warehouse/inward/batch-history/") ?>' + batchId)
+        fetch('<?= url('api/warehouse/inward/batch-history/') ?>' + batchId)
             .then(res => res.json())
             .then(res => {
                 historyLoading.classList.add('d-none');

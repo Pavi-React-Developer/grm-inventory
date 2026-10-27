@@ -1,22 +1,12 @@
-<?php
-// views/warehouse/catalog/index.php
-// Warehouse Category Hierarchy & Pre-set Attributes Manager
-// Supports Dual Mode: Hierarchy List View (Image 1 Table Style) & Cascading Columns View (Image 2 Style)
-// Category-Dependent Scoping: Attributes strictly scoped to selected level. No global leakage.
-?>
 <!-- PAGE HEADER -->
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
-        <h2 class="mb-1"><i class="bi bi-diagram-3-fill me-2 text-primary"></i>Warehouse Product Catalog &amp; Category Manager</h2>
-        <p class="text-muted small mb-0">Pre-configure category hierarchies and product attributes for automated supplier inwarding.</p>
+        <h2 class="mb-1"><i class="bi bi-diagram-3-fill me-2 text-primary"></i>Product Catalog</h2>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <button type="button" class="btn btn-primary shadow-sm fw-semibold" onclick="openAddCategoryModal()">
             <i class="bi bi-plus-circle me-1"></i> Add Category
         </button>
-        <a href="<?= url('warehouse/sellers') ?>" class="btn btn-outline-secondary fw-semibold">
-            <i class="bi bi-box-arrow-in-down me-1 text-primary"></i> Supplier Inward &amp; Products
-        </a>
     </div>
 </div>
 
@@ -40,7 +30,6 @@
                 <div>
                     <span class="text-muted small fw-semibold">Total Subcategories</span>
                     <h4 class="mb-0 fw-bold mt-1 text-success" id="kpiSubCount"><?= number_format($catalogStats['total_subcategories'] ?? 0) ?></h4>
-                    <small class="text-muted">Category-dependent subdivisions</small>
                 </div>
                 <div class="rounded-circle bg-success-subtle text-success p-3"><i class="bi bi-diagram-3 fs-4"></i></div>
             </div>
@@ -139,14 +128,8 @@
         </div>
     </div>
     <div class="d-flex align-items-center gap-2">
-        <span class="badge bg-light text-secondary border d-none d-md-inline-flex align-items-center gap-1">
-            <i class="bi bi-shield-check text-success"></i> Category-Dependent Scoping Active
-        </span>
         <button type="button" class="btn btn-sm btn-outline-primary" onclick="reloadCategoryTree()">
             <i class="bi bi-arrow-clockwise me-1"></i> Refresh
-        </button>
-        <button type="button" class="btn btn-sm btn-primary shadow-sm fw-semibold" onclick="openAddCategoryModal()">
-            <i class="bi bi-plus-circle me-1"></i> Add Category
         </button>
     </div>
 </div>
@@ -177,14 +160,6 @@
                     </tr>
                 </tbody>
             </table>
-        </div>
-        <div class="card-footer bg-white py-2 px-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-2 text-muted small">
-            <div>
-                <span id="catalogListSummaryText">Showing Category Hierarchy</span>
-            </div>
-            <div class="d-flex align-items-center gap-3">
-                <span><i class="bi bi-info-circle text-primary me-1"></i>Click any row to expand branch breakdown</span>
-            </div>
         </div>
     </div>
 </div>
@@ -386,7 +361,7 @@
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <div class="d-flex align-items-center gap-2">
                                 <span class="badge bg-success rounded-pill px-3 py-1">Step 2</span>
-                                <h6 class="fw-bold mb-0 text-dark">Pre-set Attributes <span class="badge bg-info-subtle text-info border border-info-subtle ms-1" style="font-size:.7rem;">Category-Dependent</span></h6>
+                                
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary" onclick="addUnifiedAttributeRow()">
                                 <i class="bi bi-plus-lg me-1"></i> Add Attribute

@@ -342,34 +342,63 @@
                                         $itemEndSeq = $globalSeqCounter + max(1, $expected) - 1;
                                         $globalSeqCounter += max(1, $expected);
 
-                                        $c1 = !empty($item['category_name']) ? trim($item['category_name']) : (!empty($item['category_code']) ? trim($item['category_code']) : '');
-                                        $c2 = !empty($item['subcategory_name']) ? trim($item['subcategory_name']) : (!empty($item['subcategory_code']) ? trim($item['subcategory_code']) : '');
-                                        $c3 = !empty($item['sub_subcategory_name']) ? trim($item['sub_subcategory_name']) : (!empty($item['sub_subcategory_code']) ? trim($item['sub_subcategory_code']) : '');
+                                        $isSeries = !empty($item['is_series']) || 
+                                                    ($item['qr_type'] ?? '') === 'SERIES_BATCH' || 
+                                                    strtoupper($item['category_type'] ?? '') === 'SERIES' || 
+                                                    (int)($item['pack_quantity'] ?? 0) > 1 || 
+                                                    !empty($item['is_complementary']);
 
-                                        $prefix = '';
-                                        if ($c1 !== '') $prefix .= strtoupper($c1[0]);
-                                        if ($c2 !== '') $prefix .= strtoupper($c2[0]);
-                                        if ($c3 !== '') $prefix .= strtoupper($c3[0]);
+                                        $seriesQr = !empty($item['series_qr_code']) 
+                                            ? $item['series_qr_code'] 
+                                            : (!empty($item['saved_tags'][0]) 
+                                                ? $item['saved_tags'][0] 
+                                                : (!empty($item['selected_qr_codes']) && !str_starts_with($item['selected_qr_codes'], '[') ? trim(explode(',', $item['selected_qr_codes'])[0]) : (!empty($item['series_start_code']) ? $item['series_start_code'] : '')));
 
-                                        if (strlen($prefix) < 2) {
-                                            if (!empty($item['qr_code_prefix'])) {
-                                                $clean = preg_replace('/[^A-Za-z0-9]/', '', $item['qr_code_prefix']);
-                                                $prefix = strtoupper(substr($clean, 0, 3));
+                                        if ($isSeries && !empty($seriesQr)) {
+                                            $tagRange = $seriesQr;
+                                            $tagStart = $seriesQr;
+                                        } else if (!empty($item['saved_tags'])) {
+                                            $firstTag = $item['saved_tags'][0];
+                                            $lastTag = end($item['saved_tags']);
+                                            $tagRange = count($item['saved_tags']) > 1 ? ($firstTag . ' - ' . $lastTag) : $firstTag;
+                                            $tagStart = $firstTag;
+                                        } else {
+                                            $c1 = !empty($item['category_name']) ? trim($item['category_name']) : (!empty($item['category_code']) ? trim($item['category_code']) : '');
+                                            $c2 = !empty($item['subcategory_name']) ? trim($item['subcategory_name']) : (!empty($item['subcategory_code']) ? trim($item['subcategory_code']) : '');
+                                            $c3 = !empty($item['sub_subcategory_name']) ? trim($item['sub_subcategory_name']) : (!empty($item['sub_subcategory_code']) ? trim($item['sub_subcategory_code']) : '');
+
+                                            $prefix = '';
+                                            if ($c1 !== '') $prefix .= strtoupper($c1[0]);
+                                            if ($c2 !== '') $prefix .= strtoupper($c2[0]);
+                                            if ($c3 !== '') $prefix .= strtoupper($c3[0]);
+
+                                            if (strlen($prefix) < 2) {
+                                                if (!empty($item['qr_code_prefix'])) {
+                                                    $clean = preg_replace('/[^A-Za-z0-9]/', '', $item['qr_code_prefix']);
+                                                    $prefix = strtoupper(substr($clean, 0, 3));
+                                                }
                                             }
+                                            if (empty($prefix)) $prefix = 'TTS';
+                                            $monthStr = sprintf('%02d', date('n'));
+                                            $yearStr = date('y');
+                                            $tagStart = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemStartSeq);
+                                            $tagEnd = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemEndSeq);
+                                            $tagRange = $expected > 1 ? ($tagStart . ' - ' . $tagEnd) : $tagStart;
                                         }
-                                        if (empty($prefix)) $prefix = 'TTS';
-                                        $monthStr = sprintf('%02d', date('n'));
-                                        $yearStr = date('y');
-                                        $tagStart = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemStartSeq);
-                                        $tagEnd = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemEndSeq);
-                                        $tagRange = $expected > 1 ? ($tagStart . ' - ' . $tagEnd) : $tagStart;
                                     ?>
-                                    <tr id="row-<?= $vid ?>" data-variant-id="<?= $vid ?>" data-sku="<?= e($item['sku']) ?>" data-product="<?= e($item['product_name']) ?>" data-qr="<?= e($tagStart) ?>" data-expected="<?= $expected ?>">
+                                    <tr id="row-<?= $vid ?>" data-variant-id="<?= $vid ?>" data-sku="<?= e($item['sku']) ?>" data-product="<?= e($item['product_name']) ?>" data-qr="<?= e($tagStart) ?>" data-expected="<?= $expected ?>" data-is-series="<?= $isSeries ? '1' : '0' ?>" data-series-qr="<?= e($seriesQr) ?>">
                                         <td><?= $idx + 1 ?></td>
                                         <td>
                                             <span class="fw-bold font-monospace text-primary d-block"><?= e($item['sku']) ?></span>
                                             <small class="text-dark fw-semibold d-block"><?= e($item['product_name']) ?></small>
-                                            <small class="badge bg-dark text-white font-monospace mt-1"><i class="bi bi-qr-code me-1 text-warning"></i><?= e($tagRange) ?></small>
+                                            <?php if ($isSeries && !empty($seriesQr)): ?>
+                                                <div class="mt-1">
+                                                    <span class="badge bg-primary text-white font-monospace"><i class="bi bi-box-seam me-1"></i><?= e($seriesQr) ?></span>
+                                                    <span class="badge bg-info-subtle text-info border border-info-subtle small ms-1">📦 Series Pack (<?= $expected ?> pcs)</span>
+                                                </div>
+                                            <?php else: ?>
+                                                <small class="badge bg-dark text-white font-monospace mt-1"><i class="bi bi-qr-code me-1 text-warning"></i><?= e($tagRange) ?></small>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
                                             <span class="badge bg-light text-dark border"><?= e($item['size_name'] ?? 'Free') ?></span>
@@ -896,24 +925,70 @@
         it.endSeq = currentGlobalSeq + qty - 1;
         currentGlobalSeq += qty;
 
-        // Load saved piece tags from selected_qr_codes or saved pieces
+        // Detect Series Product
+        const isSeries = Boolean(
+            it.is_series ||
+            it.qr_type === 'SERIES_BATCH' ||
+            (it.category_type && String(it.category_type).toUpperCase() === 'SERIES') ||
+            parseInt(it.pack_quantity) > 1 ||
+            it.is_complementary
+        );
+        it.is_series = isSeries;
+
+        let seriesQr = it.series_qr_code || '';
+        if (!seriesQr && it.saved_tags && it.saved_tags.length > 0) {
+            seriesQr = it.saved_tags[0];
+        }
+        if (!seriesQr && it.selected_qr_codes) {
+            if (typeof it.selected_qr_codes === 'string' && !it.selected_qr_codes.startsWith('[')) {
+                seriesQr = it.selected_qr_codes.split(',')[0].trim();
+            }
+        }
+        if (!seriesQr && it.series_start_code) {
+            seriesQr = it.series_start_code;
+        }
+        if (seriesQr) {
+            it.series_qr_code = seriesQr.toUpperCase();
+        }
+
+        // Load saved piece tags from saved_tags or selected_qr_codes or saved pieces
         let savedTags = [];
-        if (it.selected_qr_codes) {
+        if (Array.isArray(it.saved_tags) && it.saved_tags.length > 0) {
+            savedTags = it.saved_tags.map(t => String(t).toUpperCase());
+        } else if (it.selected_qr_codes) {
             try {
                 const parsed = typeof it.selected_qr_codes === 'string' ? JSON.parse(it.selected_qr_codes) : it.selected_qr_codes;
                 if (Array.isArray(parsed)) {
                     savedTags = parsed.map(t => typeof t === 'object' ? (t.tag_code || t.qr_code || '') : String(t)).filter(t => t.length > 0);
                 }
-            } catch(e) {}
+            } catch(e) {
+                if (typeof it.selected_qr_codes === 'string') {
+                    savedTags = it.selected_qr_codes.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                }
+            }
         }
         if (savedTags.length === 0 && SAVED_PIECE_TAGS[String(it.variant_id)]) {
             savedTags = SAVED_PIECE_TAGS[String(it.variant_id)];
         }
 
+        if (isSeries && it.series_qr_code) {
+            savedTags = Array(qty).fill(it.series_qr_code);
+            SAVED_PIECE_TAGS[String(it.variant_id)] = savedTags;
+        } else if (savedTags.length > 0) {
+            SAVED_PIECE_TAGS[String(it.variant_id)] = savedTags;
+        }
+
         const dmgQty = parseInt(it.damaged_qty) || 0;
         const recvQty = parseInt(it.received_qty) || (IS_FULLY_RECEIVED ? qty : 0);
 
-        if (savedTags.length > 0) {
+        if (isSeries && it.series_qr_code) {
+            const sTag = it.series_qr_code;
+            if (dmgQty > 0) {
+                DAMAGED_TAGS.add(sTag);
+            } else if (recvQty > 0) {
+                SCANNED_TAGS.add(sTag);
+            }
+        } else if (savedTags.length > 0) {
             savedTags.forEach((tag, idx) => {
                 const clean = String(tag).toUpperCase();
                 if (idx >= (savedTags.length - dmgQty)) {
@@ -949,6 +1024,21 @@
         const currentDmgQty = dmgInput ? (parseInt(dmgInput.value) || 0) : (parseInt(item.damaged_qty) || 0);
         const validRecvQty = Math.max(0, Math.min(expected, currentRecvQty));
         const validDmgQty = Math.max(0, Math.min(expected - validRecvQty, currentDmgQty));
+
+        if (item.is_series) {
+            const seriesTag = (item.series_qr_code || getLabelCode(item.startSeq, item)).toUpperCase();
+            if (validDmgQty > 0) {
+                DAMAGED_TAGS.add(seriesTag);
+                SCANNED_TAGS.delete(seriesTag);
+            } else if (validRecvQty > 0) {
+                SCANNED_TAGS.add(seriesTag);
+                DAMAGED_TAGS.delete(seriesTag);
+            } else {
+                SCANNED_TAGS.delete(seriesTag);
+                DAMAGED_TAGS.delete(seriesTag);
+            }
+            return;
+        }
 
         let variantTags = [];
         for (let p = item.startSeq; p <= item.endSeq; p++) {
@@ -990,6 +1080,13 @@
 
     // Get count of verified tags in SCANNED_TAGS for a specific variant (excluding damaged)
     function getVariantVerifiedTagCount(item) {
+        if (item.is_series) {
+            const recvInput = document.getElementById(`input-recv-${item.variant_id}`);
+            if (recvInput) return parseInt(recvInput.value) || 0;
+            const seriesTag = (item.series_qr_code || getLabelCode(item.startSeq, item)).toUpperCase();
+            const expected = parseInt(item.dispatched_qty > 0 ? item.dispatched_qty : item.requested_qty) || 0;
+            return SCANNED_TAGS.has(seriesTag) && !DAMAGED_TAGS.has(seriesTag) ? expected : 0;
+        }
         let count = 0;
         for (let p = item.startSeq; p <= item.endSeq; p++) {
             const tag = getLabelCode(p, item).toUpperCase();
@@ -1000,6 +1097,13 @@
 
     // Get count of damaged tags for a specific variant
     function getVariantDamagedTagCount(item) {
+        if (item.is_series) {
+            const dmgInput = document.getElementById(`input-dmg-${item.variant_id}`);
+            if (dmgInput) return parseInt(dmgInput.value) || 0;
+            const seriesTag = (item.series_qr_code || getLabelCode(item.startSeq, item)).toUpperCase();
+            const expected = parseInt(item.dispatched_qty > 0 ? item.dispatched_qty : item.requested_qty) || 0;
+            return DAMAGED_TAGS.has(seriesTag) ? expected : 0;
+        }
         let count = 0;
         for (let p = item.startSeq; p <= item.endSeq; p++) {
             const tag = getLabelCode(p, item).toUpperCase();
@@ -1100,6 +1204,10 @@
     }
 
     function getLabelCode(pieceIndex, item) {
+        if (!item) return 'GRM01';
+        if (item.is_series && (item.series_qr_code || item.series_start_code)) {
+            return String(item.series_qr_code || item.series_start_code).toUpperCase();
+        }
         const vid = String(item.variant_id);
         const itemRelativeIdx = pieceIndex - item.startSeq;
         if (SAVED_PIECE_TAGS[vid] && SAVED_PIECE_TAGS[vid][itemRelativeIdx]) {
@@ -1116,13 +1224,7 @@
     }
 
     function getQRPayload(pieceIndex, item) {
-        const tagCode = getLabelCode(pieceIndex, item);
-        const sku = (item && item.sku) ? item.sku : '';
-        const mrp = parseFloat(item && (item.mrp || item.selling_price || item.base_price) ? (item.mrp || item.selling_price || item.base_price) : 0);
-        const costPrice = parseFloat(item && (item.purchase_price || item.production_cost || item.cost_price || item.selling_price || mrp) ? (item.purchase_price || item.production_cost || item.cost_price || item.selling_price || mrp) : 0);
-        const fmtMrp = mrp.toFixed(2);
-        const fmtDisc = costPrice.toFixed(2);
-        return `${tagCode}|${sku}|MRP:${fmtMrp}|Disc:${fmtDisc}`;
+        return getLabelCode(pieceIndex, item).toUpperCase();
     }
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -1312,6 +1414,29 @@
         let matchedItem = null;
         let identifiedTag = '';
 
+        // Strategy 0: Match Series QR Code or Saved Tags directly
+        ITEMS.forEach(item => {
+            if (matched) return;
+            const sQr = (item.series_qr_code || '').trim().toLowerCase();
+            if (sQr && (sQr === cleanCode || (extractedTag && sQr === extractedTag))) {
+                matched = true;
+                matchedItem = item;
+                identifiedTag = sQr.toUpperCase();
+                return;
+            }
+            if (Array.isArray(item.saved_tags)) {
+                for (let st of item.saved_tags) {
+                    const cleanSt = String(st).trim().toLowerCase();
+                    if (cleanSt === cleanCode || (extractedTag && cleanSt === extractedTag)) {
+                        matched = true;
+                        matchedItem = item;
+                        identifiedTag = String(st).toUpperCase();
+                        return;
+                    }
+                }
+            }
+        });
+
         // Strategy 1: Match exact Piece Tag Code
         ITEMS.forEach(item => {
             if (matched) return;
@@ -1366,6 +1491,65 @@
             const dmgInput = document.getElementById(`input-dmg-${vid}`);
             const expected = parseInt(matchedItem.dispatched_qty > 0 ? matchedItem.dispatched_qty : matchedItem.requested_qty) || 1;
             const row = document.getElementById(`row-${vid}`);
+
+            // Specific handling for Series Product (1 QR code represents the entire allocated pack)
+            if (matchedItem.is_series) {
+                const seriesTag = (matchedItem.series_qr_code || identifiedTag || getLabelCode(matchedItem.startSeq, matchedItem)).toUpperCase();
+
+                if (currentScanMode === 'damage') {
+                    if (DAMAGED_TAGS.has(seriesTag)) {
+                        playBeep('error');
+                        if (row) {
+                            row.classList.add('table-warning');
+                            setTimeout(() => row.classList.remove('table-warning'), 800);
+                        }
+                        showScanFeedback(`⚠️ <strong>Already Marked Damaged:</strong> Series QR <span class="badge bg-danger font-monospace">${escapeHtml(seriesTag)}</span> is already marked as damaged.`, "warning");
+                        if (liveInput) { liveInput.value = ''; liveInput.focus(); }
+                        return;
+                    }
+                    SCANNED_TAGS.delete(seriesTag);
+                    DAMAGED_TAGS.add(seriesTag);
+                    if (dmgInput) dmgInput.value = expected;
+                    if (recvInput) recvInput.value = 0;
+
+                    if (row) {
+                        row.classList.add('table-danger');
+                        setTimeout(() => row.classList.remove('table-danger'), 800);
+                    }
+                    playBeep('double');
+                    showScanFeedback(`🔴 <strong>Damaged Series Pack Logged:</strong> Series QR <span class="badge bg-danger font-monospace">${escapeHtml(seriesTag)}</span> marked as DEFECT / DAMAGE for <strong>${escapeHtml(matchedItem.sku)}</strong> (${expected} pcs).`, "danger");
+                } else {
+                    if (SCANNED_TAGS.has(seriesTag) && !DAMAGED_TAGS.has(seriesTag) && recvInput && parseInt(recvInput.value) >= expected) {
+                        playBeep('error');
+                        if (row) {
+                            row.classList.add('table-warning');
+                            setTimeout(() => row.classList.remove('table-warning'), 800);
+                        }
+                        showScanFeedback(`⚠️ <strong>Already Verified:</strong> Series QR <span class="badge bg-dark font-monospace">${escapeHtml(seriesTag)}</span> (${expected} pcs) has ALREADY been scanned &amp; verified.`, "warning");
+                        if (liveInput) { liveInput.value = ''; liveInput.focus(); }
+                        return;
+                    }
+                    DAMAGED_TAGS.delete(seriesTag);
+                    SCANNED_TAGS.add(seriesTag);
+                    if (recvInput) recvInput.value = expected;
+                    if (dmgInput) dmgInput.value = 0;
+
+                    if (row) {
+                        row.classList.add('table-success');
+                        setTimeout(() => row.classList.remove('table-success'), 600);
+                    }
+                    playBeep('success');
+                    showScanFeedback(`✅ <strong>Series Pack Verified:</strong> Scanned single series QR <span class="badge bg-primary font-monospace">${escapeHtml(seriesTag)}</span> for <strong>${escapeHtml(matchedItem.sku)}</strong>. Verified: <strong>${expected} / ${expected} pcs</strong> (Entire pack verified).`, "success");
+                }
+
+                recalculateMatrix();
+                saveInwardDraft();
+                if (activeModalVariantId && String(activeModalVariantId) === String(vid)) {
+                    updateModalState(vid);
+                }
+                if (liveInput) { liveInput.value = ''; liveInput.focus(); }
+                return;
+            }
 
             if (!identifiedTag) {
                 for (let p = matchedItem.startSeq; p <= matchedItem.endSeq; p++) {
@@ -1581,7 +1765,15 @@
                     damaged: damaged,
                     missing: Math.abs(diff),
                     startSeq: item.startSeq || 1,
-                    endSeq: item.endSeq || expected
+                    endSeq: item.endSeq || expected,
+                    is_series: item.is_series,
+                    series_qr_code: item.series_qr_code,
+                    saved_tags: item.saved_tags,
+                    selected_qr_codes: item.selected_qr_codes,
+                    series_start_code: item.series_start_code,
+                    qr_type: item.qr_type,
+                    pack_quantity: item.pack_quantity,
+                    category_type: item.category_type
                 });
             }
         });
@@ -1653,11 +1845,44 @@
                 }
             }
 
-            const nextPendingTag = pendingTags[0] || getLabelCode(item.startSeq, item);
-            let tagRangeDisplay = nextPendingTag;
-            if (pendingTags.length > 1) {
-                tagRangeDisplay = `${pendingTags[0]} - ${pendingTags[pendingTags.length - 1]}`;
+            const isSeries = Boolean(
+                item.is_series ||
+                item.qr_type === 'SERIES_BATCH' ||
+                (item.category_type && String(item.category_type).toUpperCase() === 'SERIES') ||
+                parseInt(item.pack_quantity) > 1 ||
+                item.is_complementary
+            );
+
+            const seriesQr = item.series_qr_code || 
+                (item.saved_tags && item.saved_tags[0]) || 
+                (item.selected_qr_codes && !String(item.selected_qr_codes).startsWith('[') ? item.selected_qr_codes.split(',')[0].trim() : '') || 
+                item.series_start_code || 
+                '';
+
+            let tagColHtml = '';
+            if (isSeries && seriesQr) {
+                tagColHtml = `
+                    <span class="badge bg-primary text-white font-monospace d-inline-block mb-1">
+                        <i class="bi bi-box-seam me-1"></i>${escapeHtml(seriesQr.toUpperCase())}
+                    </span>
+                    <span class="badge bg-info-subtle text-info border border-info-subtle small ms-1">📦 Series Pack (${item.expected} pcs)</span>
+                    <small class="text-muted d-block font-monospace">QR Tag: <strong class="text-primary">${escapeHtml(seriesQr.toUpperCase())}</strong></small>
+                `;
+            } else {
+                const nextPendingTag = pendingTags[0] || getLabelCode(item.startSeq, item);
+                let tagRangeDisplay = nextPendingTag;
+                if (pendingTags.length > 1) {
+                    tagRangeDisplay = `${pendingTags[0]} - ${pendingTags[pendingTags.length - 1]}`;
+                }
+                tagColHtml = `
+                    <span class="badge bg-dark text-white font-monospace d-block mb-1">
+                        <i class="bi bi-qr-code me-1 text-warning"></i>${escapeHtml(tagRangeDisplay)}
+                    </span>
+                    <small class="text-muted d-block font-monospace">Next: <strong class="text-danger">${escapeHtml(nextPendingTag)}</strong></small>
+                `;
             }
+
+            const scanBtnTitle = isSeries ? `Verify Entire Series Pack (${item.expected} pcs)` : `Fast Scan (+1 pc)`;
 
             html += `
                 <tr>
@@ -1669,15 +1894,13 @@
                                 <div class="d-flex align-items-center gap-1 mt-1">
                                     <span class="badge bg-dark font-monospace text-white">${escapeHtml(item.sku)}</span>
                                     ${item.category_name ? `<span class="badge bg-primary-subtle text-primary border border-primary-subtle">${escapeHtml(item.category_name)}</span>` : ''}
+                                    ${isSeries ? `<span class="badge bg-info-subtle text-info border border-info-subtle">Series Pack</span>` : ''}
                                 </div>
                             </div>
                         </div>
                     </td>
                     <td>
-                        <span class="badge bg-dark text-white font-monospace d-block mb-1">
-                            <i class="bi bi-qr-code me-1 text-warning"></i>${escapeHtml(tagRangeDisplay)}
-                        </span>
-                        <small class="text-muted d-block font-monospace">Next: <strong class="text-danger">${escapeHtml(nextPendingTag)}</strong></small>
+                        ${tagColHtml}
                     </td>
                     <td>
                         <span class="badge bg-light text-dark border">${escapeHtml(item.size_name)}</span>
@@ -1688,10 +1911,10 @@
                     <td class="text-end fw-bold text-danger fs-6">-${item.missing} pcs</td>
                     <td class="text-center">
                         <div class="d-inline-flex gap-1">
-                            <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold shadow-sm text-nowrap" onclick="openMissingProductModal(${item.variant_id}, 'mismatched')" title="View Only Mismatched &amp; Missing Piece QR Codes">
+                            <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold shadow-sm text-nowrap" onclick="openMissingProductModal(${item.variant_id}, 'mismatched')" title="View Details">
                                 <i class="bi bi-eye me-1"></i> View
                             </button>
-                            <button type="button" class="btn btn-sm btn-danger py-1 px-2 fw-semibold shadow-sm text-nowrap" onclick="fastScanVariant(${item.variant_id})" title="Fast Scan (+1 pc)">
+                            <button type="button" class="btn btn-sm btn-danger py-1 px-2 fw-semibold shadow-sm text-nowrap" onclick="fastScanVariant(${item.variant_id})" title="${escapeHtml(scanBtnTitle)}">
                                 <i class="bi bi-upc-scan me-1"></i> Scan
                             </button>
                         </div>
@@ -1772,15 +1995,14 @@
         const qrContainer = document.getElementById('modalQrCanvas');
         if (qrContainer && typeof QRCode !== 'undefined') {
             qrContainer.innerHTML = '';
-            const qrPayload = `${finalTag}|${item.sku || ''}|MRP:${fmtMrp}|Disc:${fmtCost}`;
             try {
                 new QRCode(qrContainer, {
-                    text: qrPayload,
+                    text: finalTag,
                     width: 150,
                     height: 150,
                     colorDark: "#0f172a",
                     colorLight: "#ffffff",
-                    correctLevel: (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.H !== undefined) ? QRCode.CorrectLevel.H : 2
+                    correctLevel: QRCode.CorrectLevel.M
                 });
             } catch(e) {
                 console.warn("Modal QR error:", e);
@@ -1789,7 +2011,7 @@
         
         const elQrTag = document.getElementById('modalQrTag');
         if (elQrTag) {
-            elQrTag.innerHTML = `<span class="badge bg-dark font-monospace text-white px-2 py-1 fs-6"><i class="bi bi-qr-code me-1 text-warning"></i>${escapeHtml(finalTag)}</span><span class="ms-2 font-monospace text-muted small">${escapeHtml(item.sku)}</span>`;
+            elQrTag.innerHTML = `<div class="font-monospace fw-bold text-primary fs-5 mt-2" style="letter-spacing: 0.5px;">${escapeHtml(finalTag)}</div>`;
         }
         
         // Highlight the clicked item in the grid
@@ -1858,7 +2080,7 @@
 
         const elQrTag = document.getElementById('modalQrTag');
         if (elQrTag) {
-            elQrTag.innerHTML = `<span class="badge bg-dark font-monospace text-white px-2 py-1 fs-6"><i class="bi bi-qr-code me-1 text-warning"></i>${escapeHtml(currentTagCode)}</span><span class="ms-2 font-monospace text-muted small">${escapeHtml(item.sku)}</span>`;
+            elQrTag.innerHTML = `<div class="font-monospace fw-bold text-primary fs-5 mt-2" style="letter-spacing: 0.5px;">${escapeHtml(currentTagCode)}</div>`;
         }
 
         const qrContainer = document.getElementById('modalQrCanvas');
@@ -1866,12 +2088,12 @@
             qrContainer.innerHTML = '';
             try {
                 new QRCode(qrContainer, {
-                    text: qrPayload,
+                    text: currentTagCode,
                     width: 150,
                     height: 150,
                     colorDark: "#0f172a",
                     colorLight: "#ffffff",
-                    correctLevel: (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.H !== undefined) ? QRCode.CorrectLevel.H : 2
+                    correctLevel: QRCode.CorrectLevel.M
                 });
             } catch(e) {
                 console.warn("Modal QR error:", e);
@@ -1964,43 +2186,224 @@
             const fmtMrp = mrp.toFixed(2);
             const fmtCost = cost.toFixed(2);
 
-            for (let i = 1; i <= expected; i++) {
-                const globalSeq = sSeq + i - 1;
-                const pieceTagCode = getLabelCode(globalSeq, item).toUpperCase();
-                const isDamaged = DAMAGED_TAGS.has(pieceTagCode);
-                const isVerified = SCANNED_TAGS.has(pieceTagCode) && !isDamaged;
+            if (item.is_series) {
+                const seriesTag = (item.series_qr_code || getLabelCode(item.startSeq, item)).toUpperCase();
+                const isDamaged = DAMAGED_TAGS.has(seriesTag) || damaged > 0;
+                const isVerified = (SCANNED_TAGS.has(seriesTag) || received >= expected) && !isDamaged;
                 const isPending = !isVerified && !isDamaged;
 
-                // Apply Active Filter: Skip non-matching pieces
                 if (modalPieceFilter === 'mismatched' && !isPending) {
-                    continue;
+                    displayedCount = 0;
+                } else if (modalPieceFilter === 'verified' && !isVerified) {
+                    displayedCount = 0;
+                } else if (modalPieceFilter === 'damaged' && !isDamaged) {
+                    displayedCount = 0;
+                } else {
+                    displayedCount = 1;
+                    const packQrPayload = `${seriesTag}|${item.sku || ''}|QTY:${expected}|MRP:${fmtMrp}|Disc:${fmtCost}`;
+                    
+                    gridHtml = `
+                        <div class="col-12 mb-3">
+                            <div class="p-3 border rounded-3 ${isVerified ? 'bg-success-subtle border-success' : (isDamaged ? 'bg-danger-subtle border-danger' : 'bg-light border-primary')} shadow-sm">
+                                <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="text-center" style="width: 100px;">
+                                            <div class="inward-piece-qr bg-white p-1 rounded border shadow-sm d-flex align-items-center justify-content-center cursor-pointer"
+                                                 id="piece-qr-1"
+                                                 data-qr="${escapeHtml(packQrPayload)}"
+                                                 onclick="previewSinglePieceTag(${variantId}, 1, '${escapeHtml(seriesTag)}');"
+                                                 title="Click to view full Series Master QR Code"
+                                                 style="width: 96px; height: 96px; cursor: pointer;">
+                                            </div>
+                                            <div class="badge bg-primary text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate"
+                                                 title="${escapeHtml(seriesTag)}"
+                                                 style="font-size: 0.75rem;">
+                                                <i class="bi bi-box-seam me-1"></i>${escapeHtml(seriesTag)}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <h6 class="mb-0 fw-bold text-dark">${escapeHtml(displayBrand)}</h6>
+                                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">📦 Series Master Pack</span>
+                                            </div>
+                                            <div class="text-muted small mt-1 font-monospace">${escapeHtml(item.sku || '')} &bull; ${escapeHtml(displayAttr)}</div>
+                                            <div class="d-flex align-items-center gap-3 mt-2">
+                                                <span class="badge bg-dark fs-7"><i class="bi bi-layers me-1"></i>Pack Quantity: ${expected} pcs</span>
+                                                <span class="text-dark fw-bold">MRP: ₹${fmtMrp}</span>
+                                                <span class="text-success fw-bold">Disc: ₹${fmtCost}</span>
+                                            </div>
+                                            <div class="mt-2">
+                                                ${isVerified 
+                                                    ? '<span class="badge bg-success text-white py-1 px-2"><i class="bi bi-check-circle-fill me-1"></i>Series Pack Intact &amp; Verified (' + expected + ' pcs)</span>' 
+                                                    : (isDamaged 
+                                                        ? '<span class="badge bg-danger text-white py-1 px-2"><i class="bi bi-exclamation-octagon-fill me-1"></i>Series Pack Quarantined as Damaged (' + expected + ' pcs)</span>' 
+                                                        : '<span class="badge bg-warning text-dark py-1 px-2"><i class="bi bi-clock-fill me-1"></i>Awaiting Inward Scan (Single QR on Pack)</span>')}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex flex-column gap-2">
+                                        ${!IS_FULLY_RECEIVED ? `
+                                            <button type="button" class="btn btn-sm btn-success px-3 py-2 fw-semibold shadow-sm d-flex align-items-center justify-content-center gap-2" onclick="fastScanVariant(${variantId}, '${escapeHtml(seriesTag)}');">
+                                                <i class="bi bi-check-circle"></i> Verify Series Pack (${expected} pcs)
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger px-3 py-1.5 fw-semibold shadow-sm d-flex align-items-center justify-content-center gap-2" onclick="markPieceDamage(${variantId}, '${escapeHtml(seriesTag)}');">
+                                                <i class="bi bi-slash-circle"></i> Mark Pack as Damaged
+                                            </button>
+                                            ${(isVerified || isDamaged) ? `
+                                                <button type="button" class="btn btn-sm btn-outline-secondary px-3 py-1 shadow-sm" onclick="resetVariantPieces(${variantId});">
+                                                    <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Pack
+                                                </button>
+                                            ` : ''}
+                                        ` : `
+                                            <span class="badge bg-success text-white p-2"><i class="bi bi-lock-fill me-1"></i>Inventory Credited</span>
+                                        `}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
                 }
-                if (modalPieceFilter === 'verified' && !isVerified) {
-                    continue;
-                }
-                if (modalPieceFilter === 'damaged' && !isDamaged) {
-                    continue;
-                }
+            } else {
+                for (let i = 1; i <= expected; i++) {
+                    const globalSeq = sSeq + i - 1;
+                    const pieceTagCode = getLabelCode(globalSeq, item).toUpperCase();
+                    const isDamaged = DAMAGED_TAGS.has(pieceTagCode);
+                    const isVerified = SCANNED_TAGS.has(pieceTagCode) && !isDamaged;
+                    const isPending = !isVerified && !isDamaged;
 
-                displayedCount++;
-                const pieceQrPayload = `${pieceTagCode}|${item.sku || ''}|MRP:${fmtMrp}|Disc:${fmtCost}`;
+                    // Apply Active Filter: Skip non-matching pieces
+                    if (modalPieceFilter === 'mismatched' && !isPending) {
+                        continue;
+                    }
+                    if (modalPieceFilter === 'verified' && !isVerified) {
+                        continue;
+                    }
+                    if (modalPieceFilter === 'damaged' && !isDamaged) {
+                        continue;
+                    }
 
-                if (isVerified) {
-                    if (IS_FULLY_RECEIVED) {
-                        // LOCKED & DISABLED ACTION FOR ALREADY INVENTORY ADDED PRODUCT
+                    displayedCount++;
+                    const pieceQrPayload = pieceTagCode;
+
+                    if (isVerified) {
+                        if (IS_FULLY_RECEIVED) {
+                            // LOCKED & DISABLED ACTION FOR ALREADY INVENTORY ADDED PRODUCT
+                            gridHtml += `
+                                <div class="col-12 col-md-6 mb-2">
+                                    <div class="p-2.5 border rounded-3 bg-success-subtle border-success border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden" style="background-color: #f0fdf4;">
+                                        <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                                            <div class="text-center flex-shrink-0" style="width: 82px;">
+                                                <div class="inward-piece-qr bg-white p-1 rounded border border-success-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
+                                                     id="piece-qr-${i}" 
+                                                     data-qr="${escapeHtml(pieceQrPayload)}" 
+                                                     onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                     title="Click to view full 2D QR Code Tag" 
+                                                     style="width: 80px; height: 80px; cursor: pointer;">
+                                                </div>
+                                                <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
+                                                     onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                     title="${escapeHtml(pieceTagCode)}" 
+                                                     style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
+                                                    ${escapeHtml(pieceTagCode)}
+                                                </div>
+                                            </div>
+                                            <div class="overflow-hidden flex-grow-1 min-w-0" style="line-height: 1.25;">
+                                                <div class="fw-bold text-uppercase text-dark text-truncate" style="font-size: 0.80rem; letter-spacing: 0.2px;" title="${escapeHtml(displayBrand)}">
+                                                    ${escapeHtml(displayBrand)}
+                                                </div>
+                                                <div class="fw-bold text-secondary text-truncate mt-0.5" style="font-size: 0.76rem;">
+                                                    ${escapeHtml(displayAttr)}
+                                                </div>
+                                                <div class="text-muted text-decoration-line-through mt-0.5" style="font-size: 0.74rem;">
+                                                    MRP: ₹${fmtMrp}
+                                                </div>
+                                                <div class="fw-bold text-success mt-0.5" style="font-size: 0.82rem;">
+                                                    Disc: ₹${fmtCost}
+                                                </div>
+                                                <div class="mt-1">
+                                                    <span class="badge bg-success text-white py-0.5 px-1.5 shadow-xs" style="font-size: 0.68rem; letter-spacing: 0.2px;">
+                                                        <i class="bi bi-lock-fill me-1"></i>Stock Added
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
+                                            <button type="button" class="btn btn-sm btn-success d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.95;" disabled title="Good Product (Credited to Inventory)">
+                                                <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.55;" disabled title="Already credited to inventory in previous inward session (Locked)">
+                                                <i class="bi bi-lock-fill" style="font-size: 0.90rem;"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            gridHtml += `
+                                <div class="col-12 col-md-6 mb-2">
+                                    <div class="p-2.5 border rounded-3 bg-success-subtle border-success border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden">
+                                        <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                                            <div class="text-center flex-shrink-0" style="width: 82px;">
+                                                <div class="inward-piece-qr bg-white p-1 rounded border border-success-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
+                                                     id="piece-qr-${i}" 
+                                                     data-qr="${escapeHtml(pieceQrPayload)}" 
+                                                     onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                     title="Click to view full 2D QR Code Tag" 
+                                                     style="width: 80px; height: 80px; cursor: pointer;">
+                                                </div>
+                                                <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
+                                                     onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                     title="${escapeHtml(pieceTagCode)}" 
+                                                     style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
+                                                    ${escapeHtml(pieceTagCode)}
+                                                </div>
+                                            </div>
+                                            <div class="overflow-hidden flex-grow-1 min-w-0" style="line-height: 1.25;">
+                                                <div class="fw-bold text-uppercase text-dark text-truncate" style="font-size: 0.80rem; letter-spacing: 0.2px;" title="${escapeHtml(displayBrand)}">
+                                                    ${escapeHtml(displayBrand)}
+                                                </div>
+                                                <div class="fw-bold text-secondary text-truncate mt-0.5" style="font-size: 0.76rem;">
+                                                    ${escapeHtml(displayAttr)}
+                                                </div>
+                                                <div class="text-muted text-decoration-line-through mt-0.5" style="font-size: 0.74rem;">
+                                                    MRP: ₹${fmtMrp}
+                                                </div>
+                                                <div class="fw-bold text-success mt-0.5" style="font-size: 0.82rem;">
+                                                    Disc: ₹${fmtCost}
+                                                </div>
+                                                <div class="mt-1">
+                                                    <span class="badge bg-success-subtle text-success border border-success py-0.5 px-1.5 shadow-xs" style="font-size: 0.68rem; letter-spacing: 0.2px;">
+                                                        <i class="bi bi-check2 me-1"></i>Newly Scanned
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
+                                            <button type="button" class="btn btn-sm btn-success d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="unverifyPiece(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Piece verified! Click to un-verify / undo.">
+                                                <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="markPieceDamage(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Change to Damage Product">
+                                                <i class="bi bi-slash-circle" style="font-size: 0.95rem;"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    } else if (isDamaged) {
                         gridHtml += `
                             <div class="col-12 col-md-6 mb-2">
-                                <div class="p-2.5 border rounded-3 bg-success-subtle border-success border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden" style="background-color: #f0fdf4;">
+                                <div class="p-2.5 border rounded-3 bg-danger-subtle border-danger border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden">
                                     <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
                                         <div class="text-center flex-shrink-0" style="width: 82px;">
-                                            <div class="inward-piece-qr bg-white p-1 rounded border border-success-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
+                                            <div class="inward-piece-qr bg-white p-1 rounded border border-danger-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
                                                  id="piece-qr-${i}" 
                                                  data-qr="${escapeHtml(pieceQrPayload)}" 
                                                  onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
                                                  title="Click to view full 2D QR Code Tag" 
                                                  style="width: 80px; height: 80px; cursor: pointer;">
                                             </div>
-                                            <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
+                                            <div class="badge bg-danger text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
                                                  onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
                                                  title="${escapeHtml(pieceTagCode)}" 
                                                  style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
@@ -2017,22 +2420,17 @@
                                             <div class="text-muted text-decoration-line-through mt-0.5" style="font-size: 0.74rem;">
                                                 MRP: ₹${fmtMrp}
                                             </div>
-                                            <div class="fw-bold text-success mt-0.5" style="font-size: 0.82rem;">
-                                                Disc: ₹${fmtCost}
-                                            </div>
-                                            <div class="mt-1">
-                                                <span class="badge bg-success text-white py-0.5 px-1.5 shadow-xs" style="font-size: 0.68rem; letter-spacing: 0.2px;">
-                                                    <i class="bi bi-lock-fill me-1"></i>Stock Added
-                                                </span>
+                                            <div class="fw-bold text-danger mt-0.5" style="font-size: 0.82rem;">
+                                                <i class="bi bi-exclamation-octagon-fill me-1"></i>QUARANTINED
                                             </div>
                                         </div>
                                     </div>
                                     <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
-                                        <button type="button" class="btn btn-sm btn-success d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.95;" disabled title="Good Product (Credited to Inventory)">
+                                        <button type="button" class="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="unmarkPieceDamage(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Change to Good Product">
                                             <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.55;" disabled title="Already credited to inventory in previous inward session (Locked)">
-                                            <i class="bi bi-lock-fill" style="font-size: 0.90rem;"></i>
+                                        <button type="button" class="btn btn-sm btn-danger d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.9;" disabled title="Damage Product">
+                                            <i class="bi bi-slash-circle" style="font-size: 0.95rem;"></i>
                                         </button>
                                     </div>
                                 </div>
@@ -2041,17 +2439,17 @@
                     } else {
                         gridHtml += `
                             <div class="col-12 col-md-6 mb-2">
-                                <div class="p-2.5 border rounded-3 bg-success-subtle border-success border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden">
+                                <div class="p-2.5 border rounded-3 bg-white d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 hover-shadow position-relative overflow-hidden">
                                     <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
                                         <div class="text-center flex-shrink-0" style="width: 82px;">
-                                            <div class="inward-piece-qr bg-white p-1 rounded border border-success-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
+                                            <div class="inward-piece-qr bg-white p-1 rounded border shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
                                                  id="piece-qr-${i}" 
                                                  data-qr="${escapeHtml(pieceQrPayload)}" 
                                                  onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
                                                  title="Click to view full 2D QR Code Tag" 
                                                  style="width: 80px; height: 80px; cursor: pointer;">
                                             </div>
-                                            <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
+                                            <div class="badge bg-dark text-warning font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
                                                  onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
                                                  title="${escapeHtml(pieceTagCode)}" 
                                                  style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
@@ -2071,18 +2469,13 @@
                                             <div class="fw-bold text-success mt-0.5" style="font-size: 0.82rem;">
                                                 Disc: ₹${fmtCost}
                                             </div>
-                                            <div class="mt-1">
-                                                <span class="badge bg-success-subtle text-success border border-success py-0.5 px-1.5 shadow-xs" style="font-size: 0.68rem; letter-spacing: 0.2px;">
-                                                    <i class="bi bi-check2 me-1"></i>Newly Scanned
-                                                </span>
-                                            </div>
                                         </div>
                                     </div>
                                     <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
-                                        <button type="button" class="btn btn-sm btn-success d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="unverifyPiece(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Piece verified! Click to un-verify / undo.">
+                                        <button type="button" class="btn btn-sm btn-success d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="fastScanVariant(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Mark Good Product">
                                             <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="markPieceDamage(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Change to Damage Product">
+                                        <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="markPieceDamage(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Mark Damage Product">
                                             <i class="bi bi-slash-circle" style="font-size: 0.95rem;"></i>
                                         </button>
                                     </div>
@@ -2090,98 +2483,6 @@
                             </div>
                         `;
                     }
-                } else if (isDamaged) {
-                    gridHtml += `
-                        <div class="col-12 col-md-6 mb-2">
-                            <div class="p-2.5 border rounded-3 bg-danger-subtle border-danger border-opacity-50 d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 position-relative overflow-hidden">
-                                <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
-                                    <div class="text-center flex-shrink-0" style="width: 82px;">
-                                        <div class="inward-piece-qr bg-white p-1 rounded border border-danger-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
-                                             id="piece-qr-${i}" 
-                                             data-qr="${escapeHtml(pieceQrPayload)}" 
-                                             onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
-                                             title="Click to view full 2D QR Code Tag" 
-                                             style="width: 80px; height: 80px; cursor: pointer;">
-                                        </div>
-                                        <div class="badge bg-danger text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
-                                             onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
-                                             title="${escapeHtml(pieceTagCode)}" 
-                                             style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
-                                            ${escapeHtml(pieceTagCode)}
-                                        </div>
-                                    </div>
-                                    <div class="overflow-hidden flex-grow-1 min-w-0" style="line-height: 1.25;">
-                                        <div class="fw-bold text-uppercase text-dark text-truncate" style="font-size: 0.80rem; letter-spacing: 0.2px;" title="${escapeHtml(displayBrand)}">
-                                            ${escapeHtml(displayBrand)}
-                                        </div>
-                                        <div class="fw-bold text-secondary text-truncate mt-0.5" style="font-size: 0.76rem;">
-                                            ${escapeHtml(displayAttr)}
-                                        </div>
-                                        <div class="text-muted text-decoration-line-through mt-0.5" style="font-size: 0.74rem;">
-                                            MRP: ₹${fmtMrp}
-                                        </div>
-                                        <div class="fw-bold text-danger mt-0.5" style="font-size: 0.82rem;">
-                                            <i class="bi bi-exclamation-octagon-fill me-1"></i>QUARANTINED
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
-                                    <button type="button" class="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="unmarkPieceDamage(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Change to Good Product">
-                                        <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-danger d-flex align-items-center justify-content-center shadow-xs disabled" style="width: 32px; height: 30px; padding: 0; border-radius: 6px; opacity: 0.9;" disabled title="Damage Product">
-                                        <i class="bi bi-slash-circle" style="font-size: 0.95rem;"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    gridHtml += `
-                        <div class="col-12 col-md-6 mb-2">
-                            <div class="p-2.5 border rounded-3 bg-white d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 hover-shadow position-relative overflow-hidden">
-                                <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
-                                    <div class="text-center flex-shrink-0" style="width: 82px;">
-                                        <div class="inward-piece-qr bg-white p-1 rounded border shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
-                                             id="piece-qr-${i}" 
-                                             data-qr="${escapeHtml(pieceQrPayload)}" 
-                                             onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
-                                             title="Click to view full 2D QR Code Tag" 
-                                             style="width: 80px; height: 80px; cursor: pointer;">
-                                        </div>
-                                        <div class="badge bg-dark text-warning font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
-                                             onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
-                                             title="${escapeHtml(pieceTagCode)}" 
-                                             style="font-size: 0.68rem; letter-spacing: 0.3px; cursor: pointer;">
-                                            ${escapeHtml(pieceTagCode)}
-                                        </div>
-                                    </div>
-                                    <div class="overflow-hidden flex-grow-1 min-w-0" style="line-height: 1.25;">
-                                        <div class="fw-bold text-uppercase text-dark text-truncate" style="font-size: 0.80rem; letter-spacing: 0.2px;" title="${escapeHtml(displayBrand)}">
-                                            ${escapeHtml(displayBrand)}
-                                        </div>
-                                        <div class="fw-bold text-secondary text-truncate mt-0.5" style="font-size: 0.76rem;">
-                                            ${escapeHtml(displayAttr)}
-                                        </div>
-                                        <div class="text-muted text-decoration-line-through mt-0.5" style="font-size: 0.74rem;">
-                                            MRP: ₹${fmtMrp}
-                                        </div>
-                                        <div class="fw-bold text-success mt-0.5" style="font-size: 0.82rem;">
-                                            Disc: ₹${fmtCost}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="d-flex flex-column gap-1.5 flex-shrink-0 align-items-center">
-                                    <button type="button" class="btn btn-sm btn-success d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="fastScanVariant(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Mark Good Product">
-                                        <i class="bi bi-check-lg" style="font-size: 1.05rem;"></i>
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center shadow-xs" style="width: 32px; height: 30px; padding: 0; border-radius: 6px;" onclick="markPieceDamage(${variantId}, '${escapeHtml(pieceTagCode)}');" title="Mark Damage Product">
-                                        <i class="bi bi-slash-circle" style="font-size: 0.95rem;"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    `;
                 }
             }
 
@@ -2261,6 +2562,27 @@
         const expected = parseInt(item.dispatched_qty > 0 ? item.dispatched_qty : item.requested_qty) || 1;
         const row = document.getElementById(`row-${vid}`);
 
+        if (item.is_series) {
+            const seriesTag = (item.series_qr_code || getLabelCode(item.startSeq, item)).toUpperCase();
+            DAMAGED_TAGS.delete(seriesTag);
+            SCANNED_TAGS.add(seriesTag);
+            if (recvInput) recvInput.value = expected;
+            if (dmgInput) dmgInput.value = 0;
+
+            if (row) {
+                row.classList.add('table-success');
+                setTimeout(() => row.classList.remove('table-success'), 600);
+            }
+            playBeep('success');
+            recalculateMatrix();
+            saveInwardDraft();
+            showScanFeedback(`✅ Verified series pack <span class="badge bg-primary font-monospace">${escapeHtml(seriesTag)}</span> for <strong>${escapeHtml(item.sku)}</strong> (${expected} pcs).`, 'success');
+            if (activeModalVariantId && String(activeModalVariantId) === String(vid)) {
+                updateModalState(vid);
+            }
+            return;
+        }
+
         let tagToVerify = specificTag ? specificTag.toUpperCase() : '';
         if (!tagToVerify) {
             for (let p = item.startSeq; p <= item.endSeq; p++) {
@@ -2327,6 +2649,27 @@
         const expected = parseInt(item.dispatched_qty > 0 ? item.dispatched_qty : item.requested_qty) || 1;
         const row = document.getElementById(`row-${vid}`);
 
+        if (item.is_series) {
+            const seriesTag = (item.series_qr_code || getLabelCode(item.startSeq, item)).toUpperCase();
+            SCANNED_TAGS.delete(seriesTag);
+            DAMAGED_TAGS.add(seriesTag);
+            if (dmgInput) dmgInput.value = expected;
+            if (recvInput) recvInput.value = 0;
+
+            if (row) {
+                row.classList.add('table-danger');
+                setTimeout(() => row.classList.remove('table-danger'), 600);
+            }
+            playBeep('double');
+            recalculateMatrix();
+            saveInwardDraft();
+            showScanFeedback(`🔴 Marked series pack <span class="badge bg-danger font-monospace">${escapeHtml(seriesTag)}</span> as DAMAGED for <strong>${escapeHtml(item.sku)}</strong> (${expected} pcs).`, 'danger');
+            if (activeModalVariantId && String(activeModalVariantId) === String(vid)) {
+                updateModalState(vid);
+            }
+            return;
+        }
+
         let tagToMark = specificTag ? specificTag.toUpperCase() : '';
         if (!tagToMark) {
             for (let p = item.startSeq; p <= item.endSeq; p++) {
@@ -2372,6 +2715,21 @@
         const item = ITEMS.find(i => String(i.variant_id) === String(vid));
         if (!item) return;
 
+        if (item.is_series) {
+            const seriesTag = (item.series_qr_code || getLabelCode(item.startSeq, item)).toUpperCase();
+            DAMAGED_TAGS.delete(seriesTag);
+            const dmgInput = document.getElementById(`input-dmg-${vid}`);
+            if (dmgInput) dmgInput.value = 0;
+            playBeep('double');
+            recalculateMatrix();
+            saveInwardDraft();
+            showScanFeedback(`↩️ Removed damage flag on series pack <span class="badge bg-dark font-monospace">${escapeHtml(seriesTag)}</span> for <strong>${escapeHtml(item.sku)}</strong>.`, 'info');
+            if (activeModalVariantId && String(activeModalVariantId) === String(vid)) {
+                updateModalState(vid);
+            }
+            return;
+        }
+
         const normalizedTag = (tagCode || '').toUpperCase();
         if (DAMAGED_TAGS.has(normalizedTag)) {
             DAMAGED_TAGS.delete(normalizedTag);
@@ -2394,6 +2752,21 @@
     function unverifyPiece(vid, tagCode) {
         const item = ITEMS.find(i => String(i.variant_id) === String(vid));
         if (!item) return;
+
+        if (item.is_series) {
+            const seriesTag = (item.series_qr_code || getLabelCode(item.startSeq, item)).toUpperCase();
+            SCANNED_TAGS.delete(seriesTag);
+            const recvInput = document.getElementById(`input-recv-${vid}`);
+            if (recvInput) recvInput.value = 0;
+            playBeep('double');
+            recalculateMatrix();
+            saveInwardDraft();
+            showScanFeedback(`↩️ Un-verified series pack <span class="badge bg-dark font-monospace">${escapeHtml(seriesTag)}</span> for <strong>${escapeHtml(item.sku)}</strong>.`, 'info');
+            if (activeModalVariantId && String(activeModalVariantId) === String(vid)) {
+                updateModalState(vid);
+            }
+            return;
+        }
 
         const expected = parseInt(item.dispatched_qty > 0 ? item.dispatched_qty : item.requested_qty) || 1;
         const normalizedTag = (tagCode || '').toUpperCase();
@@ -2504,33 +2877,39 @@
                     const vid = item.variant_id;
                     const variantScanned = [];
                     const variantDamaged = [];
-                    for (let p = item.startSeq; p <= item.endSeq; p++) {
-                        const tag = getLabelCode(p, item).toUpperCase();
-                        if (DAMAGED_TAGS.has(tag)) {
-                            variantDamaged.push(tag);
-                        } else if (SCANNED_TAGS.has(tag)) {
-                            variantScanned.push(tag);
-                        }
-                    }
-
-                    // Fallback if inputs were modified manually
                     const recvInput = document.getElementById(`input-recv-${vid}`);
                     const dmgInput = document.getElementById(`input-dmg-${vid}`);
                     const recVal = recvInput ? (parseInt(recvInput.value) || 0) : 0;
                     const dmgVal = dmgInput ? (parseInt(dmgInput.value) || 0) : 0;
 
-                    if (variantDamaged.length === 0 && dmgVal > 0) {
-                        for (let d = 1; d <= dmgVal; d++) {
-                            const dTag = getLabelCode(item.startSeq + d - 1, item).toUpperCase();
-                            variantDamaged.push(dTag);
+                    if (item.is_series) {
+                        const seriesTag = (item.series_qr_code || getLabelCode(item.startSeq, item)).toUpperCase();
+                        if (recVal > 0) variantScanned.push(seriesTag);
+                        if (dmgVal > 0) variantDamaged.push(seriesTag);
+                    } else {
+                        for (let p = item.startSeq; p <= item.endSeq; p++) {
+                            const tag = getLabelCode(p, item).toUpperCase();
+                            if (DAMAGED_TAGS.has(tag)) {
+                                variantDamaged.push(tag);
+                            } else if (SCANNED_TAGS.has(tag)) {
+                                variantScanned.push(tag);
+                            }
                         }
-                    }
 
-                    if (variantScanned.length === 0 && recVal > 0) {
-                        const startIdx = item.startSeq + variantDamaged.length;
-                        for (let s = 0; s < recVal; s++) {
-                            const sTag = getLabelCode(startIdx + s, item).toUpperCase();
-                            variantScanned.push(sTag);
+                        // Fallback if inputs were modified manually
+                        if (variantDamaged.length === 0 && dmgVal > 0) {
+                            for (let d = 1; d <= dmgVal; d++) {
+                                const dTag = getLabelCode(item.startSeq + d - 1, item).toUpperCase();
+                                variantDamaged.push(dTag);
+                            }
+                        }
+
+                        if (variantScanned.length === 0 && recVal > 0) {
+                            const startIdx = item.startSeq + variantDamaged.length;
+                            for (let s = 0; s < recVal; s++) {
+                                const sTag = getLabelCode(startIdx + s, item).toUpperCase();
+                                variantScanned.push(sTag);
+                            }
                         }
                     }
 

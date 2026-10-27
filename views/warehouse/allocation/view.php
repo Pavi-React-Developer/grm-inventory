@@ -192,7 +192,7 @@ $allocBackUrl = $isShopReq ? url('warehouse/shop-requests') : url('warehouse/all
                                 $fmtMrp = (!empty($p['mrp']) && (float)$p['mrp'] > 0) ? (((int)$p['mrp'] == $p['mrp']) ? (int)$p['mrp'] : number_format($p['mrp'], 2, '.', '')) : '999';
                                 $costVal = (!empty($p['selling_price']) && (float)$p['selling_price'] > 0) ? (float)$p['selling_price'] : ((!empty($p['mrp']) && (float)$p['mrp'] > 0) ? (float)$p['mrp'] : 599);
                                 $fmtDisc = ($costVal == (int)$costVal) ? (int)$costVal : number_format($costVal, 2, '.', '');
-                                $qrPayload = "{$p['tag_code']}|{$p['sku']}|MRP:{$fmtMrp}|Disc:{$fmtDisc}";
+                                $qrPayload = $p['tag_code'];
                             ?>
                             <div class="col">
                                 <div class="border rounded-3 bg-white shadow-sm d-flex align-items-start h-100 transition-all" style="padding: 1rem 1.15rem; gap: 1rem; border-color: #e2e8f0 !important;">

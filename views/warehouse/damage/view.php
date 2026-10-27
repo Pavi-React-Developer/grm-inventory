@@ -558,7 +558,7 @@
                 <?php 
                     $fmtMrp = number_format($mrpVal, 2, '.', '');
                     $fmtPrice = number_format($effectiveUnitPrice, 2, '.', '');
-                    $cardPayload = "{$tagCode}|{$damage['sku']}|MRP:{$fmtMrp}|Price:{$fmtPrice}";
+                    $cardPayload = $tagCode;
                 ?>
                 <div class="col-xl-3 col-lg-4 col-md-6 col-12">
                     <div class="card border h-100 shadow-2xs rounded-3 p-3 bg-white position-relative hover-shadow transition piece-item-card" id="pieceCard_<?= $idx ?>" data-tag="<?= e($tagCode) ?>" style="border-color: #0d6efd; transition: all 0.2s ease;">
@@ -823,7 +823,7 @@ function renderAllDamagedGridQRs() {
         const container = document.getElementById(`gridDmgQr_${idx}`);
         if (container) {
             container.innerHTML = '';
-            const payload = `${tag}|${VIEW_SKU}|MRP:${VIEW_MRP}|Price:${VIEW_PRICE}`;
+            const payload = tag;
             new QRCode(container, {
                 text: payload,
                 width: 76,
@@ -852,7 +852,7 @@ function renderDamageViewQR() {
         if (btnPiece) btnPiece.className = 'btn btn-outline-secondary fw-semibold';
         if (btnProd) btnProd.className = 'btn btn-primary active fw-semibold';
     } else {
-        textToEncode = `${selectedPreviewTag}|${VIEW_SKU}|MRP:${VIEW_MRP}|Price:${VIEW_PRICE}`;
+        textToEncode = selectedPreviewTag;
         displayLabel = selectedPreviewTag;
         if (btnPiece) btnPiece.className = 'btn btn-primary active fw-semibold';
         if (btnProd) btnProd.className = 'btn btn-outline-secondary fw-semibold';
@@ -1090,7 +1090,7 @@ function printSingleDamagedLabel(tag, sku, mrp, price) {
         alert('Please allow popups to print stickers.');
         return;
     }
-    const payload = `${tag}|${sku}|MRP:${parseFloat(mrp).toFixed(2)}|Price:${parseFloat(price).toFixed(2)}`;
+    const payload = tag;
     
     printWindow.document.write(`
         <!DOCTYPE html>
@@ -1157,7 +1157,7 @@ function printAllDamagedLabels() {
 
     let labelsHtml = '';
     DAMAGED_TAG_LIST.forEach((tag, idx) => {
-        const payload = `${tag}|${VIEW_SKU}|MRP:${parseFloat(VIEW_MRP).toFixed(2)}|Price:${parseFloat(VIEW_PRICE).toFixed(2)}`;
+        const payload = tag;
         labelsHtml += `
             <div class="label-box">
                 <div class="qr-area">
@@ -1201,7 +1201,7 @@ function printAllDamagedLabels() {
             ${labelsHtml}
             <script>
                 ${DAMAGED_TAG_LIST.map((tag, idx) => {
-                    const payload = `${tag}|${VIEW_SKU}|MRP:${parseFloat(VIEW_MRP).toFixed(2)}|Price:${parseFloat(VIEW_PRICE).toFixed(2)}`;
+                    const payload = tag;
                     return `
                         new QRCode(document.getElementById('printQr_${idx}'), {
                             text: ${JSON.stringify(payload)},
