@@ -5226,6 +5226,11 @@ class ProductionController {
                 Response::back();
                 return;
             }
+            if ($item['discount_price'] >= $item['base_price']) {
+                Session::flash('error', "Row #{$rowNum} ({$vName}): Discount Price must be less than Base Price.");
+                Response::back();
+                return;
+            }
         }
 
         // Validate Stitching Weight against Source Cutting Batch Usable Weight
@@ -5452,6 +5457,11 @@ class ProductionController {
             $vName = trim(($item['size_name'] ?: '') . ' / ' . ($item['color_name'] ?: ''));
             if ($item['stitched_qty'] <= 0 || $item['weight_per_piece'] <= 0 || $item['weight'] <= 0 || $item['base_price'] <= 0 || $item['discount_price'] <= 0) {
                 Session::flash('error', "Row #{$rowNum} ({$vName}) has missing or 0 values. Qty, Weight, Base Price, and Discount Price must all be greater than 0.");
+                Response::back();
+                return;
+            }
+            if ($item['discount_price'] >= $item['base_price']) {
+                Session::flash('error', "Row #{$rowNum} ({$vName}): Discount Price must be less than Base Price.");
                 Response::back();
                 return;
             }
@@ -6126,6 +6136,12 @@ class ProductionController {
                     unset($it);
                 }
 
+                $availablePieceTags = ProductionService::getAvailableQCPieceTags((int)$qcBatchId);
+                foreach ($items as &$it) {
+                    $it['available_piece_tags'] = $availablePieceTags[(int)$it['id']] ?? [];
+                }
+                unset($it);
+
                 $existingBatches = Database::fetchAll(
                     "SELECT pb.*, w.name as warehouse_name, w.code as warehouse_code
                      FROM production_batches pb 
@@ -6237,6 +6253,8 @@ class ProductionController {
                     $items[] = [
                         'variant_id' => $variantId,
                         'quantity'   => $qty,
+                        'qc_item_id' => (int)($vals['qc_item_id'] ?? 0),
+                        'piece_tags' => isset($vals['piece_tags']) && is_array($vals['piece_tags']) ? $vals['piece_tags'] : [],
                     ];
                     
                     if (!empty($vals['qc_item_id'])) {
@@ -7119,6 +7137,7 @@ class ProductionController {
         }
 
         $items = QCBatch::getItems($batchId);
+        $lockedPieces = $this->getQCLockedPieceStates($batch, $items);
         $users = Database::fetchAll("SELECT id, full_name FROM users WHERE is_active = 1 ORDER BY full_name ASC");
 
         $rolls = !empty($batch['stitching_batch_id']) ? StitchingBatch::getRolls((int)$batch['stitching_batch_id']) : (!empty($batch['program_id']) ? ProductionProgram::getRolls((int)$batch['program_id']) : []);
@@ -7143,6 +7162,7 @@ class ProductionController {
             'activeMenu'       => 'qc',
             'batch'            => $batch,
             'items'            => $items,
+            'lockedPieces'     => $lockedPieces,
             'users'            => $users,
             'catalogHierarchy' => $catalogHierarchy,
             'distinctCatalogs' => array_values($distinctCatalogs),
@@ -7152,6 +7172,168 @@ class ProductionController {
                 ['label' => 'Inspect Batch #' . $batchId],
             ],
         ]);
+    }
+
+    private function getQCLockedPieceStates(array $batch, array $items): array {
+        $outwardRow = Database::fetchOne(
+            "SELECT COALESCE(SUM(COALESCE(NULLIF(po.total_quantity, 0), NULLIF(po.quantity, 0), pb.total_qty, 0)), 0) as total_outward
+             FROM production_outwards po
+             JOIN production_batches pb ON po.production_batch_id = pb.id
+             WHERE pb.qc_batch_id = ? OR (pb.qc_batch_id IS NULL AND pb.program_id = ? AND pb.program_id > 0)",
+            [(int)$batch['id'], (int)($batch['program_id'] ?? 0)]
+        );
+        $outwardQty = (int)($outwardRow['total_outward'] ?? 0);
+
+        $savedPiecesMap = [];
+        $decodedPieces = json_decode((string)($batch['pieces_data'] ?? ''), true);
+        if (!is_array($decodedPieces)) {
+            $decodedPieces = json_decode(html_entity_decode((string)($batch['pieces_data'] ?? ''), ENT_QUOTES, 'UTF-8'), true);
+        }
+        if (!is_array($decodedPieces)) {
+            $decodedPieces = json_decode(stripslashes((string)($batch['pieces_data'] ?? '')), true);
+        }
+        if (is_array($decodedPieces)) {
+            foreach ($decodedPieces as $piece) {
+                if (is_array($piece) && isset($piece['index'])) {
+                    $savedPiecesMap[(int)$piece['index']] = $piece;
+                }
+            }
+        }
+
+        $lockedPieces = [];
+        $pieceIndex = 1;
+        $approvedIndex = 0;
+        foreach ($items as $item) {
+            $inspectedQty = max(1, (int)$item['inspected_qty']);
+            $passedQty = (int)($item['passed_qty'] ?? 0);
+            $rejectedQty = (int)($item['rejected_qty'] ?? 0);
+            $reworkQty = (int)($item['rework_qty'] ?? 0);
+
+            for ($pieceNumber = 1; $pieceNumber <= $inspectedQty; $pieceNumber++, $pieceIndex++) {
+                $savedPiece = $savedPiecesMap[$pieceIndex] ?? null;
+                if ($savedPiece !== null) {
+                    $status = strtoupper((string)($savedPiece['status'] ?? 'PENDING'));
+                } elseif ($pieceNumber <= $passedQty) {
+                    $status = 'APPROVED';
+                } elseif ($pieceNumber <= $passedQty + $rejectedQty) {
+                    $status = 'REJECTED';
+                } elseif ($pieceNumber <= $passedQty + $rejectedQty + $reworkQty) {
+                    $status = 'REWORK';
+                } else {
+                    $status = 'PENDING';
+                }
+
+                if ($status !== 'APPROVED') {
+                    continue;
+                }
+
+                $approvedIndex++;
+                $tagCode = trim((string)($savedPiece['tag_code'] ?? ''));
+                $lockKey = $tagCode !== '' ? $tagCode : $pieceIndex;
+                $lockedPieces[$lockKey] = [
+                    'status' => 'APPROVED',
+                    'is_reinspected' => !empty($savedPiece['is_reinspected']),
+                    'defect_reason' => $savedPiece['defect_reason'] ?? '',
+                    'defect_notes' => $savedPiece['defect_notes'] ?? '',
+                    'outwarded' => $approvedIndex <= $outwardQty,
+                    'item_id' => (int)$item['id'],
+                    'tag_code' => $tagCode,
+                    'index' => $pieceIndex,
+                ];
+            }
+        }
+
+        return $lockedPieces;
+    }
+
+    private function protectLockedQCPieces(array $piecesData, array $lockedPieces): array {
+        $piecesByIndex = [];
+        foreach ($piecesData as $piece) {
+            if (is_array($piece) && isset($piece['index'])) {
+                $piecesByIndex[(int)$piece['index']] = $piece;
+            }
+        }
+
+        foreach ($lockedPieces as $key => $lockedPiece) {
+            $index = null;
+            if ($lockedPiece['tag_code'] !== '') {
+                foreach ($piecesByIndex as $pieceIndex => $candidate) {
+                    if (trim((string)($candidate['tag_code'] ?? '')) === $lockedPiece['tag_code']) {
+                        $index = $pieceIndex;
+                        break;
+                    }
+                }
+                if ($index === null) {
+                    continue;
+                }
+            } else {
+                $index = (int)($lockedPiece['index'] ?? $key);
+            }
+
+            $piece = $piecesByIndex[$index] ?? [
+                'index' => $index,
+                'item_id' => $lockedPiece['item_id'],
+                'tag_code' => $lockedPiece['tag_code'],
+            ];
+            $piece['index'] = $index;
+            $piece['item_id'] = $lockedPiece['item_id'];
+            if ($lockedPiece['tag_code'] !== '') {
+                $piece['tag_code'] = $lockedPiece['tag_code'];
+            }
+            $piece['status'] = $lockedPiece['status'];
+            $piece['is_reinspected'] = $lockedPiece['is_reinspected'];
+            $piece['defect_reason'] = $lockedPiece['defect_reason'];
+            $piece['defect_notes'] = $lockedPiece['defect_notes'];
+            $piecesByIndex[$index] = $piece;
+        }
+
+        ksort($piecesByIndex);
+        return array_values($piecesByIndex);
+    }
+
+    private function saveQCItemTotalsFromPieces(array $items, array $piecesData): void {
+        $totals = [];
+        foreach ($items as $item) {
+            $totals[(int)$item['id']] = [
+                'inspected_qty' => 0,
+                'passed_qty' => 0,
+                'rejected_qty' => 0,
+                'rework_qty' => 0,
+                'defect_reason' => null,
+                'defect_notes' => null,
+            ];
+        }
+
+        foreach ($piecesData as $piece) {
+            if (!is_array($piece)) {
+                continue;
+            }
+            $itemId = (int)($piece['item_id'] ?? 0);
+            if (!isset($totals[$itemId])) {
+                continue;
+            }
+            $itemTotals = &$totals[$itemId];
+            $itemTotals['inspected_qty']++;
+            $status = strtoupper((string)($piece['status'] ?? 'PENDING'));
+            if ($status === 'APPROVED') {
+                $itemTotals['passed_qty']++;
+            } elseif ($status === 'REJECTED') {
+                $itemTotals['rejected_qty']++;
+            } elseif ($status === 'REWORK') {
+                $itemTotals['rework_qty']++;
+            }
+            if (empty($itemTotals['defect_reason']) && !empty($piece['defect_reason'])) {
+                $itemTotals['defect_reason'] = trim((string)$piece['defect_reason']);
+            }
+            if (empty($itemTotals['defect_notes']) && !empty($piece['defect_notes'])) {
+                $itemTotals['defect_notes'] = trim((string)$piece['defect_notes']);
+            }
+            unset($itemTotals);
+        }
+
+        foreach ($totals as $itemId => $itemTotals) {
+            QCItem::update($itemId, $itemTotals);
+        }
     }
 
     public function updateQC(string $id): void {
@@ -7176,8 +7358,11 @@ class ProductionController {
             }
             $notes = trim($_POST['notes'] ?? '');
             
+            $items = QCBatch::getItems($batchId);
+            $lockedPieces = $this->getQCLockedPieceStates($batch, $items);
             $rawPieces = $_POST['pieces_data'] ?? null;
             $piecesData = null;
+            $decodedPieces = null;
             if (!empty($rawPieces)) {
                 $decoded = json_decode($rawPieces, true);
                 if (!is_array($decoded)) {
@@ -7187,7 +7372,8 @@ class ProductionController {
                     $decoded = json_decode(stripslashes($rawPieces), true);
                 }
                 if (is_array($decoded)) {
-                    $piecesData = json_encode($decoded, JSON_UNESCAPED_UNICODE);
+                    $decodedPieces = $this->protectLockedQCPieces($decoded, $lockedPieces);
+                    $piecesData = json_encode($decodedPieces, JSON_UNESCAPED_UNICODE);
                 }
             }
 
@@ -7197,16 +7383,8 @@ class ProductionController {
                 'pieces_data'  => $piecesData,
             ]);
 
-            $postedItems = $_POST['items'] ?? [];
-            foreach ($postedItems as $itemId => $it) {
-                QCItem::update((int)$itemId, [
-                    'inspected_qty' => (int)($it['inspected_qty'] ?? 0),
-                    'passed_qty'    => (int)($it['passed_qty'] ?? 0),
-                    'rejected_qty'  => (int)($it['rejected_qty'] ?? 0),
-                    'rework_qty'    => (int)($it['rework_qty'] ?? 0),
-                    'defect_reason' => !empty($it['defect_reason']) ? trim($it['defect_reason']) : null,
-                    'defect_notes'  => !empty($it['defect_notes']) ? trim($it['defect_notes']) : null,
-                ]);
+            if ($decodedPieces !== null) {
+                $this->saveQCItemTotalsFromPieces($items, $decodedPieces);
             }
 
             $result = QCBatch::recalculateTotals($batchId);
@@ -7238,11 +7416,14 @@ class ProductionController {
                 $data = $_POST;
             }
 
+            $items = QCBatch::getItems($batchId);
+            $lockedPieces = $this->getQCLockedPieceStates($batch, $items);
             $rawPieces = $data['pieces_data'] ?? null;
             $piecesData = null;
+            $decodedPieces = null;
             if (!empty($rawPieces)) {
                 if (is_array($rawPieces)) {
-                    $piecesData = json_encode($rawPieces, JSON_UNESCAPED_UNICODE);
+                    $decodedPieces = $rawPieces;
                 } else {
                     $decoded = json_decode($rawPieces, true);
                     if (!is_array($decoded)) {
@@ -7252,27 +7433,21 @@ class ProductionController {
                         $decoded = json_decode(stripslashes($rawPieces), true);
                     }
                     if (is_array($decoded)) {
-                        $piecesData = json_encode($decoded, JSON_UNESCAPED_UNICODE);
+                        $decodedPieces = $decoded;
                     }
                 }
+            }
+
+            if ($decodedPieces !== null) {
+                $decodedPieces = $this->protectLockedQCPieces($decodedPieces, $lockedPieces);
+                $piecesData = json_encode($decodedPieces, JSON_UNESCAPED_UNICODE);
             }
 
             if ($piecesData !== null) {
                 QCBatch::update($batchId, [
                     'pieces_data' => $piecesData,
                 ]);
-            }
-
-            $postedItems = $data['items'] ?? [];
-            foreach ($postedItems as $itemId => $it) {
-                QCItem::update((int)$itemId, [
-                    'inspected_qty' => (int)($it['inspected_qty'] ?? 0),
-                    'passed_qty'    => (int)($it['passed_qty'] ?? 0),
-                    'rejected_qty'  => (int)($it['rejected_qty'] ?? 0),
-                    'rework_qty'    => (int)($it['rework_qty'] ?? 0),
-                    'defect_reason' => !empty($it['defect_reason']) ? trim($it['defect_reason']) : null,
-                    'defect_notes'  => !empty($it['defect_notes']) ? trim($it['defect_notes']) : null,
-                ]);
+                $this->saveQCItemTotalsFromPieces($items, $decodedPieces);
             }
 
             $result = QCBatch::recalculateTotals($batchId);
@@ -9262,5 +9437,3 @@ class ProductionController {
         Response::json(['success' => true, 'items' => $items]);
     }
 }
-
-

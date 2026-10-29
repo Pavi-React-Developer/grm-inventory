@@ -1,25 +1,14 @@
-<?php
-$isBatchesTab = ($currentTab ?? '') === 'batches';
-?>
-
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="h3 mb-0 text-gray-800">
-            <i class="bi <?= $isBatchesTab ? 'bi-boxes text-success' : 'bi-truck-flatbed text-primary' ?> me-2"></i>
-            <?= $isBatchesTab ? 'Warehouse Allocation Dispatch Batches' : 'Warehouse Stock Allocations' ?>
+            <i class="bi bi-truck-flatbed text-primary me-2"></i>
+            Warehouse Stock Allocations
         </h2>
         <p class="text-muted small mb-0">
-            <?= $isBatchesTab 
-                ? 'Allocation batch packing, picking, and dispatch tracking for channels, stores, and destination warehouses.' 
-                : 'Direct stock allocations, warehouse transfers, and distribution dispatch batches.' ?>
+            Direct stock allocations, warehouse transfers, and distribution.
         </p>
     </div>
     <div class="d-flex gap-2">
-        <?php if ($isBatchesTab): ?>
-            <a href="<?= url('warehouse/allocation/outward') ?>" class="btn btn-outline-primary">
-                <i class="bi bi-truck me-1"></i> Outward Dispatch History
-            </a>
-        <?php endif; ?>
         <?php if (hasPermission('allocation', 'create') || hasPermission('allocations', 'create')): ?>
         <a href="<?= url('warehouse/allocation/create') ?>" class="btn btn-primary">
             <i class="bi bi-plus-lg me-1"></i> New Allocation
@@ -28,29 +17,13 @@ $isBatchesTab = ($currentTab ?? '') === 'batches';
     </div>
 </div>
 
-<ul class="nav nav-pills mb-3">
-    <li class="nav-item">
-        <a class="nav-link <?= !$isBatchesTab ? 'active bg-primary' : 'bg-white text-dark border' ?> fw-semibold" href="<?= url('warehouse/allocation') ?>">
-            <i class="bi bi-truck-flatbed me-1"></i> Stock Allocations
-        </a>
-    </li>
-    <li class="nav-item ms-2">
-        <a class="nav-link <?= $isBatchesTab ? 'active bg-success text-white' : 'bg-white text-dark border' ?> fw-semibold" href="<?= url('warehouse/allocation?tab=batches') ?>">
-            <i class="bi bi-boxes me-1"></i> Dispatch Batches
-        </a>
-    </li>
-</ul>
-
 <div class="card border-0 shadow-sm rounded-3 mb-4">
     <div class="card-body p-3">
         <form method="GET" action="<?= url('warehouse/allocation') ?>" class="row g-2">
-            <?php if ($isBatchesTab): ?>
-                <input type="hidden" name="tab" value="batches">
-            <?php endif; ?>
             <div class="col-md-5">
                 <div class="input-group">
                     <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
-                    <input type="text" name="search" class="form-control border-start-0 ps-0" placeholder="<?= $isBatchesTab ? 'Search Allocation ID, Warehouse, Channel...' : 'Search allocation number or shop...' ?>" value="<?= htmlspecialchars($search ?? '') ?>">
+                    <input type="text" name="search" class="form-control border-start-0 ps-0" placeholder="Search allocation number or shop..." value="<?= htmlspecialchars($search ?? '') ?>">
                 </div>
             </div>
             <div class="col-md-4">
@@ -76,13 +49,10 @@ $isBatchesTab = ($currentTab ?? '') === 'batches';
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
                 <tr>
-                    <th class="ps-4"><?= $isBatchesTab ? 'Allocation ID' : 'Allocation #' ?></th>
+                    <th class="ps-4">Allocation #</th>
                     <th>Warehouse</th>
                     <th>Destination Channel</th>
                     <th>Requested Qty</th>
-                    <?php if ($isBatchesTab): ?>
-                        <th>Dispatched Qty</th>
-                    <?php endif; ?>
                     <th>Requested By</th>
                     <th>Status</th>
                     <th class="pe-4 text-end">Actions</th>
@@ -90,7 +60,7 @@ $isBatchesTab = ($currentTab ?? '') === 'batches';
             </thead>
             <tbody>
                 <?php if (empty($allocations)): ?>
-                    <tr><td colspan="<?= $isBatchesTab ? '8' : '7' ?>" class="text-center text-muted py-4"><i class="bi bi-inbox me-2"></i>No <?= $isBatchesTab ? 'allocation batches' : 'allocation requisitions' ?> found.</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-4"><i class="bi bi-inbox me-2"></i>No allocation requisitions found.</td></tr>
                 <?php else: foreach ($allocations as $alc): ?>
                     <tr>
                         <td class="ps-4 fw-bold text-primary font-monospace">
@@ -113,9 +83,6 @@ $isBatchesTab = ($currentTab ?? '') === 'batches';
                             <?php endif; ?>
                         </td>
                         <td><span class="badge bg-secondary-subtle text-dark font-monospace fs-6 px-2.5 py-1"><?= number_format($alc['total_requested_qty']) ?> pcs</span></td>
-                        <?php if ($isBatchesTab): ?>
-                            <td><span class="badge bg-info-subtle text-info-emphasis font-monospace fs-6 px-2.5 py-1"><?= number_format($alc['total_dispatched_qty']) ?> pcs</span></td>
-                        <?php endif; ?>
                         <td><small class="text-muted fw-medium"><i class="bi bi-person me-1"></i><?= htmlspecialchars($alc['requested_by_name'] ?? 'System') ?></small></td>
                         <td>
                             <?php
@@ -146,7 +113,7 @@ $isBatchesTab = ($currentTab ?? '') === 'batches';
                                 </a>
                             <?php endif; ?>
 
-                            <a href="<?= url('warehouse/allocation/view/' . $alc['id'] . ($isBatchesTab ? '?tab=batches' : '')) ?>" class="btn btn-sm btn-outline-primary" title="View Details">
+                            <a href="<?= url('warehouse/allocation/view/' . $alc['id']) ?>" class="btn btn-sm btn-outline-primary" title="View Details">
                                 <i class="bi bi-eye"></i>
                             </a>
                         </td>

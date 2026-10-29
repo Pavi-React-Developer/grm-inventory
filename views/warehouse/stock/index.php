@@ -247,7 +247,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
                 <label class="form-label small fw-semibold text-muted mb-1">Search Keyword</label>
                 <div class="input-group">
                     <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
-                    <input type="text" name="search" class="form-control" placeholder="SKU, style code, vendor, material..." value="<?= e($search ?? '') ?>">
+                    <input type="text" name="search" id="stockLiveSearchInput" class="form-control" placeholder="SKU, style code, vendor, material..." value="<?= e($search ?? '') ?>" oninput="liveFilterStockRows(this.value)">
                 </div>
             </div>
             <div class="col-md-3 d-flex align-items-end gap-2 pt-3">
@@ -809,7 +809,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
-            <form id="editPriceModalForm" onsubmit="handlePriceSubmit(event)">
+            <form id="editPriceModalForm" novalidate onsubmit="handlePriceSubmit(event)">
                 <input type="hidden" name="variant_ids" id="modalVariantIdsInput" value="">
                 <input type="hidden" id="modalCostPriceRaw" value="0">
                 <input type="hidden" id="modalQuantityRaw" value="0">
@@ -845,7 +845,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
                             </label>
                             <div class="input-group">
                                 <span class="input-group-text bg-white text-secondary fw-bold border-end-0 fs-5 ps-3 pe-2" style="border-color: #cbd5e1;">₹</span>
-                                <input type="number" step="0.01" min="0" name="mrp" id="modalMrpInput" 
+                                <input type="number" step="0.01" min="0.01" name="mrp" id="modalMrpInput" 
                                        class="form-control border-start-0 fs-5 fw-bold text-dark ps-1" 
                                        style="border-color: #cbd5e1;" placeholder="0.00" required oninput="recalcPriceDynamics()">
                             </div>
@@ -859,12 +859,15 @@ if (!function_exists('renderCategoryTypeBadge')) {
                             </label>
                             <div class="input-group">
                                 <span class="input-group-text bg-white text-success fw-bold border-end-0 fs-5 ps-3 pe-2" style="border-color: #cbd5e1;">₹</span>
-                                <input type="number" step="0.01" min="0" name="selling_price" id="modalSellingPriceInput" 
+                                <input type="number" step="0.01" min="0.01" name="selling_price" id="modalSellingPriceInput" 
                                        class="form-control border-start-0 fs-5 fw-bold text-success ps-1" 
                                        style="border-color: #cbd5e1;" placeholder="0.00" required oninput="recalcPriceDynamics()">
                             </div>
                             <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">Active retail selling rate at POS</small>
                         </div>
+                    </div>
+                    <div class="alert alert-danger py-2 px-3 mb-3" id="modalPriceValidationMessage" role="alert" style="display: none;">
+                        MRP must be greater than the discount price.
                     </div>
 
                     <!-- Price Dynamics & Margin Box -->
@@ -1153,6 +1156,15 @@ function recalcPriceDynamics() {
     const cost = parseFloat(document.getElementById('modalCostPriceRaw').value) || 0;
     const selling = parseFloat(document.getElementById('modalSellingPriceInput').value) || 0;
     const mrp = parseFloat(document.getElementById('modalMrpInput').value) || 0;
+    const sellingInput = document.getElementById('modalSellingPriceInput');
+    const priceValidationMessage = document.getElementById('modalPriceValidationMessage');
+    const invalidPrice = selling > 0 && mrp <= selling;
+
+    sellingInput.setCustomValidity(
+        invalidPrice ? 'MRP must be greater than the discount price.' : ''
+    );
+    sellingInput.classList.toggle('is-invalid', invalidPrice);
+    priceValidationMessage.style.display = invalidPrice ? 'block' : 'none';
     
     // Markup over cost
     const markupEl = document.getElementById('modalMarkupVal');
@@ -1191,6 +1203,9 @@ function recalcPriceDynamics() {
 
 function handlePriceSubmit(e) {
     e.preventDefault();
+    recalcPriceDynamics();
+    if (!e.currentTarget.reportValidity()) return;
+
     const btn = document.getElementById('btnSavePrice');
     const origHtml = btn.innerHTML;
     btn.disabled = true;
@@ -1313,6 +1328,15 @@ document.addEventListener('click', function(e) {
         updatePriceSelectionState();
     }
 });
+
+// Live filter stock inventory rows by SKU, style code, product name
+function liveFilterStockRows(query) {
+    const term = (query || '').toLowerCase().trim();
+    document.querySelectorAll('tr[id^="stock-row-"]').forEach(tr => {
+        const text = tr.textContent.toLowerCase();
+        tr.style.display = (!term || text.includes(term)) ? '' : 'none';
+    });
+}
 </script>
 
 <style>
@@ -1325,4 +1349,3 @@ tr.table-success td {
     background-color: rgba(25, 135, 84, 0.08) !important;
 }
 </style>
-

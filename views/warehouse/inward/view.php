@@ -366,8 +366,15 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                                     $itemStartSeq = !empty($item['start_seq']) ? (int) $item['start_seq'] : $globalSeqCounter;
                                     $itemEndSeq = !empty($item['end_seq']) ? (int) $item['end_seq'] : ($itemStartSeq + max(1, $expected) - 1);
                                     $globalSeqCounter = $itemEndSeq + 1;
+                                    $outwardPieceTags = array_values(array_filter(array_map(
+                                        static fn($tag) => trim((string)$tag),
+                                        is_array($item['outward_piece_tags'] ?? null) ? $item['outward_piece_tags'] : []
+                                    ), static fn($tag) => $tag !== ''));
 
-                                    if (!empty($item['start_code'])) {
+                                    if (!empty($outwardPieceTags)) {
+                                        $tagStart = $outwardPieceTags[0];
+                                        $tagEnd = end($outwardPieceTags);
+                                    } elseif (!empty($item['start_code'])) {
                                         $tagStart = $item['start_code'];
                                         $tagEnd = !empty($item['end_code']) ? $item['end_code'] : $item['start_code'];
                                     } else {
@@ -396,7 +403,9 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                                         $tagStart = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemStartSeq);
                                         $tagEnd = $prefix . $monthStr . $yearStr . sprintf('%02d', $itemEndSeq);
                                     }
-                                    $tagRange = ($tagStart !== $tagEnd) ? ($tagStart . ' - ' . $tagEnd) : $tagStart;
+                                    $tagRange = !empty($outwardPieceTags)
+                                        ? implode(', ', $outwardPieceTags)
+                                        : (($tagStart !== $tagEnd) ? ($tagStart . ' - ' . $tagEnd) : $tagStart);
                                     ?>
                                     <tr id="row-<?= $vid ?>" data-variant-id="<?= $vid ?>" data-sku="<?= e($item['sku']) ?>" data-qr="<?= e($tagStart) ?>" data-expected="<?= $expected ?>">
                                         <td class="text-muted small fw-semibold"><?= $idx + 1 ?></td>
@@ -871,18 +880,37 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
             currentGlobalSeq = it.endSeq + 1;
         } else {
             it.startSeq = currentGlobalSeq;
-            const qty = parseInt(it.quantity) || 1;
+            const qty = Math.max(0, parseInt(it.quantity) || 0);
             it.endSeq = currentGlobalSeq + qty - 1;
             currentGlobalSeq += qty;
         }
-        const qty = parseInt(it.quantity) || 1;
+        const qty = Math.max(0, parseInt(it.quantity) || 0);
         
-        let excluded = 0;
-        for (let p = it.startSeq; p <= it.endSeq; p++) {
-            if (QC_EXCLUDED_TAGS.has(getLabelCode(p, it).toUpperCase())) excluded++;
+        const assignedOutwardTags = Array.isArray(it.outward_piece_tags)
+            ? [...new Set(it.outward_piece_tags.map(tag => String(tag).trim().toUpperCase()).filter(Boolean))]
+            : [];
+        const eligibleTags = [];
+        if (assignedOutwardTags.length > 0) {
+            eligibleTags.push(...assignedOutwardTags);
+        } else {
+            for (let p = it.startSeq; p <= it.endSeq; p++) {
+                const tag = getLabelCode(p, it).toUpperCase();
+                if (!QC_EXCLUDED_TAGS.has(tag)) {
+                    eligibleTags.push(tag);
+                }
+            }
         }
-        it.quantity = Math.max(0, qty - excluded);
         it.original_quantity = qty;
+        const dispatchQty = Math.min(qty, eligibleTags.length);
+        const eligibleTagSet = new Set(eligibleTags);
+        const persistedTags = [
+            ...(Array.isArray(it.received_tags) ? it.received_tags : []),
+            ...(Array.isArray(it.damaged_tags) ? it.damaged_tags : [])
+        ].map(tag => String(tag).trim().toUpperCase()).filter(tag => tag && eligibleTagSet.has(tag));
+        it.dispatchTags = assignedOutwardTags.length > 0
+            ? assignedOutwardTags.slice(0, dispatchQty)
+            : [...new Set([...persistedTags, ...eligibleTags])].slice(0, dispatchQty);
+        it.quantity = it.dispatchTags.length;
 
         // If batch has previously received items, seed tags based on exact persisted received and damaged quantities
         if (BATCH_STATUS === 'RECEIVED') {
@@ -943,6 +971,14 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
     // Restore previously scanned tags from localStorage (survives page navigation and module switching)
     restoreScanState();
 
+    const allowedDispatchTags = new Set(ITEMS.flatMap(item => item.dispatchTags));
+    [...SCANNED_TAGS].forEach(tag => {
+        if (!allowedDispatchTags.has(tag)) SCANNED_TAGS.delete(tag);
+    });
+    [...DAMAGED_TAGS].forEach(tag => {
+        if (!allowedDispatchTags.has(tag)) DAMAGED_TAGS.delete(tag);
+    });
+
     // Persisted tags always take absolute precedence over restored local storage
     PERSISTED_INWARD_TAGS.forEach(t => { SCANNED_TAGS.add(t); DAMAGED_TAGS.delete(t); });
     PERSISTED_DAMAGED_TAGS.forEach(t => { DAMAGED_TAGS.add(t); SCANNED_TAGS.delete(t); });
@@ -964,10 +1000,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
             if (recvInput) recvInput.value = creditedCount;
         }
 
-        let variantTags = [];
-        for (let p = item.startSeq; p <= item.endSeq; p++) {
-            variantTags.push(getLabelCode(p, item).toUpperCase());
-        }
+        const variantTags = item.dispatchTags || [];
 
         // Clear existing tags for this variant
         variantTags.forEach(t => {
@@ -993,8 +1026,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
     // Get count of verified intact tags in SCANNED_TAGS for a specific variant
     function getVariantVerifiedTagCount(item) {
         let count = 0;
-        for (let p = item.startSeq; p <= item.endSeq; p++) {
-            const tag = getLabelCode(p, item).toUpperCase();
+        for (const tag of item.dispatchTags || []) {
             if (SCANNED_TAGS.has(tag)) count++;
         }
         return count;
@@ -1003,8 +1035,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
     // Get count of damaged quarantined tags in DAMAGED_TAGS for a specific variant
     function getVariantDamagedTagCount(item) {
         let count = 0;
-        for (let p = item.startSeq; p <= item.endSeq; p++) {
-            const tag = getLabelCode(p, item).toUpperCase();
+        for (const tag of item.dispatchTags || []) {
             if (DAMAGED_TAGS.has(tag)) count++;
         }
         return count;
@@ -1422,8 +1453,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                         const vid = item.variant_id;
                         let vReceivedTags = [];
                         let vDamagedTags = [];
-                        for (let p = item.startSeq; p <= item.endSeq; p++) {
-                            const t = getLabelCode(p, item).toUpperCase();
+                        for (const t of item.dispatchTags || []) {
                             if (SCANNED_TAGS.has(t)) {
                                 vReceivedTags.push(t);
                             } else if (DAMAGED_TAGS.has(t)) {
@@ -1768,8 +1798,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
             if (iconToggle) iconToggle.className = 'bi bi-slash-circle';
 
             // Mark all valid sequential tags as verified intact (preserving previously quarantined damaged tags)
-            for (let p = item.startSeq; p <= item.endSeq; p++) {
-                const tag = getLabelCode(p, item).toUpperCase();
+            for (const tag of item.dispatchTags || []) {
                 if (QC_EXCLUDED_TAGS.has(tag)) continue;
                 if (PERSISTED_DAMAGED_TAGS.has(tag)) continue;
                 SCANNED_TAGS.add(tag);
@@ -1853,9 +1882,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                 }
                 if (confirm(`Reset damaged count to 0 for ${item ? item.sku : 'this product'} and lock?`)) {
                     // Remove damaged tags and restore to intact or pending (skipping persisted tags)
-                    for (let p = item.startSeq; p <= item.endSeq; p++) {
-                        const tag = getLabelCode(p, item).toUpperCase();
-                        if (QC_EXCLUDED_TAGS.has(tag)) continue;
+                    for (const tag of item.dispatchTags || []) {
                         if (PERSISTED_DAMAGED_TAGS.has(tag)) continue;
                         DAMAGED_TAGS.delete(tag);
                     }
@@ -1907,9 +1934,8 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
             if (currentGood + currentDmg >= expected) {
                 // If all pieces already accounted for, convert one uncommitted Good piece to Damaged
                 if (currentGood > creditedCount) {
-                    for (let p = item.endSeq; p >= item.startSeq + creditedCount; p--) {
-                        const tag = getLabelCode(p, item).toUpperCase();
-                        if (QC_EXCLUDED_TAGS.has(tag)) continue;
+                    for (let i = (item.dispatchTags || []).length - 1; i >= creditedCount; i--) {
+                        const tag = item.dispatchTags[i];
                         if (SCANNED_TAGS.has(tag)) {
                             SCANNED_TAGS.delete(tag);
                             DAMAGED_TAGS.add(tag);
@@ -1923,9 +1949,8 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                 }
             } else {
                 // Assign next unverified piece tag as damaged
-                for (let p = item.startSeq + creditedCount; p <= item.endSeq; p++) {
-                    const tag = getLabelCode(p, item).toUpperCase();
-                    if (QC_EXCLUDED_TAGS.has(tag)) continue;
+                for (let i = creditedCount; i < (item.dispatchTags || []).length; i++) {
+                    const tag = item.dispatchTags[i];
                     if (!SCANNED_TAGS.has(tag) && !DAMAGED_TAGS.has(tag)) {
                         DAMAGED_TAGS.add(tag);
                         break;
@@ -1958,9 +1983,8 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                 return;
             }
             if (currentDmg <= 0) return;
-            for (let p = item.endSeq; p >= item.startSeq; p--) {
-                const tag = getLabelCode(p, item).toUpperCase();
-                if (QC_EXCLUDED_TAGS.has(tag)) continue;
+            for (let i = (item.dispatchTags || []).length - 1; i >= 0; i--) {
+                const tag = item.dispatchTags[i];
                 if (PERSISTED_DAMAGED_TAGS.has(tag)) continue;
                 if (DAMAGED_TAGS.has(tag)) {
                     DAMAGED_TAGS.delete(tag);
@@ -2004,17 +2028,15 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         if (!item) return;
 
         const normalizedTag = tagCode.toUpperCase();
+        const tagSeq = (item.dispatchTags || []).indexOf(normalizedTag);
+        if (tagSeq < 0) {
+            playBeep('error');
+            showScanFeedback('This garment tag is not included in the outward batch.', 'warning');
+            return;
+        }
         const creditedCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.received_qty) || 0) : 0;
 
-        // Verify if piece was already credited in previous inward session
-        let tagSeq = -1;
-        for (let p = item.startSeq; p <= item.endSeq; p++) {
-            if (getLabelCode(p, item).toUpperCase() === normalizedTag) {
-                tagSeq = p;
-                break;
-            }
-        }
-        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (BATCH_STATUS === 'RECEIVED' && SCANNED_TAGS.has(normalizedTag)) || (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
+        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (BATCH_STATUS === 'RECEIVED' && SCANNED_TAGS.has(normalizedTag)) || (tagSeq < creditedCount && BATCH_STATUS === 'RECEIVED')) {
             playBeep('error');
             showScanFeedback(`🔒 Piece <span class="badge bg-dark font-monospace">${escapeHtml(normalizedTag)}</span> was already credited to warehouse inventory and cannot be changed to damaged.`, 'warning');
             return;
@@ -2049,6 +2071,11 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         if (!item) return;
 
         const normalizedTag = tagCode.toUpperCase();
+        if (!(item.dispatchTags || []).includes(normalizedTag)) {
+            playBeep('error');
+            showScanFeedback('This garment tag is not included in the outward batch.', 'warning');
+            return;
+        }
         if (PERSISTED_DAMAGED_TAGS.has(normalizedTag) || (BATCH_STATUS === 'RECEIVED' && DAMAGED_TAGS.has(normalizedTag))) {
             playBeep('error');
             showScanFeedback(`🔒 Piece <span class="badge bg-dark font-monospace">${escapeHtml(normalizedTag)}</span> was already inwarded as damaged/quarantined and cannot be modified.`, 'warning');
@@ -2180,9 +2207,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
             const nextTagCont = document.getElementById(`next-tag-container-${vid}`);
             if (nextTagVal && item.startSeq && item.endSeq) {
                 let firstPending = null;
-                for (let p = item.startSeq; p <= item.endSeq; p++) {
-                    const t = getLabelCode(p, item).toUpperCase();
-                    if (QC_EXCLUDED_TAGS.has(t)) continue;
+                for (const t of item.dispatchTags || []) {
                     if (!SCANNED_TAGS.has(t) && !DAMAGED_TAGS.has(t)) {
                         firstPending = t;
                         break;
@@ -2301,9 +2326,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
 
             // Calculate exact pending unscanned tags for this variant
             let pendingTags = [];
-            for (let p = item.startSeq; p <= item.endSeq; p++) {
-                const t = getLabelCode(p, item).toUpperCase();
-                if (QC_EXCLUDED_TAGS.has(t)) continue;
+            for (const t of item.dispatchTags || []) {
                 if (!SCANNED_TAGS.has(t) && !DAMAGED_TAGS.has(t)) {
                     pendingTags.push(t);
                 }
@@ -2400,27 +2423,18 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         const item = ITEMS.find(i => String(i.variant_id) === String(variantId));
         if (!item) return;
 
-        const expected = parseInt(item.quantity) || 1;
+        const expected = parseInt(item.quantity) || 0;
         const scanned = getVariantVerifiedTagCount(item);
         const damaged = getVariantDamagedTagCount(item);
         const missing = Math.max(0, expected - (scanned + damaged));
         const exactQr = getExactProductQR(item);
 
         // Find the next unverified sequential piece tag for this specific variant
-        let currentTagSeq = item.startSeq;
-        for (let p = item.startSeq; p <= item.endSeq; p++) {
-            const testTag = getLabelCode(p, item).toUpperCase();
-            if (QC_EXCLUDED_TAGS.has(testTag)) continue;
-            if (!SCANNED_TAGS.has(testTag) && !DAMAGED_TAGS.has(testTag)) {
-                currentTagSeq = p;
-                break;
-            }
-        }
-
-        const currentTagCode = getLabelCode(currentTagSeq, item);
-        const pieceQrPayload = getQRPayload(currentTagSeq, item);
+        const currentTagIndex = (item.dispatchTags || []).findIndex(tag => !SCANNED_TAGS.has(tag) && !DAMAGED_TAGS.has(tag));
+        const currentTagCode = (item.dispatchTags || [])[currentTagIndex >= 0 ? currentTagIndex : 0] || '';
+        const pieceQrPayload = currentTagCode;
         const activeQrPayload = pieceQrPayload;
-        const pieceNum = currentTagSeq - item.startSeq + 1;
+        const pieceNum = currentTagIndex >= 0 ? currentTagIndex + 1 : (item.dispatchTags || []).length;
 
         // Update modal info elements
         const modalImg = document.getElementById('modalProductImgContainer');
@@ -2510,9 +2524,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
             // Can only reset if there are uncommitted scans or uncommitted damage
             let uncommittedGood = 0;
             let uncommittedDmg = 0;
-            for (let p = item.startSeq; p <= item.endSeq; p++) {
-                const tag = getLabelCode(p, item).toUpperCase();
-                if (QC_EXCLUDED_TAGS.has(tag)) continue;
+            for (const tag of item.dispatchTags || []) {
                 if (SCANNED_TAGS.has(tag) && !PERSISTED_INWARD_TAGS.has(tag)) uncommittedGood++;
                 if (DAMAGED_TAGS.has(tag) && !PERSISTED_DAMAGED_TAGS.has(tag)) uncommittedDmg++;
             }
@@ -2577,9 +2589,8 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
             const fmtMrp = mrp > 0 ? mrp.toFixed(2) : '—';
             const fmtCost = cost > 0 ? cost.toFixed(2) : '—';
 
-            for (let p = item.startSeq; p <= item.endSeq; p++) {
-                const pieceTagCode = getLabelCode(p, item).toUpperCase();
-                if (QC_EXCLUDED_TAGS.has(pieceTagCode)) continue;
+            for (let i = 0; i < (item.dispatchTags || []).length; i++) {
+                const pieceTagCode = item.dispatchTags[i];
                 
                 const isGood = SCANNED_TAGS.has(pieceTagCode);
                 const isDamaged = DAMAGED_TAGS.has(pieceTagCode);
@@ -2602,7 +2613,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                 const pieceQrPayload = pieceTagCode;
 
                 // use globalSeq index for ID numbering
-                const i = p - item.startSeq + 1;
+                const pieceNum = i + 1;
 
                 if (isGood) {
                     if (isAlreadyCredited) {
@@ -2613,14 +2624,14 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                                     <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
                                         <div class="text-center flex-shrink-0" style="width: 88px;">
                                             <div class="inward-piece-qr bg-white p-1 rounded border border-success-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
-                                                 id="piece-qr-${i}" 
+                                                 id="piece-qr-${pieceNum}"
                                                  data-qr="${escapeHtml(pieceQrPayload)}" 
-                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                                  title="Click to view full 2D QR Code Tag" 
                                                  style="width: 80px; height: 80px; cursor: pointer;">
                                             </div>
                                             <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
-                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                                  title="${escapeHtml(pieceTagCode)}" 
                                                  style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
                                                 ${escapeHtml(pieceTagCode)}
@@ -2664,14 +2675,14 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                                     <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
                                         <div class="text-center flex-shrink-0" style="width: 88px;">
                                             <div class="inward-piece-qr bg-white p-1 rounded border border-success-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
-                                                 id="piece-qr-${i}" 
+                                                 id="piece-qr-${pieceNum}"
                                                  data-qr="${escapeHtml(pieceQrPayload)}" 
-                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                                  title="Click to view full 2D QR Code Tag" 
                                                  style="width: 80px; height: 80px; cursor: pointer;">
                                             </div>
                                             <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
-                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                                  title="${escapeHtml(pieceTagCode)}" 
                                                  style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
                                                 ${escapeHtml(pieceTagCode)}
@@ -2718,14 +2729,14 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                                     <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
                                         <div class="text-center flex-shrink-0" style="width: 88px;">
                                             <div class="inward-piece-qr bg-white p-1 rounded border border-danger-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
-                                                 id="piece-qr-${i}" 
+                                                 id="piece-qr-${pieceNum}"
                                                  data-qr="${escapeHtml(pieceQrPayload)}" 
-                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                                  title="Click to view full 2D QR Code Tag" 
                                                  style="width: 80px; height: 80px; cursor: pointer;">
                                             </div>
                                             <div class="badge bg-danger text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
-                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                                  title="${escapeHtml(pieceTagCode)}" 
                                                  style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
                                                 ${escapeHtml(pieceTagCode)}
@@ -2769,14 +2780,14 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                                     <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
                                         <div class="text-center flex-shrink-0" style="width: 88px;">
                                             <div class="inward-piece-qr bg-white p-1 rounded border border-danger-subtle shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
-                                                 id="piece-qr-${i}" 
+                                                 id="piece-qr-${pieceNum}"
                                                  data-qr="${escapeHtml(pieceQrPayload)}" 
-                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                                  title="Click to view full 2D QR Code Tag" 
                                                  style="width: 80px; height: 80px; cursor: pointer;">
                                             </div>
                                             <div class="badge bg-danger text-white font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
-                                                 onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                                 onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                                  title="${escapeHtml(pieceTagCode)}" 
                                                  style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
                                                 ${escapeHtml(pieceTagCode)}
@@ -2820,15 +2831,15 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                             <div class="p-2.5 border rounded-3 bg-white d-flex align-items-center justify-content-between gap-2 shadow-xs h-100 hover-shadow position-relative overflow-hidden">
                                 <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
                                     <div class="text-center flex-shrink-0" style="width: 88px;">
-                                        <div class="inward-piece-qr bg-white p-1 rounded border shadow-xs d-flex align-items-center justify-content-center cursor-pointer" 
-                                             id="piece-qr-${i}" 
+                                        <div class="inward-piece-qr bg-white p-1 rounded border shadow-xs d-flex align-items-center justify-content-center cursor-pointer"
+                                             id="piece-qr-${pieceNum}"
                                              data-qr="${escapeHtml(pieceQrPayload)}" 
-                                             onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                             onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                              title="Click to view full 2D QR Code Tag" 
                                              style="width: 80px; height: 80px; cursor: pointer;">
                                         </div>
-                                        <div class="badge bg-dark text-warning font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs" 
-                                             onclick="previewSinglePieceTag(${variantId}, ${i}, '${escapeHtml(pieceTagCode)}');" 
+                                        <div class="badge bg-dark text-warning font-monospace mt-1 px-1 py-1 w-100 text-truncate cursor-pointer shadow-xs"
+                                             onclick="previewSinglePieceTag(${variantId}, ${pieceNum}, '${escapeHtml(pieceTagCode)}');"
                                              title="${escapeHtml(pieceTagCode)}" 
                                              style="font-size: 0.60rem; letter-spacing: 0.2px; padding: 2px 2px !important; cursor: pointer;">
                                             ${escapeHtml(pieceTagCode)}
@@ -2934,7 +2945,11 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         const item = ITEMS.find(i => String(i.variant_id) === String(vid));
         if (!item) return;
 
-        const expected = parseInt(item.quantity) || 1;
+        const expected = parseInt(item.quantity) || 0;
+        if (expected <= 0) {
+            showScanFeedback(`No outwarded units are available for <strong>${escapeHtml(item.sku)}</strong> in this batch.`, 'warning');
+            return;
+        }
         const row = document.getElementById(`row-${vid}`);
         const creditedCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.received_qty) || 0) : 0;
         const currentGood = getVariantVerifiedTagCount(item);
@@ -2957,21 +2972,30 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         let isValidPieceTag = false;
         let pieceSeq = -1;
         if (tagToProcess) {
-            for (let p = item.startSeq; p <= item.endSeq; p++) {
-                const code = getLabelCode(p, item).toUpperCase();
-                if (QC_EXCLUDED_TAGS.has(code)) continue;
+            for (let i = 0; i < (item.dispatchTags || []).length; i++) {
+                const code = item.dispatchTags[i];
                 if (code === tagToProcess) {
                     isValidPieceTag = true;
-                    pieceSeq = p;
+                    pieceSeq = i;
                     break;
                 }
+            }
+        }
+
+        if (tagToProcess && !isValidPieceTag) {
+            const isBatchPieceTag = Array.isArray(item.piece_tags)
+                && item.piece_tags.some(tag => String(tag).trim().toUpperCase() === tagToProcess);
+            if (isBatchPieceTag) {
+                playBeep('error');
+                showScanFeedback(`This garment tag is not included in the ${expected}-piece outward batch.`, 'warning');
+                return;
             }
         }
 
         // 2. Specific Piece Tag Validations
         if (isValidPieceTag) {
             // Already credited piece check
-            if (PERSISTED_INWARD_TAGS.has(tagToProcess) || (BATCH_STATUS === 'RECEIVED' && SCANNED_TAGS.has(tagToProcess)) || (pieceSeq !== -1 && (pieceSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
+            if (PERSISTED_INWARD_TAGS.has(tagToProcess) || (BATCH_STATUS === 'RECEIVED' && SCANNED_TAGS.has(tagToProcess)) || (pieceSeq !== -1 && pieceSeq < creditedCount && BATCH_STATUS === 'RECEIVED')) {
                 playBeep('error');
                 showScanFeedback(`🔒 <strong>ALREADY INWARDED:</strong> Piece <span class="badge bg-dark font-monospace">${escapeHtml(tagToProcess)}</span> was already credited to warehouse inventory.`, 'warning');
                 return;
@@ -3042,9 +3066,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
 
             // Find next unverified piece in sequence for this variant
             tagToProcess = '';
-            for (let p = item.startSeq; p <= item.endSeq; p++) {
-                const code = getLabelCode(p, item).toUpperCase();
-                if (QC_EXCLUDED_TAGS.has(code)) continue;
+            for (const code of item.dispatchTags || []) {
                 if (PERSISTED_INWARD_TAGS.has(code) || PERSISTED_DAMAGED_TAGS.has(code)) continue;
                 if (!SCANNED_TAGS.has(code) && !DAMAGED_TAGS.has(code)) {
                     tagToProcess = code;
@@ -3059,9 +3081,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         if (isSeriesOrComp && mode === 'good') {
             // Single scan inwards ALL counts for series and complementary products!
             let newlyAdded = 0;
-            for (let p = item.startSeq; p <= item.endSeq; p++) {
-                const code = getLabelCode(p, item).toUpperCase();
-                if (QC_EXCLUDED_TAGS.has(code)) continue;
+            for (const code of item.dispatchTags || []) {
                 if (PERSISTED_INWARD_TAGS.has(code) || PERSISTED_DAMAGED_TAGS.has(code)) continue;
                 if (!SCANNED_TAGS.has(code) && !DAMAGED_TAGS.has(code)) {
                     SCANNED_TAGS.add(code);
@@ -3130,18 +3150,17 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         const item = ITEMS.find(i => String(i.variant_id) === String(vid));
         if (!item) return;
 
-        const expected = parseInt(item.quantity) || 1;
+        const expected = parseInt(item.quantity) || 0;
         const normalizedTag = (tagCode || '').toUpperCase();
         const creditedCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.received_qty) || 0) : 0;
 
-        let tagSeq = -1;
-        for (let p = item.startSeq; p <= item.endSeq; p++) {
-            if (getLabelCode(p, item).toUpperCase() === normalizedTag) {
-                tagSeq = p;
-                break;
-            }
+        const tagSeq = (item.dispatchTags || []).indexOf(normalizedTag);
+        if (tagSeq < 0) {
+            playBeep('error');
+            showScanFeedback('This garment tag is not included in the outward batch.', 'warning');
+            return;
         }
-        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (BATCH_STATUS === 'RECEIVED' && SCANNED_TAGS.has(normalizedTag)) || (tagSeq !== -1 && (tagSeq - item.startSeq) < creditedCount && BATCH_STATUS === 'RECEIVED')) {
+        if (PERSISTED_INWARD_TAGS.has(normalizedTag) || (BATCH_STATUS === 'RECEIVED' && SCANNED_TAGS.has(normalizedTag)) || (tagSeq < creditedCount && BATCH_STATUS === 'RECEIVED')) {
             playBeep('error');
             showScanFeedback(`🔒 Piece <span class="badge bg-dark font-monospace">${escapeHtml(normalizedTag)}</span> was already credited to warehouse inventory and cannot be un-verified.`, 'warning');
             return;
@@ -3184,13 +3203,12 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         const item = ITEMS.find(i => String(i.variant_id) === String(vid));
         if (!item) return;
 
-        const expected = parseInt(item.quantity) || 1;
+        const expected = parseInt(item.quantity) || 0;
         const creditedCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.received_qty) || 0) : 0;
         const persistedDmgCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.damaged_qty) || 0) : 0;
 
         // Reset ONLY uncommitted tags (preserving previously persisted tags)
-        for (let p = item.startSeq; p <= item.endSeq; p++) {
-            const tag = getLabelCode(p, item).toUpperCase();
+        for (const tag of item.dispatchTags || []) {
             if (!PERSISTED_INWARD_TAGS.has(tag) && !PERSISTED_DAMAGED_TAGS.has(tag)) {
                 SCANNED_TAGS.delete(tag);
                 DAMAGED_TAGS.delete(tag);
@@ -3247,9 +3265,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         const expected = parseInt(item.quantity) || 0;
         
         if (recvInput) {
-            for (let p = item.startSeq; p <= item.endSeq; p++) {
-                const tag = getLabelCode(p, item).toUpperCase();
-                if (QC_EXCLUDED_TAGS.has(tag)) continue;
+            for (const tag of item.dispatchTags || []) {
                 if (PERSISTED_DAMAGED_TAGS.has(tag)) continue; // keep previously quarantined pieces damaged
                 SCANNED_TAGS.add(tag);
                 DAMAGED_TAGS.delete(tag);
@@ -3331,8 +3347,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
                     const vid = item.variant_id;
                     let vReceivedTags = [];
                     let vDamagedTags = [];
-                    for (let p = item.startSeq; p <= item.endSeq; p++) {
-                        const t = getLabelCode(p, item).toUpperCase();
+                    for (const t of item.dispatchTags || []) {
                         if (SCANNED_TAGS.has(t)) {
                             vReceivedTags.push(t);
                         } else if (DAMAGED_TAGS.has(t)) {

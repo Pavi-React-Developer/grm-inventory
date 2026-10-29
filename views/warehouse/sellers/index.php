@@ -194,21 +194,17 @@
                                 </td>
                                 <td class="text-end">
                                     <div class="btn-group btn-group-sm">
-                                        <?php if (hasPermission('wh_sellers', 'create') || hasPermission('purchases', 'create')): ?>
-                                        <a href="<?= url('warehouse/sellers/create?seller_id=' . $s['id']) ?>" class="btn btn-outline-success" title="Create New Inward Bill for this Supplier">
-                                            <i class="bi bi-box-arrow-in-down"></i>
-                                        </a>
-                                        <?php endif; ?>
                                         <a href="<?= url('warehouse/sellers/view/' . $s['id']) ?>" class="btn btn-outline-primary" title="View Profile &amp; Order History">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         <?php if (hasPermission('wh_sellers', 'edit')): ?>
-                                        <a href="<?= url('warehouse/sellers/edit/' . $s['id']) ?>" class="btn btn-outline-secondary" title="Edit Supplier">
+                                        <a href="<?= url('warehouse/sellers/create?seller_id=' . $s['id'] . '&mode=edit') ?>" class="btn btn-outline-secondary" title="Edit Supplier">
                                             <i class="bi bi-pencil"></i>
                                         </a>
                                         <?php endif; ?>
                                         <?php if (hasPermission('wh_sellers', 'delete') || hasPermission('warehouse', 'delete') || true): ?>
-                                        <form method="POST" action="<?= url('warehouse/sellers/delete/' . $s['id']) ?>" class="d-inline mb-0" onsubmit="return confirm('Are you sure you want to delete supplier &quot;<?= e(addslashes($s['name'])) ?>&quot;?');">
+                                        <form method="POST" action="<?= url('warehouse/sellers/delete/' . $s['id']) ?>" class="d-inline mb-0" onsubmit="return confirm('Are you sure you want to permanently delete supplier &quot;<?= e(addslashes($s['name'])) ?>&quot; from the database?');">
+                                            <?= csrf_field() ?>
                                             <button type="submit" class="btn btn-outline-danger" title="Delete Supplier">
                                                 <i class="bi bi-trash"></i>
                                             </button>

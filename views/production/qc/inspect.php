@@ -60,7 +60,8 @@
     };
 
     // Decode saved pieces data if available
-    $savedPiecesMap = [];
+    $savedPiecesByTag = [];
+    $savedPiecesByIndex = [];
     if (!empty($batch['pieces_data'])) {
         $raw = $batch['pieces_data'];
         $decoded = json_decode($raw, true);
@@ -72,11 +73,10 @@
         }
         if (is_array($decoded)) {
             foreach ($decoded as $dp) {
-                if (isset($dp['index'])) {
-                    $savedPiecesMap[(int)$dp['index']] = $dp;
-                }
                 if (!empty($dp['tag_code'])) {
-                    $savedPiecesMap[$dp['tag_code']] = $dp;
+                    $savedPiecesByTag[trim((string)$dp['tag_code'])] = $dp;
+                } elseif (isset($dp['index'])) {
+                    $savedPiecesByIndex[(int)$dp['index']] = $dp;
                 }
             }
         }
@@ -116,20 +116,12 @@
             $savedReason = '';
             $savedNotes = '';
 
-            if (isset($savedPiecesMap[$pieceIndex])) {
-                $sp = $savedPiecesMap[$pieceIndex];
+            $sp = $savedPiecesByTag[$pieceTagCode] ?? ($savedPiecesByIndex[$pieceIndex] ?? null);
+            if ($sp !== null) {
                 $initialStatus = $sp['status'] ?? 'PENDING';
                 $isReinspected = !empty($sp['is_reinspected']);
                 $savedReason = $sp['defect_reason'] ?? '';
                 $savedNotes = $sp['defect_notes'] ?? '';
-                if (!empty($sp['tag_code']) && strlen($sp['tag_code']) <= 12 && !str_contains($sp['tag_code'], 'BABABY')) {
-                    $pieceTagCode = $sp['tag_code'];
-                }
-            } elseif (isset($savedPiecesMap[$pieceTagCode])) {
-                $sp = $savedPiecesMap[$pieceTagCode];
-                $initialStatus = $sp['status'] ?? 'PENDING';
-                $isReinspected = !empty($sp['is_reinspected']);
-                $savedReason = $sp['defect_reason'] ?? '';
             } else {
                 if ($passedQty > 0 && $p <= $passedQty) {
                     $initialStatus = 'APPROVED';
@@ -282,6 +274,15 @@
                         <?php foreach ($allPieces as $pc): 
                             $initialStatus = $pc['status'];
                             $isReinspected = !empty($pc['is_reinspected']);
+                            $lockInfo = $lockedPieces[$pc['tag_code']] ?? ($lockedPieces[$pc['index']] ?? null);
+                            $isLocked = $lockInfo !== null;
+                            $isOutwarded = !empty($lockInfo['outwarded']);
+                            if ($isLocked) {
+                                $initialStatus = $lockInfo['status'];
+                                $isReinspected = !empty($lockInfo['is_reinspected']);
+                                $pc['defect_reason'] = $lockInfo['defect_reason'];
+                                $pc['defect_notes'] = $lockInfo['defect_notes'];
+                            }
                             $badgeClass = match($initialStatus) {
                                 'APPROVED' => 'bg-success',
                                 'REJECTED' => 'bg-danger',
@@ -303,6 +304,8 @@
                                 data-item-id="<?= $it['id'] ?>"
                                 data-catalog="<?= e($pc['catalog_hierarchy']) ?>"
                                 data-tag-code="<?= $pc['tag_code'] ?>"
+                                data-locked="<?= $isLocked ? '1' : '0' ?>"
+                                data-outwarded="<?= $isOutwarded ? '1' : '0' ?>"
                                 data-size="<?= e($it['display_size']) ?>"
                                 data-color="<?= e($it['display_color']) ?>"
                                 data-sku="<?= e($it['sku']) ?>">
@@ -316,6 +319,9 @@
                                         <span class="badge bg-dark text-white font-monospace fs-7 px-2 py-1"><i class="bi bi-tag-fill me-1 text-warning"></i><?= $pc['tag_code'] ?></span>
                                         <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"><?= e($it['display_size']) ?></span>
                                         <span class="badge bg-primary-subtle text-primary border px-2 py-1"><?= e($it['display_color']) ?></span>
+                                        <?php if ($isOutwarded): ?>
+                                            <span class="badge bg-info-subtle text-info-emphasis border"><i class="bi bi-box-arrow-up-right me-1"></i>OUTWARDED</span>
+                                        <?php endif; ?>
                                     </div>
                                     <div class="d-flex align-items-center gap-2">
                                         <code class="text-muted fs-8"><?= e($it['sku']) ?></code>
@@ -343,9 +349,14 @@
                                             <span class="badge bg-warning-subtle text-warning border"><i class="bi bi-arrow-repeat me-1"></i><?= e($reasonVal) ?></span>
                                         <?php endif; ?>
                                     </div>
-                                    <input type="text" class="form-control form-control-sm piece-notes-input" data-item-id="<?= $it['id'] ?>" id="pieceNotesInput_<?= $pc['index'] ?>" placeholder="Specific defect / rework notes..." value="<?= e($notesVal) ?>">
+                                    <input type="text" class="form-control form-control-sm piece-notes-input <?= $isLocked ? 'bg-light' : '' ?>" data-item-id="<?= $it['id'] ?>" id="pieceNotesInput_<?= $pc['index'] ?>" placeholder="Specific defect / rework notes..." value="<?= e($notesVal) ?>" <?= $isLocked ? 'readonly' : '' ?>>
                                 </td>
                                 <td class="text-center">
+                                    <?php if ($isOutwarded): ?>
+                                        <span class="badge bg-info-subtle text-info-emphasis border py-2 px-3"><i class="bi bi-lock-fill me-1"></i>OUTWARDED</span>
+                                    <?php elseif ($isLocked): ?>
+                                        <span class="badge bg-success-subtle text-success border py-2 px-3"><i class="bi bi-lock-fill me-1"></i>APPROVED</span>
+                                    <?php else: ?>
                                     <div class="btn-group btn-group-sm" id="actionBtnGroup_<?= $pc['index'] ?>">
                                         <button type="button" class="btn btn-action-pass <?= $initialStatus === 'APPROVED' ? 'btn-success text-white fw-bold shadow-xs active' : 'btn-outline-success' ?> px-2" onclick="setPieceStatus(<?= $pc['index'] ?>, 'APPROVED')" title="Approve Piece (Pass to Inventory / Re-check & Pass)">
                                             <i class="bi bi-check-lg me-1"></i>Pass
@@ -357,6 +368,7 @@
                                             <i class="bi bi-arrow-repeat me-1"></i>Rework
                                         </button>
                                     </div>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -648,6 +660,7 @@ function recalcQC() {
 function passCurrentViewGarments() {
     let count = 0;
     document.querySelectorAll('.piece-item-row').forEach(row => {
+        if (row.getAttribute('data-locked') === '1') return;
         const rowCatalog = (row.getAttribute('data-catalog') || '').trim();
         if (currentCatalogFilter !== 'ALL' && rowCatalog !== currentCatalogFilter) {
             return;
@@ -672,6 +685,7 @@ function passCurrentViewGarments() {
     if (count === 0) {
         // If nothing in specific view was pending, pass remaining pending garments for selected catalog
         document.querySelectorAll('.piece-item-row').forEach(row => {
+            if (row.getAttribute('data-locked') === '1') return;
             const rowCatalog = (row.getAttribute('data-catalog') || '').trim();
             if (currentCatalogFilter !== 'ALL' && rowCatalog !== currentCatalogFilter) {
                 return;
@@ -687,7 +701,7 @@ function passCurrentViewGarments() {
 
 function setPieceStatus(pieceIdx, status) {
     const row = document.getElementById('pieceRow_' + pieceIdx);
-    if (!row) return;
+    if (!row || row.getAttribute('data-locked') === '1') return;
 
     const statusInput = document.getElementById('pieceStatusInput_' + pieceIdx);
     const reinspectedInput = document.getElementById('pieceReinspectedInput_' + pieceIdx);
@@ -727,13 +741,16 @@ function setPieceStatus(pieceIdx, status) {
     }
 
     updateRowActionButtons(pieceIdx, status);
+    if (status === 'APPROVED') {
+        lockQCPieceRow(row, pieceIdx);
+    }
     recalcQC();
     triggerAutoSave();
 }
 
 function openPieceDefectModal(pieceIdx, mode = 'REJECTED') {
     const row = document.getElementById('pieceRow_' + pieceIdx);
-    if (!row) return;
+    if (!row || row.getAttribute('data-locked') === '1') return;
 
     const size = row.getAttribute('data-size');
     const color = row.getAttribute('data-color');
@@ -797,6 +814,8 @@ function openPieceDefectModal(pieceIdx, mode = 'REJECTED') {
 
 function confirmPieceAction() {
     const pieceIdx = document.getElementById('modalPieceIndex').value;
+    const row = document.getElementById('pieceRow_' + pieceIdx);
+    if (!row || row.getAttribute('data-locked') === '1') return;
     const mode = document.getElementById('modalActionMode').value;
     const reason = document.getElementById('modalDefectReason').value;
     const notes = document.getElementById('modalDefectNotes').value.trim();
@@ -806,7 +825,6 @@ function confirmPieceAction() {
         return;
     }
 
-    const row = document.getElementById('pieceRow_' + pieceIdx);
     if (row) {
         document.getElementById('pieceStatusInput_' + pieceIdx).value = mode;
         document.getElementById('pieceReasonInput_' + pieceIdx).value = reason;
@@ -1018,6 +1036,20 @@ function updateRowActionButtons(pieceIdx, status) {
     }
     if (reworkBtn) {
         reworkBtn.className = `btn btn-action-rework px-2 ${status === 'REWORK' ? 'btn-warning text-dark fw-bold shadow-xs active' : 'btn-outline-warning'}`;
+    }
+}
+
+function lockQCPieceRow(row, pieceIdx) {
+    row.setAttribute('data-locked', '1');
+    const notesInput = document.getElementById('pieceNotesInput_' + pieceIdx);
+    if (notesInput) {
+        notesInput.readOnly = true;
+        notesInput.classList.add('bg-light');
+    }
+
+    const actionGroup = document.getElementById('actionBtnGroup_' + pieceIdx);
+    if (actionGroup) {
+        actionGroup.innerHTML = '<span class="badge bg-success-subtle text-success border py-2 px-3"><i class="bi bi-lock-fill me-1"></i>APPROVED</span>';
     }
 }
 

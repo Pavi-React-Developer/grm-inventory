@@ -21,10 +21,9 @@ $copiesCount       = !empty($_GET['copies']) ? max(1, (int)$_GET['copies']) : 1;
 $notes             = trim($_GET['reason'] ?? '');
 $targetWarehouseId = !empty($_GET['warehouse_id']) ? (int)$_GET['warehouse_id'] : ($warehouses[0]['id'] ?? 1);
 $qrMode            = trim($_GET['qr_mode'] ?? '');
-$isZeroStockRestricted = false;
-$qrAdjustmentType  = trim($_GET['qr_adjustment_type'] ?? 'STANDARD'); // 'STANDARD', 'PRODUCE_NEW', 'REPRINT_DAMAGED'
+$qrAdjustmentType  = trim($_GET['qr_adjustment_type'] ?? 'STANDARD');
 $damagedTagCode    = trim($_GET['damaged_tag_code'] ?? '');
-
+$isZeroStockRestricted = false;
 $qrBatches         = $qrBatches ?? [];
 $inwardedVariantIds= $inwardedVariantIds ?? [];
 $viewParam         = $_GET['view'] ?? '';
@@ -386,11 +385,15 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                 [$selectedVariantId]
             )['total_inwarded'] ?? 0);
 
-            $isComp = !empty($activeVar['is_complementary']) || !empty($activeVar['product_is_comp']);
-            $isSeries = ($activeVar['qr_type'] ?? '') === 'SERIES_BATCH' || $qrMode === 'SERIES_BATCH' || ($activeVar['warehouse_category_type'] ?? '') === 'SERIES' || (int)($activeVar['pack_quantity'] ?? 0) > 1 || $isComp;
+            $activeCategoryType = strtoupper($activeVar['warehouse_category_type'] ?? '');
+            $isComp = !empty($activeVar['is_complementary']) || !empty($activeVar['product_is_comp']) || $activeCategoryType === 'COMPLEMENTARY';
+            $isSeries = ($activeVar['qr_type'] ?? '') === 'SERIES_BATCH' || $qrMode === 'SERIES_BATCH' || $activeCategoryType === 'SERIES';
+            $isSeriesOrComp = $isSeries || $isComp;
 
-            // True total planned/expected quantity for this batch
-            if ($poVarQty > 0) {
+            // Pack QR products represent one fixed inward quantity; normal products follow PO quantities.
+            if ($isSeriesOrComp && (int)($activeVar['pack_quantity'] ?? 0) > 1) {
+                $totalExpectedQty = max((int)$activeVar['pack_quantity'], $alreadyInwardedQty);
+            } elseif ($poVarQty > 0) {
                 $totalExpectedQty = $poVarQty;
             } elseif (!empty($activeVar['quantity']) && (int)$activeVar['quantity'] > 0) {
                 $totalExpectedQty = max((int)$activeVar['quantity'], (int)($activeVar['pack_quantity'] ?? 0), $alreadyInwardedQty);
@@ -400,10 +403,6 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                 $totalExpectedQty = (int)$activeVar['available_qty'] + $alreadyInwardedQty;
             } else {
                 $totalExpectedQty = $alreadyInwardedQty > 0 ? $alreadyInwardedQty : 1;
-            }
-
-            if (($isSeries || $isComp) && !empty($activeVar['pack_quantity']) && (int)$activeVar['pack_quantity'] > 1) {
-                $totalExpectedQty = max($totalExpectedQty, (int)$activeVar['pack_quantity']);
             }
 
             $remainingQty = max(0, $totalExpectedQty - $alreadyInwardedQty);
@@ -423,7 +422,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                 $copiesCount = 0;
             } else {
                 $isZeroStockRestricted = false;
-                if ($isSeries) {
+                if ($isSeriesOrComp) {
                     $copiesCount = 1;
                 } elseif ($qrAdjustmentType === 'PRODUCE_NEW' || $qrAdjustmentType === 'REPRINT_DAMAGED') {
                     $copiesCount = 1;
@@ -513,9 +512,10 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                     $cleanSku = !empty($activeVar['sku']) ? $activeVar['sku'] : 'STD';
                 }
 
-                if ($isSeries) {
-                    // Generate 1 Master QR for the entire Series / Batch with continuous unique sequential tags
-                    $packQty = !empty($activeVar['pack_quantity']) ? (int)$activeVar['pack_quantity'] : max(1, (int)($activeVar['available_qty'] ?? $totalExpectedQty ?? $copiesCount));
+                if ($isSeriesOrComp) {
+                    $packQty = (int)($activeVar['pack_quantity'] ?? 0) > 1
+                        ? (int)$activeVar['pack_quantity']
+                        : max(1, (int)($totalExpectedQty ?? $activeVar['available_qty'] ?? $copiesCount));
                     $startNum = $categoryOffset + 1;
                     $endNum = $categoryOffset + $packQty;
                     $seqPad = ($endNum > 99) ? 3 : 2;
@@ -537,10 +537,11 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                         'mrp'                  => $mrpVal,
                         'selling_price'        => $sellingVal,
                         'cost_price'           => $costVal,
-                        'source_label'         => 'Master Series Pack: ' . $brandOrSeller . " ({$packQty} Pcs)",
+                        'source_label'         => ($isComp ? 'Master Complementary Pack: ' : 'Master Series Pack: ') . $brandOrSeller . " ({$packQty} Pcs)",
                         'badge_class'          => 'bg-dark text-white',
                         'qr_payload'           => $seriesQrPayload,
                         'is_series'            => true,
+                        'is_complementary'     => $isComp,
                         'series_start_code'    => $startCode,
                         'series_end_code'      => $endCode,
                         'pack_quantity'        => $packQty,
@@ -1173,14 +1174,6 @@ ksort($distinctCatalogCodes);
         <h2 class="mb-1"><i class="bi bi-qr-code-scan me-2 text-primary"></i>Warehouse QR Labels &amp; Printing Suite</h2>
         <p class="text-muted small mb-0">Manage QR sticker batches, thermal printing &amp; official warehouse inwarding</p>
     </div>
-    <div class="d-flex align-items-center gap-2">
-        <button type="button" class="btn <?= !$isGeneratingView ? 'btn-primary' : 'btn-outline-secondary' ?> fw-semibold shadow-2xs" id="btnShowBatchesList" onclick="toggleViewMode('batches')">
-            <i class="bi bi-list-columns-reverse me-1"></i> QR Batches History (<?= count($qrBatches) ?>)
-        </button>
-        <button type="button" class="btn <?= $isGeneratingView ? 'btn-primary' : 'btn-success' ?> fw-bold shadow-sm" id="btnShowGenerateArea" onclick="toggleViewMode('generate')">
-            <i class="bi bi-plus-circle-fill me-1"></i> + Generate QR Labels
-        </button>
-    </div>
 </div>
 
 <!-- ========================================================================= -->
@@ -1239,25 +1232,13 @@ foreach ($qrBatches as $batch) {
                 <small class="text-muted">Review QR sticker batches organized supplier profile-wise with piece tracking &amp; inward confirmation</small>
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
-                <!-- View Mode Toggle & Collapse All -->
-                <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-primary fw-semibold" id="btnViewBySupplier" onclick="switchBatchesDisplay('supplier')">
-                        <i class="bi bi-person-badge-fill me-1"></i> Supplier Profile View
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary fw-semibold" id="btnViewByTable" onclick="switchBatchesDisplay('table')">
-                        <i class="bi bi-table me-1"></i> Flat Table
-                    </button>
-                </div>
-                <button type="button" class="btn btn-outline-secondary btn-sm fw-semibold" id="btnToggleAllProfiles" onclick="toggleAllSupplierProfiles()" title="Collapse or Expand All Supplier Profiles">
-                    <i class="bi bi-arrows-collapse me-1" id="iconToggleAllProfiles"></i> <span id="textToggleAllProfiles">Collapse All</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm fw-semibold" id="btnToggleAllProfiles" onclick="toggleAllSupplierProfiles()" title="Expand or Collapse All Supplier Profiles">
+                    <i class="bi bi-arrows-expand me-1" id="iconToggleAllProfiles"></i> <span id="textToggleAllProfiles">Expand All</span>
                 </button>
                 <div class="input-group input-group-sm" style="width: 240px;">
                     <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
                     <input type="text" id="filterBatchesTableInput" class="form-control" placeholder="Search Supplier, Code, SKU..." onkeyup="filterBatchesTable()">
                 </div>
-                <button type="button" class="btn btn-sm btn-success fw-bold px-3 shadow-sm" onclick="toggleViewMode('generate')">
-                    <i class="bi bi-plus-lg me-1"></i> + New QR Batch
-                </button>
             </div>
         </div>
 
@@ -1317,21 +1298,19 @@ foreach ($qrBatches as $batch) {
                                 </div>
                                 <div class="d-flex align-items-center gap-2">
                                     <button type="button" 
-                                            class="btn btn-sm btn-primary fw-semibold px-3 py-1.5 shadow-2xs" 
+                                            class="btn btn-sm btn-outline-primary fw-semibold px-3 py-1.5 shadow-2xs"
                                             id="btn-toggle-<?= $safeId ?>" 
-                                            data-bs-toggle="collapse" 
-                                            data-bs-target="#collapse-<?= $safeId ?>" 
-                                            aria-expanded="true" 
+                                            aria-expanded="false"
                                             aria-controls="collapse-<?= $safeId ?>"
                                             onclick="event.stopPropagation(); toggleSupplierCollapse('<?= $safeId ?>')"
                                             title="Click to collapse or expand this supplier profile">
-                                        <i class="bi bi-chevron-up me-1" id="chevron-<?= $safeId ?>"></i> Products &amp; Inward (<?= $sData['total_products'] ?>)
+                                        <i class="bi bi-chevron-down me-1" id="chevron-<?= $safeId ?>"></i> Products &amp; Inward (<?= $sData['total_products'] ?>)
                                     </button>
                                 </div>
                             </div>
 
                             <!-- Products under this Supplier -->
-                            <div class="collapse show" id="collapse-<?= $safeId ?>">
+                            <div class="collapse" id="collapse-<?= $safeId ?>">
                                 <div class="table-responsive">
                                     <table class="table table-hover align-middle mb-0">
                                         <thead class="table-light">
@@ -1350,8 +1329,8 @@ foreach ($qrBatches as $batch) {
                                                 $isPartial = ($batch['inward_status'] === 'PARTIAL');
                                                 $bDate = !empty($batch['batch_date']) ? date('d M Y, h:i A', strtotime($batch['batch_date'])) : '—';
                                                 $cCode = $batch['catalog_code'] ?: $batch['product_code'];
-                                                $isComp = !empty($batch['is_complementary']);
-                                                $isSeries = (strtoupper($batch['qr_type'] ?? '') === 'SERIES_BATCH' || strtoupper($batch['qr_type'] ?? '') === 'SERIES' || (int)($batch['pack_quantity'] ?? 0) > 1);
+                                                $isComp = !empty($batch['is_complementary']) || strtoupper($batch['category_type'] ?? '') === 'COMPLEMENTARY';
+                                                $isSeries = (strtoupper($batch['category_type'] ?? '') === 'SERIES' || strtoupper($batch['qr_type'] ?? '') === 'SERIES_BATCH' || strtoupper($batch['qr_type'] ?? '') === 'SERIES');
                                                 $typeLabel = $isComp ? 'Complementary Product' : ($isSeries ? 'Series Product' : 'Individual Product');
                                                 $prodSearch = strtolower($sName . ' ' . $cCode . ' ' . ($batch['product_name'] ?? '') . ' ' . ($batch['sku'] ?? '') . ' ' . $typeLabel);
                                                 $loadUrl = url('warehouse/labels?source_type=po&brand_name=' . urlencode($sName) . '&catalog_code=' . urlencode($cCode) . '&variant_id=' . (int)$batch['variant_id'] . '&view=generate');
@@ -1463,141 +1442,6 @@ foreach ($qrBatches as $batch) {
             <?php endif; ?>
         </div>
 
-        <!-- ================================================================= -->
-        <!-- MODE B: FLAT ALL BATCHES TABLE (Optional Alternate View) -->
-        <!-- ================================================================= -->
-        <div class="card-body p-0" id="allBatchesTableContainer" style="display: none;">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0" id="tableQrBatches">
-                    <thead class="table-light">
-                        <tr class="small text-muted text-uppercase" style="font-size: 0.74rem;">
-                            <th style="width: 130px;">Batch Date</th>
-                            <th style="min-width: 140px;">Brand / Supplier</th>
-                            <th style="min-width: 150px;">Generated Code</th>
-                            <th style="min-width: 180px;">Product &amp; QR Type</th>
-                            <th style="width: 100px;" class="text-center">Qty / Inwarded</th>
-                            <th style="min-width: 180px;">QR Tag Range / Notes</th>
-                            <th style="width: 140px;" class="text-center">Inward Status</th>
-                            <th style="width: 160px;" class="text-end pe-3">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="qrBatchesTableBody">
-                        <?php if (empty($qrBatches)): ?>
-                            <tr>
-                                <td colspan="8" class="text-center py-5 text-muted">
-                                    <i class="bi bi-qr-code fs-1 d-block mb-2 text-secondary opacity-50"></i>
-                                    <div class="fw-semibold">No QR batches generated yet</div>
-                                    <div class="small">Click <strong>+ Generate QR Labels</strong> to create your first QR sticker batch.</div>
-                                </td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($qrBatches as $batch): 
-                                $isInwarded = ($batch['inward_status'] === 'INWARDED');
-                                $isPartial = ($batch['inward_status'] === 'PARTIAL');
-                                $bDate = !empty($batch['batch_date']) ? date('d M Y, h:i A', strtotime($batch['batch_date'])) : '—';
-                                $cCode = $batch['catalog_code'] ?: $batch['product_code'];
-                                $isComp = !empty($batch['is_complementary']);
-                                $isSeries = (strtoupper($batch['qr_type'] ?? '') === 'SERIES_BATCH' || strtoupper($batch['qr_type'] ?? '') === 'SERIES' || (int)($batch['pack_quantity'] ?? 0) > 1);
-                                $typeLabel = $isComp ? 'Complementary Product' : ($isSeries ? 'Series Product' : 'Individual Product');
-                                $searchStr = strtolower(($batch['brand_name'] ?? '') . ' ' . $cCode . ' ' . ($batch['product_name'] ?? '') . ' ' . ($batch['sku'] ?? '') . ' ' . $typeLabel);
-                                $loadUrl = url('warehouse/labels?source_type=po&brand_name=' . urlencode($batch['brand_name']) . '&catalog_code=' . urlencode($cCode) . '&variant_id=' . (int)$batch['variant_id'] . '&view=generate');
-                            ?>
-                                <tr class="batch-table-row" data-search="<?= e($searchStr) ?>">
-                                    <td class="small text-muted font-monospace" style="font-size: 0.75rem;">
-                                        <?= e($bDate) ?>
-                                    </td>
-                                    <td>
-                                        <div class="fw-bold text-dark text-truncate" style="max-width: 160px;">
-                                            <i class="bi bi-tag-fill text-primary me-1" style="font-size: 0.72rem;"></i><?= e($batch['brand_name']) ?>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-light text-dark font-monospace border px-2 py-1" style="font-size: 0.78rem;">
-                                            <i class="bi bi-upc-scan text-info me-1"></i><?= e($cCode) ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="fw-bold text-dark text-truncate mb-1" style="max-width: 220px; font-size: 0.83rem;" title="<?= e($batch['product_name']) ?>">
-                                            <?= e($batch['product_name']) ?>
-                                        </div>
-                                        <div class="d-flex align-items-center gap-1.5 flex-wrap">
-                                            <?php if ($isComp): ?>
-                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-0.5" style="font-size: 0.69rem;">
-                                                    <i class="bi bi-gift-fill me-1"></i>Complementary Product
-                                                </span>
-                                            <?php elseif ($isSeries): ?>
-                                                <span class="badge border px-2 py-0.5" style="background-color: #f3e8ff; color: #6f42c1; border-color: #d8b4fe; font-size: 0.69rem;">
-                                                    <i class="bi bi-boxes me-1"></i>Series Product<?= !empty($batch['pack_quantity']) && $batch['pack_quantity'] > 1 ? ' (' . (int)$batch['pack_quantity'] . ' Pcs)' : '' ?>
-                                                </span>
-                                            <?php else: ?>
-                                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-0.5" style="font-size: 0.69rem;">
-                                                    <i class="bi bi-upc me-1"></i>Individual Product
-                                                </span>
-                                            <?php endif; ?>
-
-                                            <?php if (!empty($batch['size_name']) || !empty($batch['color_name'])): ?>
-                                                <span class="badge bg-light text-secondary border font-monospace px-1.5 py-0.5" style="font-size: 0.69rem;">
-                                                    <?= e($batch['size_name'] ?? 'Free') ?> / <?= e($batch['color_name'] ?? 'Std') ?>
-                                                </span>
-                                            <?php endif; ?>
-                                        </div>
-                                    </td>
-                                    <td class="text-center font-monospace">
-                                        <?php if ($isPartial): ?>
-                                            <span class="fw-bold text-dark"><?= (int)$batch['total_qty'] ?> pcs</span>
-                                            <div class="small text-muted" style="font-size: 0.70rem;">(<?= (int)$batch['inwarded_qty'] ?> in, <?= (int)$batch['remaining_qty'] ?> left)</div>
-                                        <?php else: ?>
-                                            <span class="fw-bold text-dark"><?= (int)$batch['total_qty'] ?> pcs</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php if (!empty($batch['notes'])): ?>
-                                            <span class="small font-monospace text-muted text-truncate d-inline-block" style="max-width: 230px;" title="<?= e($batch['notes']) ?>">
-                                                <?= e($batch['notes']) ?>
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="badge bg-light text-muted border font-monospace" style="font-size: 0.72rem;">
-                                                Standard Batch
-                                            </span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="text-center">
-                                        <?php if ($isInwarded): ?>
-                                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2.5 py-1">
-                                                <i class="bi bi-check-circle-fill me-1"></i>Inwarded
-                                            </span>
-                                        <?php elseif ($isPartial): ?>
-                                            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2.5 py-1">
-                                                <i class="bi bi-pie-chart-fill me-1"></i>Partially Inwarded
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="badge bg-secondary-subtle text-dark border px-2.5 py-1">
-                                                <i class="bi bi-hourglass-split me-1"></i>Pending
-                                            </span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="text-end pe-3">
-                                        <?php if ($isPartial): ?>
-                                            <a href="<?= $loadUrl ?>" class="btn btn-sm btn-success fw-bold px-2 py-1 shadow-2xs" title="Inward remaining pieces">
-                                                <i class="bi bi-box-arrow-in-down me-1"></i>Inward (<?= (int)$batch['remaining_qty'] ?>)
-                                            </a>
-                                        <?php elseif ($isInwarded): ?>
-                                            <a href="<?= $loadUrl ?>" class="btn btn-sm btn-outline-primary fw-semibold px-2.5 py-1" title="View &amp; Reprint QR stickers from this batch">
-                                                <i class="bi bi-eye me-1"></i>View / Reprint
-                                            </a>
-                                        <?php else: ?>
-                                            <a href="<?= $loadUrl ?>" class="btn btn-sm btn-success fw-bold px-2.5 py-1 shadow-2xs" title="Generate QR stickers and inward this product to inventory">
-                                                <i class="bi bi-qr-code me-1"></i>Generate &amp; Inward
-                                            </a>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -1937,22 +1781,7 @@ foreach ($qrBatches as $batch) {
                     </div>
                 </div>
 
-                <!-- 5. QR Adjustment & Damaged Option -->
-                <div class="col-md-3">
-                    <label class="form-label fw-bold small text-dark">
-                        <i class="bi bi-tools text-warning me-1"></i>5. QR Adjustment
-                    </label>
-                    <select name="qr_adjustment_type" id="qrAdjustmentTypeSelect" class="form-select form-select-sm fw-semibold" onchange="onAdjustmentTypeChange(this.value)">
-                        <option value="STANDARD" <?= ($qrAdjustmentType === 'STANDARD') ? 'selected' : '' ?>>Standard Batch QR</option>
-                        <option value="PRODUCE_NEW" <?= ($qrAdjustmentType === 'PRODUCE_NEW') ? 'selected' : '' ?>>+ Produce 1 New QR</option>
-                        <option value="REPRINT_DAMAGED" <?= ($qrAdjustmentType === 'REPRINT_DAMAGED') ? 'selected' : '' ?>>↺ Reprint Damaged QR</option>
-                    </select>
-                    <div class="mt-1" id="damagedCodeInputBox" style="display: <?= ($qrAdjustmentType === 'REPRINT_DAMAGED') ? 'block' : 'none' ?>;">
-                        <input type="text" name="damaged_tag_code" id="damagedTagCodeInput" class="form-control form-control-sm font-monospace text-uppercase" placeholder="e.g. TT102605" value="<?= e($damagedTagCode) ?>">
-                    </div>
-                </div>
-
-                <!-- 6. Dynamic QR Count / Number of Stickers -->
+                <!-- Dynamic QR Count / Number of Stickers -->
                 <div class="col-md-3">
                     <label class="form-label fw-bold small text-dark">
                         <i class="bi bi-calculator text-primary me-1"></i>Dynamic QR Count <span class="badge bg-secondary-subtle text-secondary border ms-1" id="copiesLockBadge"><i class="bi bi-lock-fill me-1"></i>Locked</span>
@@ -2058,9 +1887,6 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                             <i class="bi bi-x-circle me-1"></i>Clear
                         </button>
 
-                        <button type="button" class="btn btn-sm btn-outline-danger px-2.5 fw-semibold shadow-2xs" id="btnDeleteSelectedStickers" onclick="deleteSelectedStickers()" disabled title="Delete all selected checked stickers">
-                            <i class="bi bi-trash3 me-1"></i>Delete Selected (<span id="btnDeleteSelectedCount">0</span>)
-                        </button>
                     </div>
 
                     <!-- Adjustment Controls: Produce 1 New QR & Reprint Damaged -->
@@ -2108,7 +1934,7 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                                         <input type="checkbox" class="form-check-input piece-select-chk mt-0" id="chk-piece-<?= $index ?>" data-index="<?= $index ?>" onchange="onPieceCheckChanged(<?= $index ?>)" style="cursor: pointer;">
                                         <span class="badge bg-dark text-white font-monospace piece-label-badge" style="font-size: 0.68rem;"><i class="bi bi-boxes me-1"></i>Master Pack (<?= $item['pack_quantity'] ?> Pcs)</span>
                                     </div>
-                                    <span class="badge bg-purple text-white" style="font-size: 0.68rem; background-color: #6f42c1 !important;"><i class="bi bi-qr-code me-1"></i>Series QR</span>
+                                    <span class="badge bg-purple text-white" style="font-size: 0.68rem; background-color: #6f42c1 !important;"><i class="bi bi-qr-code me-1"></i><?= !empty($item['is_complementary']) ? 'Complementary Pack QR' : 'Series QR' ?></span>
                                 <?php else: ?>
                                     <div class="d-flex align-items-center gap-2">
                                         <input type="checkbox" class="form-check-input piece-select-chk mt-0" id="chk-piece-<?= $index ?>" data-index="<?= $index ?>" onchange="onPieceCheckChanged(<?= $index ?>)" title="Select this QR sticker">
@@ -2163,11 +1989,6 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                                         class="btn btn-xs btn-outline-dark flex-fill fw-semibold py-1.5" 
                                         onclick="printSinglePieceSticker(<?= $index ?>)" title="Print Thermal Sticker">
                                     <i class="bi bi-printer"></i> Print
-                                </button>
-                                <button type="button" 
-                                        class="btn btn-xs btn-outline-danger flex-fill fw-semibold py-1.5" 
-                                        onclick="deleteSinglePieceSticker(<?= $index ?>)" title="Delete this QR sticker">
-                                    <i class="bi bi-trash3 me-1"></i> Delete
                                 </button>
                             </div>
                         </div>
@@ -2280,8 +2101,9 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
             <div>
                 <?php 
-                    $actIsComp = !empty($activeVar['is_complementary']) || !empty($activeVar['product_is_comp']);
-                    $actIsSeries = (!empty($generatedItems[0]['is_series']) || strtoupper($activeVar['qr_type'] ?? '') === 'SERIES_BATCH' || strtoupper($activeVar['qr_type'] ?? '') === 'SERIES' || ($activeVar['warehouse_category_type'] ?? '') === 'SERIES' || (int)($activeVar['pack_quantity'] ?? 0) > 1);
+                $activeCategoryType = strtoupper($activeVar['warehouse_category_type'] ?? '');
+                $actIsComp = !empty($activeVar['is_complementary']) || !empty($activeVar['product_is_comp']) || $activeCategoryType === 'COMPLEMENTARY';
+                $actIsSeries = (!empty($generatedItems[0]['is_series']) || strtoupper($activeVar['qr_type'] ?? '') === 'SERIES_BATCH' || strtoupper($activeVar['qr_type'] ?? '') === 'SERIES' || $activeCategoryType === 'SERIES');
                     $isSeriesOrComp = ($actIsComp || $actIsSeries);
 
                     // For Series & Complementary products: inward the full pack/remaining count in a single action!
@@ -3324,12 +3146,9 @@ function updateSelectionCounter() {
     const badgeCount = document.getElementById('selectedCountText');
     const badgeEl = document.getElementById('selectedPiecesBadge');
     const btnPrint = document.getElementById('btnPrintSelectedStickers');
-    const btnDelete = document.getElementById('btnDeleteSelectedStickers');
-    const btnDeleteCount = document.getElementById('btnDeleteSelectedCount');
     const masterChk = document.getElementById('selectAllPiecesChk');
 
     if (btnCount) btnCount.textContent = count;
-    if (btnDeleteCount) btnDeleteCount.textContent = count;
     if (badgeCount) badgeCount.textContent = count;
     if (badgeEl) badgeEl.style.display = count > 0 ? 'inline-block' : 'none';
     if (btnPrint) {
@@ -3338,10 +3157,6 @@ function updateSelectionCounter() {
             btnPrint.classList.replace('btn-secondary', 'btn-primary');
         }
     }
-    if (btnDelete) {
-        btnDelete.disabled = (count === 0);
-    }
-
     const totalVisible = document.querySelectorAll('.sticker-grid-col').length;
     if (masterChk && totalVisible > 0) {
         if (count === totalVisible) {
@@ -3605,34 +3420,16 @@ function confirmStickeredInwardAction(event) {
 function toggleViewMode(mode) {
     const batchesSection = document.getElementById('qrBatchesListSection');
     const genSection = document.getElementById('qrGenerationArea');
-    const btnBatches = document.getElementById('btnShowBatchesList');
-    const btnGen = document.getElementById('btnShowGenerateArea');
 
     if (mode === 'generate') {
         if (batchesSection) batchesSection.style.display = 'none';
         if (genSection) genSection.style.display = 'block';
-        if (btnBatches) {
-            btnBatches.classList.remove('btn-primary');
-            btnBatches.classList.add('btn-outline-secondary');
-        }
-        if (btnGen) {
-            btnGen.classList.remove('btn-outline-secondary', 'btn-success');
-            btnGen.classList.add('btn-primary');
-        }
         if (genSection) {
             genSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     } else {
         if (batchesSection) batchesSection.style.display = 'block';
         if (genSection) genSection.style.display = 'none';
-        if (btnBatches) {
-            btnBatches.classList.remove('btn-outline-secondary');
-            btnBatches.classList.add('btn-primary');
-        }
-        if (btnGen) {
-            btnGen.classList.remove('btn-primary');
-            btnGen.classList.add('btn-success');
-        }
         if (batchesSection) {
             batchesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -3694,7 +3491,7 @@ function toggleSupplierCollapse(safeId) {
 /**
  * Expand or Collapse All Supplier Profiles
  */
-let allProfilesCollapsed = false;
+let allProfilesCollapsed = true;
 function toggleAllSupplierProfiles() {
     allProfilesCollapsed = !allProfilesCollapsed;
     const cards = document.querySelectorAll('.supplier-profile-card');
@@ -3740,60 +3537,12 @@ function toggleAllSupplierProfiles() {
 }
 
 /**
- * Switch between Supplier Profile View and Flat Table View
- */
-function switchBatchesDisplay(mode) {
-    const suppCont = document.getElementById('supplierProfilesContainer');
-    const tableCont = document.getElementById('allBatchesTableContainer');
-    const btnSupp = document.getElementById('btnViewBySupplier');
-    const btnTable = document.getElementById('btnViewByTable');
-
-    if (mode === 'table') {
-        if (suppCont) suppCont.style.display = 'none';
-        if (tableCont) tableCont.style.display = 'block';
-        if (btnSupp) {
-            btnSupp.classList.remove('btn-primary');
-            btnSupp.classList.add('btn-outline-secondary');
-        }
-        if (btnTable) {
-            btnTable.classList.remove('btn-outline-secondary');
-            btnTable.classList.add('btn-primary');
-        }
-    } else {
-        if (suppCont) suppCont.style.display = 'block';
-        if (tableCont) tableCont.style.display = 'none';
-        if (btnSupp) {
-            btnSupp.classList.remove('btn-outline-secondary');
-            btnSupp.classList.add('btn-primary');
-        }
-        if (btnTable) {
-            btnTable.classList.remove('btn-primary');
-            btnTable.classList.add('btn-outline-secondary');
-        }
-    }
-}
-
-/**
- * Filter the QR Batches History (both Supplier Profiles & Flat Table) in real-time
+ * Filter supplier profiles and product rows in real-time
  */
 function filterBatchesTable() {
     const input = document.getElementById('filterBatchesTableInput');
     const query = input ? input.value.trim().toLowerCase() : '';
 
-    // 1. Filter Flat Table Rows
-    const rows = document.querySelectorAll('.batch-table-row');
-    let visibleTableCount = 0;
-    rows.forEach(row => {
-        const searchStr = row.getAttribute('data-search') || '';
-        if (!query || searchStr.includes(query)) {
-            row.style.display = '';
-            visibleTableCount++;
-        } else {
-            row.style.display = 'none';
-        }
-    });
-
-    // 2. Filter Supplier Profile Cards & their product rows
     const cards = document.querySelectorAll('.supplier-profile-card');
     let visibleSupplierCount = 0;
     let visibleProductCount = 0;
@@ -3835,139 +3584,6 @@ function filterBatchesTable() {
     if (badge) {
         badge.textContent = query ? `${visibleProductCount} Matching Products (${visibleSupplierCount} Suppliers)` : `<?= count($qrBatches) ?> Total Products`;
     }
-}
-
-/**
- * Delete a single piece QR sticker from the current batch
- */
-function deleteSinglePieceSticker(idx) {
-    const item = GENERATED_ITEMS[idx];
-    const tagCode = item ? item.tag_code : ('Piece #' + (idx + 1));
-
-    if (!confirm(`Are you sure you want to delete QR sticker "${tagCode}"?`)) {
-        return;
-    }
-
-    const col = document.getElementById(`col-piece-${idx}`);
-    if (col) {
-        col.style.transition = 'all 0.25s ease-out';
-        col.style.opacity = '0';
-        col.style.transform = 'scale(0.8)';
-        setTimeout(() => {
-            col.remove();
-            refreshPieceCountersAfterDelete();
-        }, 250);
-    }
-
-    // Mark deleted in GENERATED_ITEMS and remove from selection
-    GENERATED_ITEMS[idx] = null;
-    selectedStickerIndices.delete(idx);
-
-    // Remove from quick reprint dropdown if present
-    const reprintSelect = document.getElementById('quickReprintDamagedSelect');
-    if (reprintSelect && item) {
-        for (let i = 0; i < reprintSelect.options.length; i++) {
-            if (reprintSelect.options[i].value === item.tag_code) {
-                reprintSelect.remove(i);
-                break;
-            }
-        }
-    }
-
-    showPrintToast(`Deleted QR sticker: ${tagCode}`, 'info');
-}
-
-/**
- * Delete all selected QR stickers
- */
-function deleteSelectedStickers() {
-    const count = selectedStickerIndices.size;
-    if (count === 0) {
-        showPrintToast('No stickers selected to delete.', 'warning');
-        return;
-    }
-
-    if (!confirm(`Are you sure you want to delete all ${count} selected QR stickers?`)) {
-        return;
-    }
-
-    const indicesToDelete = Array.from(selectedStickerIndices);
-    indicesToDelete.forEach(idx => {
-        const item = GENERATED_ITEMS[idx];
-        const col = document.getElementById(`col-piece-${idx}`);
-        if (col) {
-            col.style.transition = 'all 0.25s ease-out';
-            col.style.opacity = '0';
-            col.style.transform = 'scale(0.8)';
-            setTimeout(() => col.remove(), 250);
-        }
-        GENERATED_ITEMS[idx] = null;
-        selectedStickerIndices.delete(idx);
-
-        const reprintSelect = document.getElementById('quickReprintDamagedSelect');
-        if (reprintSelect && item) {
-            for (let i = 0; i < reprintSelect.options.length; i++) {
-                if (reprintSelect.options[i].value === item.tag_code) {
-                    reprintSelect.remove(i);
-                    break;
-                }
-            }
-        }
-    });
-
-    setTimeout(() => {
-        refreshPieceCountersAfterDelete();
-    }, 280);
-
-    showPrintToast(`Deleted ${count} selected QR stickers.`, 'info');
-}
-
-/**
- * Recalculate remaining piece counts and update UI badges
- */
-function refreshPieceCountersAfterDelete() {
-    const remainingCols = document.querySelectorAll('.sticker-grid-col');
-    const remainingCount = remainingCols.length;
-
-    // Update available pieces badge in header
-    const totalBadge = document.getElementById('totalPiecesBadge');
-    if (totalBadge) {
-        totalBadge.textContent = `${remainingCount} Available Pieces`;
-    }
-
-    // Update selectable count in toolbar
-    const totalSelectable = document.getElementById('totalSelectableCount');
-    if (totalSelectable) {
-        totalSelectable.textContent = remainingCount;
-    }
-
-    // Update range input max
-    const rangeTo = document.getElementById('rangeSelectTo');
-    if (rangeTo) {
-        rangeTo.max = remainingCount;
-        rangeTo.placeholder = remainingCount;
-        if (parseInt(rangeTo.value, 10) > remainingCount) {
-            rangeTo.value = remainingCount;
-        }
-    }
-
-    // If 0 stickers remaining, show clean empty state
-    if (remainingCount === 0) {
-        const grid = document.getElementById('stickersCardGrid');
-        if (grid) {
-            grid.innerHTML = `
-                <div class="col-12 text-center py-5 text-muted">
-                    <i class="bi bi-trash3 fs-1 d-block mb-3 text-secondary"></i>
-                    <h5>All QR label stickers deleted</h5>
-                    <p class="mb-0">You can generate new QR labels above using Brand and Generated Code.</p>
-                </div>
-            `;
-        }
-        const bar = document.getElementById('qrSelectionAdjustmentBar');
-        if (bar) bar.style.display = 'none';
-    }
-
-    updateSelectionCounter();
 }
 
 /**
@@ -4132,9 +3748,6 @@ function produceNewAdjustmentQR() {
                     <button type="button" class="btn btn-xs btn-outline-dark flex-fill fw-semibold py-1.5" onclick="printSinglePieceSticker(${newIndex})" title="Print Thermal Sticker">
                         <i class="bi bi-printer"></i> Print
                     </button>
-                    <button type="button" class="btn btn-xs btn-outline-danger flex-fill fw-semibold py-1.5" onclick="deleteSinglePieceSticker(${newIndex})" title="Delete this QR sticker">
-                        <i class="bi bi-trash3 me-1"></i> Delete
-                    </button>
                 </div>
             </div>
         `;
@@ -4241,37 +3854,6 @@ function reprintChosenDamagedQR() {
 
     const idx = GENERATED_ITEMS.indexOf(item);
     reprintDamagedTag(idx);
-}
-
-/**
- * Top Form Adjustment Mode Change Handler
- */
-function onAdjustmentTypeChange(val) {
-    const damagedBox = document.getElementById('damagedCodeInputBox');
-    const copiesInput = document.getElementById('copiesInput');
-    const copiesHint = document.getElementById('copiesStockHint');
-    const radSeries = document.getElementById('qrModeSeries');
-    const radIndividual = document.getElementById('qrModeIndividual');
-
-    if (val === 'PRODUCE_NEW') {
-        if (damagedBox) damagedBox.style.display = 'none';
-        if (copiesInput) copiesInput.value = 1;
-        if (copiesHint) copiesHint.textContent = '1 (New Adjustment QR)';
-        if (radIndividual) radIndividual.checked = true;
-        if (radSeries) radSeries.checked = false;
-    } else if (val === 'REPRINT_DAMAGED') {
-        if (damagedBox) damagedBox.style.display = 'block';
-        if (copiesInput) copiesInput.value = 1;
-        if (copiesHint) copiesHint.textContent = '1 (Damaged QR Reprint)';
-        if (radIndividual) radIndividual.checked = true;
-        if (radSeries) radSeries.checked = false;
-    } else {
-        if (damagedBox) damagedBox.style.display = 'none';
-        const catSelect = document.getElementById('catalogCodeFilterSelect');
-        if (catSelect && catSelect.selectedIndex >= 0) {
-            renderCodeDetails(catSelect.options[catSelect.selectedIndex]);
-        }
-    }
 }
 
 /**

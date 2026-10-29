@@ -443,7 +443,7 @@ class ProductionBatch {
      */
     public static function getItems(int $batchId): array {
         $items = Database::fetchAll(
-            "SELECT pbi.*, 
+            "SELECT pbi.*, pbi.piece_tags as packed_piece_tags,
                     pv.sku, pv.qr_code, pv.mrp, pv.selling_price, pv.purchase_price, pv.production_cost,
                     pv.qr_type, pv.pack_quantity, pv.is_complementary as pv_is_comp,
                     p.is_complementary as p_is_comp, wc.category_type as warehouse_category_type,
@@ -488,9 +488,25 @@ class ProductionBatch {
         // Fetch batch program info to resolve roll fabric details from seller_rolls
         $batch = Database::fetchOne("SELECT program_id, qc_batch_id FROM production_batches WHERE id = ?", [$batchId]);
         $progId = (int)($batch['program_id'] ?? 0);
+        $qcBatchId = (int)($batch['qc_batch_id'] ?? 0);
         if ($progId <= 0 && !empty($batch['qc_batch_id'])) {
             $qb = Database::fetchOne("SELECT program_id FROM qc_batches WHERE id = ?", [(int)$batch['qc_batch_id']]);
             $progId = (int)($qb['program_id'] ?? 0);
+        }
+
+        $previouslyPackedByVariant = [];
+        if ($qcBatchId > 0) {
+            $packedRows = Database::fetchAll(
+                "SELECT pbi.variant_id, SUM(pbi.quantity) as packed_qty
+                 FROM production_batch_items pbi
+                 JOIN production_batches pb ON pbi.production_batch_id = pb.id
+                 WHERE pb.qc_batch_id = ? AND pb.id < ? AND pb.status != 'CANCELLED'
+                 GROUP BY pbi.variant_id",
+                [$qcBatchId, $batchId]
+            );
+            foreach ($packedRows as $packedRow) {
+                $previouslyPackedByVariant[(int)$packedRow['variant_id']] = (int)$packedRow['packed_qty'];
+            }
         }
 
         $fabricMap = [];
@@ -567,7 +583,17 @@ class ProductionBatch {
             $qbRow = Database::fetchOne("SELECT id, pieces_data, label_batch_id FROM qc_batches WHERE id = ?", [$qcBatchId]);
             if ($qbRow) {
                 $qcItems = Database::fetchAll("SELECT * FROM qc_items WHERE qc_batch_id = ?", [$qcBatchId]);
-                $piecesData = !empty($qbRow['pieces_data']) ? json_decode($qbRow['pieces_data'], true) : [];
+                $rawPiecesData = (string)($qbRow['pieces_data'] ?? '');
+                $piecesData = json_decode($rawPiecesData, true);
+                if (!is_array($piecesData)) {
+                    $piecesData = json_decode(html_entity_decode($rawPiecesData, ENT_QUOTES, 'UTF-8'), true);
+                }
+                if (!is_array($piecesData)) {
+                    $piecesData = json_decode(stripslashes($rawPiecesData), true);
+                }
+                if (!is_array($piecesData)) {
+                    $piecesData = [];
+                }
                 $lblBatchId = (int)($qbRow['label_batch_id'] ?? 0);
                 if ($lblBatchId > 0) {
                     $labelItems = Database::fetchAll("SELECT * FROM label_items WHERE label_batch_id = ?", [$lblBatchId]);
@@ -679,6 +705,23 @@ class ProductionBatch {
             $it['start_code']  = $startCode;
             $it['end_code']    = $endCode;
             $it['piece_tags']  = !empty($variantPieces) ? array_column($variantPieces, 'tag_code') : [];
+            $approvedPieceTags = [];
+            foreach ($variantPieces as $piece) {
+                if (strtoupper((string)($piece['status'] ?? 'APPROVED')) === 'APPROVED') {
+                    $approvedPieceTags[] = $piece['tag_code'];
+                }
+            }
+            $previouslyPacked = $previouslyPackedByVariant[$vid] ?? 0;
+            $outwardStart = min($previouslyPacked, count($approvedPieceTags));
+            $outwardQty = min(max(0, $qty), count($approvedPieceTags) - $outwardStart);
+            $it['outward_piece_tags'] = array_slice($approvedPieceTags, $outwardStart, $outwardQty);
+            $storedPieceTags = json_decode((string)($it['packed_piece_tags'] ?? ''), true);
+            if (is_array($storedPieceTags)) {
+                $it['outward_piece_tags'] = array_values(array_filter(array_map(
+                    static fn($tag) => trim((string)$tag),
+                    $storedPieceTags
+                ), static fn($tag) => $tag !== ''));
+            }
 
             $recTags = !empty($it['received_qr_codes']) ? array_filter(array_map('trim', explode(',', $it['received_qr_codes']))) : [];
             $dmgTags = !empty($it['damaged_qr_codes']) ? array_filter(array_map('trim', explode(',', $it['damaged_qr_codes']))) : [];

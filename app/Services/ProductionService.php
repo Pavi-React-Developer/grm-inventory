@@ -712,11 +712,148 @@ class ProductionService {
     /**
      * Create Production Batch (Finished Goods Packing).
      */
+    public static function getAvailableQCPieceTags(int $qcBatchId): array {
+        if ($qcBatchId <= 0) {
+            return [];
+        }
+
+        $qcItems = QCBatch::getItems($qcBatchId);
+        $batch = Database::fetchOne("SELECT pieces_data FROM qc_batches WHERE id = ?", [$qcBatchId]);
+        $rawPieces = (string)($batch['pieces_data'] ?? '');
+        $piecesData = json_decode($rawPieces, true);
+        if (!is_array($piecesData)) {
+            $piecesData = json_decode(html_entity_decode($rawPieces, ENT_QUOTES, 'UTF-8'), true);
+        }
+        if (!is_array($piecesData)) {
+            $piecesData = json_decode(stripslashes($rawPieces), true);
+        }
+
+        $savedApprovedByItem = [];
+        if (is_array($piecesData)) {
+            foreach ($piecesData as $piece) {
+                if (!is_array($piece) || strtoupper((string)($piece['status'] ?? '')) !== 'APPROVED') {
+                    continue;
+                }
+                $itemId = (int)($piece['item_id'] ?? 0);
+                $tagCode = trim((string)($piece['tag_code'] ?? ''));
+                if ($itemId > 0 && $tagCode !== '') {
+                    $savedApprovedByItem[$itemId][] = $tagCode;
+                }
+            }
+        }
+
+        $approvedByItem = [];
+        foreach ($qcItems as $item) {
+            $itemId = (int)$item['id'];
+            $tags = array_values(array_unique($savedApprovedByItem[$itemId] ?? []));
+            if (empty($tags)) {
+                $startCode = trim((string)($item['label_start_code'] ?? $item['tag_code'] ?? ''));
+                $startSeq = (int)($item['label_start_seq'] ?? 0);
+                $passedQty = max(0, (int)($item['passed_qty'] ?? 0));
+                if ($startSeq > 0 && $passedQty > 0 && preg_match('/^(.+?)(\d+)$/', $startCode, $match)) {
+                    $endSeq = (int)($item['label_end_seq'] ?? ($startSeq + $passedQty - 1));
+                    $endSeq = min($endSeq, $startSeq + $passedQty - 1);
+                    for ($seq = $startSeq; $seq <= $endSeq; $seq++) {
+                        $tags[] = $match[1] . str_pad((string)$seq, strlen($match[2]), '0', STR_PAD_LEFT);
+                    }
+                }
+            }
+            $approvedByItem[$itemId] = [
+                'variant_id' => (int)($item['variant_id'] ?? 0),
+                'tags' => $tags,
+            ];
+        }
+
+        $legacyPackedByVariant = [];
+        $assignedTagsByVariant = [];
+        $previousRows = Database::fetchAll(
+            "SELECT pbi.variant_id, pbi.quantity, pbi.piece_tags
+             FROM production_batch_items pbi
+             JOIN production_batches pb ON pb.id = pbi.production_batch_id
+             WHERE pb.qc_batch_id = ? AND pb.status != 'CANCELLED'
+             ORDER BY pb.id ASC, pbi.id ASC",
+            [$qcBatchId]
+        );
+        foreach ($previousRows as $row) {
+            $variantId = (int)$row['variant_id'];
+            $tags = json_decode((string)($row['piece_tags'] ?? ''), true);
+            if (is_array($tags) && !empty($tags)) {
+                foreach ($tags as $tag) {
+                    $tag = trim((string)$tag);
+                    if ($tag !== '') {
+                        $assignedTagsByVariant[$variantId][$tag] = true;
+                    }
+                }
+            } else {
+                $legacyPackedByVariant[$variantId] = ($legacyPackedByVariant[$variantId] ?? 0) + (int)$row['quantity'];
+            }
+        }
+
+        $availableByItem = [];
+        foreach ($approvedByItem as $itemId => $itemData) {
+            $variantId = $itemData['variant_id'];
+            $legacySkip = $legacyPackedByVariant[$variantId] ?? 0;
+            $available = [];
+            foreach ($itemData['tags'] as $tag) {
+                if ($legacySkip > 0) {
+                    $legacySkip--;
+                    continue;
+                }
+                if (empty($assignedTagsByVariant[$variantId][$tag])) {
+                    $available[] = $tag;
+                }
+            }
+            $legacyPackedByVariant[$variantId] = $legacySkip;
+            $availableByItem[$itemId] = $available;
+        }
+
+        return $availableByItem;
+    }
+
     public static function createProductionBatch(array $batchData, array $items, int $userId): int {
         Database::beginTransaction();
         try {
             if (!empty($batchData['qc_batch_id'])) {
                 $qcId = (int)$batchData['qc_batch_id'];
+                $availableTagsByItem = self::getAvailableQCPieceTags($qcId);
+                $qcItemsById = [];
+                foreach (QCBatch::getItems($qcId) as $qcItem) {
+                    $qcItemsById[(int)$qcItem['id']] = $qcItem;
+                }
+                $requestedTags = [];
+                foreach ($items as &$item) {
+                    $qty = (int)($item['quantity'] ?? 0);
+                    $itemId = (int)($item['qc_item_id'] ?? 0);
+                    $tags = array_values(array_unique(array_filter(array_map(
+                        static fn($tag) => trim((string)$tag),
+                        is_array($item['piece_tags'] ?? null) ? $item['piece_tags'] : []
+                    ), static fn($tag) => $tag !== '')));
+                    $item['piece_tags'] = $tags;
+
+                    if ($qty <= 0 || empty($availableTagsByItem[$itemId])) {
+                        if (!empty($tags)) {
+                            throw new Exception('Selected QR codes are not available for this QC item.');
+                        }
+                        continue;
+                    }
+                    if (count($tags) !== $qty) {
+                        throw new Exception("Select exactly {$qty} approved QR code(s) for each packed variant.");
+                    }
+
+                    $qcItem = $qcItemsById[$itemId] ?? null;
+                    if (!$qcItem || (int)($qcItem['variant_id'] ?? 0) !== (int)$item['variant_id']) {
+                        throw new Exception('The selected QC item does not match the packed variant.');
+                    }
+                    $availableSet = array_fill_keys($availableTagsByItem[$itemId], true);
+                    foreach ($tags as $tag) {
+                        if (empty($availableSet[$tag]) || isset($requestedTags[$tag])) {
+                            throw new Exception("QR code {$tag} is no longer available for packing. Refresh the page and select available codes.");
+                        }
+                        $requestedTags[$tag] = true;
+                    }
+                }
+                unset($item);
+
                 $totalQCPassed = (int)(Database::fetchOne(
                     "SELECT COALESCE(SUM(passed_qty), 0) as total FROM qc_items WHERE qc_batch_id = ?",
                     [$qcId]
@@ -769,6 +906,7 @@ class ProductionService {
                         'production_batch_id' => $batchId,
                         'variant_id'          => (int)$item['variant_id'],
                         'quantity'            => (int)$item['quantity'],
+                        'piece_tags'          => $item['piece_tags'] ?? [],
                     ]);
                 }
             }
@@ -1176,4 +1314,3 @@ class ProductionService {
         return (int)Database::lastInsertId();
     }
 }
-

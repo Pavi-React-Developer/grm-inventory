@@ -137,15 +137,19 @@
                                     <tr>
                                         <th>Variant</th>
                                         <th>QC Status &amp; Remaining</th>
+                                        <th>Exact QR Code(s) to Pack</th>
                                         <th style="width: 180px;">Quantity to Pack <span class="text-danger">*</span></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($items as $idx => $it): 
                                         $remQty = (int)($it['remaining_qty'] ?? $it['passed_qty']);
-                                        $isZero = ($remQty <= 0);
+                                        $availablePieceTags = array_values($it['available_piece_tags'] ?? []);
+                                        $hasAvailableTags = !empty($availablePieceTags);
+                                        $packQty = $hasAvailableTags ? min($remQty, count($availablePieceTags)) : $remQty;
+                                        $isZero = ($packQty <= 0);
                                     ?>
-                                        <tr class="variant-item-row <?= $isZero ? 'table-light opacity-75' : '' ?>" data-variant-name="<?= e($it['size_name'] ?? $it['display_size'] ?? 'Standard') ?> / <?= e($it['color_name'] ?? $it['display_color'] ?? 'Assorted') ?>" data-passed="<?= $remQty ?>" data-is-zero="<?= $isZero ? '1' : '0' ?>">
+                                        <tr class="variant-item-row <?= $isZero ? 'table-light opacity-75' : '' ?>" data-variant-name="<?= e($it['size_name'] ?? $it['display_size'] ?? 'Standard') ?> / <?= e($it['color_name'] ?? $it['display_color'] ?? 'Assorted') ?>" data-passed="<?= $packQty ?>" data-is-zero="<?= $isZero ? '1' : '0' ?>">
                                             <td>
                                                 <input type="hidden" name="items[<?= $idx ?>][qc_item_id]" value="<?= $it['id'] ?>">
                                                 <input type="hidden" name="items[<?= $idx ?>][variant_id]" value="<?= $it['variant_id'] ?? '' ?>">
@@ -178,13 +182,30 @@
                                                 <?php endif; ?>
                                             </td>
                                             <td>
+                                                <?php if ($hasAvailableTags): ?>
+                                                    <select name="items[<?= $idx ?>][piece_tags][]"
+                                                            class="form-select form-select-sm piece-tags-input"
+                                                            multiple
+                                                            size="<?= min(5, count($availablePieceTags)) ?>"
+                                                            aria-label="Select exact QR codes to pack for <?= e($it['sku'] ?? '') ?>"
+                                                            <?= $isZero ? 'disabled' : '' ?>>
+                                                        <?php foreach ($availablePieceTags as $tagIndex => $tag): ?>
+                                                            <option value="<?= e($tag) ?>" <?= $tagIndex < $packQty ? 'selected' : '' ?>><?= e($tag) ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                    <div class="small text-muted mt-1">Select exactly the same number of QR codes as the quantity. Use Ctrl-click for multiple codes.</div>
+                                                <?php else: ?>
+                                                    <span class="small text-muted">Individual QC QR codes are unavailable.</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
                                                 <div class="input-group input-group-sm">
                                                     <input type="number" 
                                                            name="items[<?= $idx ?>][quantity]" 
                                                            class="form-control form-control-sm packed-input fw-semibold <?= $isZero ? 'bg-light text-muted border-secondary-subtle' : '' ?>" 
                                                            min="0" 
-                                                           max="<?= $remQty ?>" 
-                                                           value="<?= $remQty ?>" 
+                                                           max="<?= $packQty ?>"
+                                                           value="<?= $packQty ?>"
                                                            <?= $isZero ? 'disabled readonly tabindex="-1"' : '' ?>
                                                            oninput="calcPackedTotal()">
                                                     <span class="input-group-text <?= $isZero ? 'bg-light text-muted' : 'bg-light text-muted' ?>">pcs</span>
@@ -192,7 +213,7 @@
                                                 <?php if ($isZero): ?>
                                                     <div class="small text-muted mt-1"><i class="bi bi-lock-fill me-1"></i>0 pcs remaining (Disabled)</div>
                                                 <?php else: ?>
-                                                    <div class="small text-muted mt-1">Max: <?= number_format($remQty) ?> pcs</div>
+                                                    <div class="small text-muted mt-1">Max: <?= number_format($packQty) ?> pcs</div>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
@@ -333,6 +354,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     hasError = true;
                     return false;
                 }
+
+                const pieceTagsInput = tr ? tr.querySelector('.piece-tags-input') : null;
+                if (pieceTagsInput && pieceTagsInput.selectedOptions.length !== val) {
+                    e.preventDefault();
+                    alert(`Select exactly ${val} QR code(s) for ${variantLabel}.`);
+                    pieceTagsInput.classList.add('is-invalid', 'border-danger');
+                    pieceTagsInput.focus();
+                    hasError = true;
+                    return false;
+                }
+                if (pieceTagsInput) pieceTagsInput.classList.remove('is-invalid', 'border-danger');
 
                 inp.classList.remove('is-invalid', 'border-danger');
                 totalPacked += val;

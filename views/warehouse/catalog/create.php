@@ -3773,6 +3773,59 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
+    function resetCardHierarchyState(card, parentLevel = 'main') {
+        const key = card?.dataset?.key;
+        const mainSel = card?.querySelector('.card-cat-main');
+        const subSel = card?.querySelector('.card-cat-sub');
+        const subSubSel = card?.querySelector('.card-cat-subsub');
+        const hiddenMain = card?.querySelector('.card-cat-main-hidden');
+        const hiddenSub = card?.querySelector('.card-cat-sub-hidden');
+        const hiddenSubSub = card?.querySelector('.card-cat-subsub-hidden');
+
+        if (hiddenMain && parentLevel === 'main') {
+            hiddenMain.value = mainSel?.value || '';
+        }
+        if (hiddenSub) hiddenSub.value = '';
+        if (hiddenSubSub) hiddenSubSub.value = '';
+
+        if (parentLevel === 'main') {
+            if (subSel) {
+                subSel.innerHTML = '<option value="">-- Select Category First --</option>';
+                subSel.disabled = true;
+            }
+            if (subSubSel) {
+                subSubSel.innerHTML = '<option value="">-- Select Sub Category First --</option>';
+                subSubSel.disabled = true;
+            }
+            if (variantStateMap[key]) {
+                variantStateMap[key].subcategory_id = '';
+                variantStateMap[key].subcategory_name = '';
+                variantStateMap[key].subcategory_code = '';
+                variantStateMap[key].sub_subcategory_id = '';
+                variantStateMap[key].sub_subcategory_name = '';
+                variantStateMap[key].sub_subcategory_code = '';
+                variantStateMap[key].category_path = (mainSel && mainSel.selectedOptions[0]?.text ? mainSel.selectedOptions[0].text.trim() : variantStateMap[key].category_name || 'General Category');
+            }
+            return;
+        }
+
+        if (parentLevel === 'sub') {
+            if (subSubSel) {
+                subSubSel.innerHTML = '<option value="">-- Select Sub Category First --</option>';
+                subSubSel.disabled = true;
+            }
+            if (hiddenSubSub) hiddenSubSub.value = '';
+            if (variantStateMap[key]) {
+                variantStateMap[key].sub_subcategory_id = '';
+                variantStateMap[key].sub_subcategory_name = '';
+                variantStateMap[key].sub_subcategory_code = '';
+                const catName = variantStateMap[key].category_name || '';
+                const subName = variantStateMap[key].subcategory_name || '';
+                variantStateMap[key].category_path = [catName, subName].filter(Boolean).join(' → ') || 'General Category';
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // Per-Card Category Cascade: event delegation (runs after each render)
     // ------------------------------------------------------------------
@@ -3793,6 +3846,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const hiddenSubSub = card.querySelector('.card-cat-subsub-hidden');
 
                 if (hiddenMain) hiddenMain.value = catId;
+                resetCardHierarchyState(card, 'main');
 
                 // Reset sub selects
                 if (subSel) { subSel.innerHTML = '<option value="">-- Loading... --</option>'; subSel.disabled = true; }
@@ -3901,6 +3955,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const catName = mainSel ? (mainSel.options[mainSel.selectedIndex]?.text || '').replace(/^--.*--$/, '').trim() : (variantStateMap[key]?.category_name || '');
 
                 if (hiddenSub) hiddenSub.value = subcatId;
+                resetCardHierarchyState(card, 'sub');
                 if (subSubSel) { subSubSel.innerHTML = '<option value="">-- Loading... --</option>'; subSubSel.disabled = true; }
                 if (hiddenSubSub) hiddenSubSub.value = '';
 

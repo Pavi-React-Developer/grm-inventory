@@ -1,12 +1,13 @@
 <?php
 // views/warehouse/sellers/create.php
 // Supplier Registration Wizard — Phase 1: Supplier Commercial Profile & Bill Setup
+$isEditMode = (!empty($_GET['mode']) && $_GET['mode'] === 'edit');
 ?>
 
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
-        <h2 class="mb-1"><i class="bi bi-person-plus-fill me-2 text-primary"></i>Register Third-Party Supplier</h2>
-        <p class="text-muted small mb-0">Phase 1 of 2: Collect supplier commercial credentials and settlement bill setup.</p>
+        <h2 class="mb-1"><i class="bi bi-person-plus-fill me-2 text-primary"></i><?= $isEditMode ? 'Edit Third-Party Supplier' : 'Register Third-Party Supplier' ?></h2>
+        <p class="text-muted small mb-0"><?= $isEditMode ? 'Phase 1 of 2: Update supplier commercial credentials and settlement bill setup.' : 'Phase 1 of 2: Collect supplier commercial credentials and settlement bill setup.' ?></p>
     </div>
     <div class="d-flex gap-2">
         <a href="<?= url('warehouse/sellers') ?>" class="btn btn-outline-secondary">
@@ -94,28 +95,31 @@
                                 </button>
                             </div>
 
-                            <!-- Mode A: Dropdown showing Existing Suppliers -->
+                            <!-- Mode A: Existing supplier text input with suggestions -->
                             <div id="supplierDropdownWrapper">
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light text-primary border-primary-subtle"><i class="bi bi-building"></i></span>
-                                    <select id="supplierDropdownSelect" class="form-select fw-semibold border-primary-subtle" onchange="onSupplierDropdownChange(this.value)">
-                                        <option value="">-- Choose Existing Supplier (Auto-Fills Details) --</option>
-                                        <option value="__NEW__" class="fw-bold text-success">+ Register New Supplier...</option>
-                                        <?php foreach (($existingSuppliers ?? []) as $es): 
-                                            $cName = !empty($es['company']) ? $es['company'] : $es['name'];
-                                            $contact = !empty($es['company']) && !empty($es['name']) && $es['name'] !== $es['company'] ? ' (' . $es['name'] . ')' : '';
-                                            $gst = !empty($es['gst_number']) ? ' • GST: ' . $es['gst_number'] : '';
-                                            $phone = !empty($es['phone']) ? ' • Ph: ' . $es['phone'] : '';
-                                            $city = !empty($es['city']) ? ' • ' . $es['city'] : '';
-                                        ?>
-                                            <option value="<?= $es['id'] ?>" <?= (!empty($selectedSellerId) && (int)$selectedSellerId === (int)$es['id']) ? 'selected' : '' ?>>
-                                                <?= e($cName . $contact . $phone . $gst . $city) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                <div class="position-relative">
+                                    <input type="text" id="supplierSearchInput" class="form-control form-control-sm border-primary-subtle fw-semibold" placeholder="Type supplier name or phone number..." autocomplete="off" aria-label="Search existing supplier">
+                                    <div class="position-absolute end-0 top-50 translate-middle-y me-2 text-primary">
+                                        <i class="bi bi-search"></i>
+                                    </div>
+                                </div>
+                                <div class="mt-2 border rounded-3 bg-white shadow-sm d-none" id="supplierSuggestionsBox" style="max-height: 190px; overflow-y: auto;">
+                                    <?php foreach (($existingSuppliers ?? []) as $es):
+                                        $cName = !empty($es['company']) ? $es['company'] : $es['name'];
+                                        $contact = !empty($es['company']) && !empty($es['name']) && $es['name'] !== $es['company'] ? ' (' . $es['name'] . ')' : '';
+                                        $gst = !empty($es['gst_number']) ? ' • GST: ' . $es['gst_number'] : '';
+                                        $phone = !empty($es['phone']) ? ' • Ph: ' . $es['phone'] : '';
+                                        $city = !empty($es['city']) ? ' • ' . $es['city'] : '';
+                                        $displayText = $cName . $contact . $phone . $gst . $city;
+                                    ?>
+                                        <button type="button" class="list-group-item list-group-item-action border-0 text-start supplier-suggestion-item px-3 py-2" data-supplier-id="<?= (int)$es['id'] ?>" data-supplier-label="<?= e($displayText) ?>">
+                                            <div class="fw-semibold text-dark"><?= e($cName . $contact) ?></div>
+                                            <div class="small text-muted"><?= e($phone ?: $gst ?: ($city ?: '')) ?></div>
+                                        </button>
+                                    <?php endforeach; ?>
                                 </div>
                                 <div class="form-text text-muted fs-8 mt-1">
-                                    <i class="bi bi-info-circle text-primary me-1"></i>Selecting an existing supplier auto-refills their credentials. Only newly upload the invoice bill in Section 2.
+                                    <i class="bi bi-info-circle text-primary me-1"></i>Type a supplier name or phone number to suggest matching details. Selecting a match auto-fills the profile.
                                 </div>
                             </div>
 
@@ -213,16 +217,6 @@
                             <input type="text" name="gst_number" id="supplierGst" class="form-control form-control-sm font-monospace" placeholder="33AAAAA0000A1Z5" maxlength="15" style="text-transform: uppercase;">
                         </div>
 
-                        <div class="col-md-6">
-                            <label class="form-label small fw-semibold">Supplier Type</label>
-                            <select name="seller_type" class="form-select form-select-sm">
-                                <option value="PRODUCT_SELLER" selected>Finished Garments / Products</option>
-                                <option value="RAW_MATERIAL">Raw Material / Fabric Supplier</option>
-                                <option value="WHOLESALER">Wholesale Distributor</option>
-                                <option value="MANUFACTURER">Direct Factory / Manufacturer</option>
-                            </select>
-                        </div>
-
                         <div class="col-12">
                             <label class="form-label small fw-semibold">Street Address</label>
                             <textarea name="address" class="form-control form-control-sm" rows="2" placeholder="Office / Warehouse street address..." maxlength="500"></textarea>
@@ -256,7 +250,7 @@
                 <div class="card-body p-4">
                     <div class="alert alert-light border py-2 px-3 mb-3 d-flex align-items-center gap-2 small text-muted">
                         <i class="bi bi-info-circle-fill text-primary fs-6"></i>
-                        <span>Select the destination warehouse, bill date, and optionally upload the bill copy for stock inwarding.</span>
+                        <span>Select the destination warehouse and bill date, then upload the supplier's bill or invoice to continue.</span>
                     </div>
                     <div class="row g-3">
                         <div class="col-12">
@@ -291,15 +285,15 @@
                         <!-- Bill Document / Invoice Photo Upload -->
                         <div class="col-12">
                             <label class="form-label small fw-semibold d-flex justify-content-between align-items-center">
-                                <span><i class="bi bi-camera me-1 text-primary"></i>Upload Bill / Invoice Screenshot (Optional)</span>
+                                <span><i class="bi bi-camera me-1 text-primary"></i>Upload Bill / Invoice <span class="text-danger">*</span></span>
                                 <span class="badge bg-light text-muted border">Image or PDF (Max 10MB)</span>
                             </label>
                             <div class="border border-2 border-dashed rounded-3 p-3 text-center bg-light" id="billDropzone">
                                 <input type="file" name="bill_image" id="billImageInput" class="d-none" accept="image/*,.pdf" onchange="handleBillImageSelect(event)">
                                 <div id="billUploadPlaceholder" role="button" onclick="document.getElementById('billImageInput').click();" class="py-2 cursor-pointer">
                                     <i class="bi bi-cloud-arrow-up fs-2 text-primary d-block mb-1"></i>
-                                    <div class="fw-semibold small text-dark">Click to Upload Bill Screenshot</div>
-                                    <div class="text-muted fs-8">Supports JPG, PNG, WEBP, or PDF invoices</div>
+                                    <div class="fw-semibold small text-dark">Click to Upload Required Bill / Invoice</div>
+                                    <div class="text-muted fs-8">Required to continue. Supports JPG, PNG, WEBP, or PDF invoices (max 10MB).</div>
                                 </div>
                                 <div id="billImagePreviewBox" class="d-none mt-2 position-relative">
                                     <img id="billPreviewImg" src="" alt="Bill Screenshot" class="img-fluid rounded border shadow-sm" style="max-height: 120px; object-fit: contain;">
@@ -311,6 +305,7 @@
                                     </div>
                                 </div>
                             </div>
+
                         </div>
                     </div>
                 </div>
@@ -323,14 +318,14 @@
         <div class="card-body p-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div class="text-muted small">
                 <i class="bi bi-arrow-right-circle text-primary me-1"></i>
-                Saving Phase 1 will register this supplier and immediately unlock the product selection wizard.
+                <?= $isEditMode ? 'Saving Phase 1 will update this supplier and immediately unlock the product selection wizard.' : 'Saving Phase 1 will register this supplier and immediately unlock the product selection wizard.' ?>
             </div>
             <div class="d-flex gap-2">
                 <a href="<?= url('warehouse/sellers') ?>" class="btn btn-outline-secondary">
                     Cancel
                 </a>
                 <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm" id="btnSubmitPhase1">
-                    Save Supplier &amp; Continue to Products (Phase 2) <i class="bi bi-arrow-right ms-1"></i>
+                    <?= $isEditMode ? 'Update Supplier &amp; Continue to Products (Phase 2)' : 'Save Supplier &amp; Continue to Products (Phase 2)' ?> <i class="bi bi-arrow-right ms-1"></i>
                 </button>
             </div>
         </div>
@@ -338,365 +333,10 @@
 </form>
 
 <script>
-const existingSuppliersData = <?= json_encode($existingSuppliers ?? []) ?>;
-const preselectedSellerId = <?= (int)($selectedSellerId ?? 0) ?>;
-let currentSupplierMode = 'existing'; // 'existing' or 'new'
-
-document.addEventListener('DOMContentLoaded', function() {
-    if (preselectedSellerId > 0) {
-        setSupplierMode('existing');
-        const sel = document.getElementById('supplierDropdownSelect');
-        if (sel) sel.value = preselectedSellerId;
-        onSupplierDropdownSelect(preselectedSellerId);
-    } else if (existingSuppliersData.length > 0) {
-        setSupplierMode('existing');
-        const sel = document.getElementById('supplierDropdownSelect');
-        if (sel) {
-            sel.value = existingSuppliersData[0].id;
-            onSupplierDropdownSelect(existingSuppliersData[0].id);
-        }
-    } else {
-        setSupplierMode('new');
-    }
-});
-
-function setSupplierMode(mode) {
-    currentSupplierMode = mode;
-    const dropWrap = document.getElementById('supplierDropdownWrapper');
-    const textWrap = document.getElementById('supplierTextInputWrapper');
-    const toggleBtn = document.getElementById('btnToggleSupplierMode');
-    const badgeExisting = document.getElementById('badgeExistingActive');
-    const badgeNew = document.getElementById('badgeNewActive');
-    const banner = document.getElementById('existingSupplierBanner');
-    const btnSubmit = document.getElementById('btnSubmitPhase1');
-    const hiddenId = document.getElementById('existingSupplierId');
-    const supplierNameInput = document.getElementById('supplierName');
-    const newNameInput = document.getElementById('newSupplierNameInput');
-
-    if (mode === 'new') {
-        if (dropWrap) dropWrap.classList.add('d-none');
-        if (textWrap) textWrap.classList.remove('d-none');
-        if (toggleBtn) {
-            toggleBtn.innerHTML = `<i class="bi bi-people-fill text-primary me-1"></i>Pick Existing Supplier`;
-        }
-        if (badgeExisting) badgeExisting.classList.add('d-none');
-        if (badgeNew) badgeNew.classList.remove('d-none');
-        if (banner) {
-            banner.classList.add('d-none');
-            banner.classList.remove('d-flex');
-        }
-        hiddenId.value = '';
-        clearFormInputs();
-        supplierNameInput.value = newNameInput ? newNameInput.value.trim() : '';
-        if (btnSubmit) {
-            btnSubmit.innerHTML = `Save New Supplier &amp; Continue to Products (Phase 2) <i class="bi bi-arrow-right ms-1"></i>`;
-        }
-        if (newNameInput) newNameInput.focus();
-    } else {
-        if (dropWrap) dropWrap.classList.remove('d-none');
-        if (textWrap) textWrap.classList.add('d-none');
-        if (toggleBtn) {
-            toggleBtn.innerHTML = `<i class="bi bi-person-plus-fill text-success me-1"></i>+ Add New Supplier`;
-        }
-        const selVal = document.getElementById('supplierDropdownSelect').value;
-        if (selVal && selVal !== '__NEW__') {
-            onSupplierDropdownSelect(selVal);
-        } else if (existingSuppliersData.length > 0) {
-            document.getElementById('supplierDropdownSelect').value = existingSuppliersData[0].id;
-            onSupplierDropdownSelect(existingSuppliersData[0].id);
-        }
-    }
-}
-
-function toggleSupplierModeDirect() {
-    if (currentSupplierMode === 'existing') {
-        setSupplierMode('new');
-    } else {
-        setSupplierMode('existing');
-    }
-}
-
-function onSupplierDropdownChange(val) {
-    if (val === '__NEW__') {
-        setSupplierMode('new');
-        return;
-    }
-    onSupplierDropdownSelect(val);
-}
-
-function onSupplierDropdownSelect(id) {
-    const hiddenIdInput = document.getElementById('existingSupplierId');
-    const supplierNameInput = document.getElementById('supplierName');
-    const banner = document.getElementById('existingSupplierBanner');
-    const bannerName = document.getElementById('bannerSupplierName');
-    const badgeExisting = document.getElementById('badgeExistingActive');
-    const badgeNew = document.getElementById('badgeNewActive');
-    const btnSubmit = document.getElementById('btnSubmitPhase1');
-
-    if (!id || id === '__NEW__') {
-        hiddenIdInput.value = '';
-        supplierNameInput.value = '';
-        clearFormInputs();
-        if (banner) { banner.classList.add('d-none'); banner.classList.remove('d-flex'); }
-        if (badgeExisting) badgeExisting.classList.add('d-none');
-        if (badgeNew) badgeNew.classList.remove('d-none');
-        if (btnSubmit) btnSubmit.innerHTML = `Save Supplier &amp; Continue to Products (Phase 2) <i class="bi bi-arrow-right ms-1"></i>`;
-        return;
-    }
-
-    const supplier = existingSuppliersData.find(s => parseInt(s.id) === parseInt(id));
-    if (!supplier) return;
-
-    hiddenIdInput.value = supplier.id;
-    supplierNameInput.value = supplier.name || '';
-
-    // Auto-fill all credentials
-    document.getElementById('supplierCompany').value = supplier.company || '';
-    document.getElementById('supplierPhone').value = supplier.phone || '';
-    document.getElementById('supplierEmail').value = supplier.email || '';
-    document.getElementById('supplierGst').value = supplier.gst_number || '';
-    
-    const sellerTypeSelect = document.querySelector('select[name="seller_type"]');
-    if (sellerTypeSelect && supplier.seller_type) {
-        sellerTypeSelect.value = supplier.seller_type;
-    }
-
-    const addressTextarea = document.querySelector('textarea[name="address"]');
-    if (addressTextarea) addressTextarea.value = supplier.address || '';
-
-    const cityInput = document.querySelector('input[name="city"]');
-    if (cityInput) cityInput.value = supplier.city || '';
-
-    const stateInput = document.querySelector('input[name="state"]');
-    if (stateInput) stateInput.value = supplier.state || 'Tamil Nadu';
-
-    const termsInput = document.querySelector('input[name="payment_terms"]');
-    if (termsInput) termsInput.value = supplier.payment_terms || '';
-
-    const matInput = document.querySelector('input[name="material_type"]');
-    if (matInput) matInput.value = supplier.material_type || 'Third-Party Garments & Products';
-
-    // Auto-fill Brand Name if associated with this supplier
-    const brandSel = document.getElementById('brandSelect');
-    const newBrandInput = document.getElementById('newBrandNameInput');
-    if (supplier.brand_id && brandSel) {
-        setBrandMode('existing');
-        brandSel.value = supplier.brand_id;
-    } else if (supplier.brand_name && brandSel) {
-        setBrandMode('existing');
-        let matched = false;
-        for (let i = 0; i < brandSel.options.length; i++) {
-            if (brandSel.options[i].text.trim().toUpperCase() === supplier.brand_name.trim().toUpperCase()) {
-                brandSel.selectedIndex = i;
-                matched = true;
-                break;
-            }
-        }
-        if (!matched) brandSel.value = '';
-    } else {
-        if (brandSel) brandSel.value = '';
-        if (newBrandInput) newBrandInput.value = '';
-    }
-
-    // Banner & Badges
-    const displayName = supplier.company ? `${supplier.company} (${supplier.name})` : supplier.name;
-    if (bannerName) bannerName.textContent = displayName;
-    if (banner) {
-        banner.classList.remove('d-none');
-        banner.classList.add('d-flex');
-    }
-    if (badgeExisting) badgeExisting.classList.remove('d-none');
-    if (badgeNew) badgeNew.classList.add('d-none');
-
-    // Submit button update
-    if (btnSubmit) {
-        btnSubmit.innerHTML = `Continue with <strong>${escapeHtml(displayName)}</strong> to Products (Phase 2) <i class="bi bi-arrow-right ms-1"></i>`;
-    }
-}
-
-let currentBrandMode = 'existing'; // 'existing' or 'new'
-
-function setBrandMode(mode) {
-    currentBrandMode = mode;
-    const dropWrap = document.getElementById('brandDropdownWrapper');
-    const textWrap = document.getElementById('brandTextInputWrapper');
-    const toggleBtn = document.getElementById('btnToggleBrandMode');
-    const brandSelect = document.getElementById('brandSelect');
-    const newBrandInput = document.getElementById('newBrandNameInput');
-
-    if (mode === 'new') {
-        if (dropWrap) dropWrap.classList.add('d-none');
-        if (textWrap) textWrap.classList.remove('d-none');
-        if (toggleBtn) {
-            toggleBtn.innerHTML = `<i class="bi bi-list-ul text-primary me-1"></i>Pick Existing Brand`;
-        }
-        if (brandSelect) brandSelect.value = '__NEW__';
-        if (newBrandInput) newBrandInput.focus();
-    } else {
-        if (dropWrap) dropWrap.classList.remove('d-none');
-        if (textWrap) textWrap.classList.add('d-none');
-        if (toggleBtn) {
-            toggleBtn.innerHTML = `<i class="bi bi-plus-circle-fill text-success me-1"></i>+ Add New Brand`;
-        }
-        if (brandSelect && brandSelect.value === '__NEW__') {
-            brandSelect.value = '';
-        }
-    }
-}
-
-function toggleBrandModeDirect() {
-    if (currentBrandMode === 'existing') {
-        setBrandMode('new');
-    } else {
-        setBrandMode('existing');
-    }
-}
-
-function onBrandSelectChange(val) {
-    if (val === '__NEW__') {
-        setBrandMode('new');
-    }
-}
-
-function onNewSupplierNameInput(val) {
-    document.getElementById('supplierName').value = (val || '').trim();
-}
-
-function clearExistingSupplierSelection() {
-    const sel = document.getElementById('supplierDropdownSelect');
-    if (sel) sel.value = '';
-    setSupplierMode('new');
-}
-
-function clearFormInputs() {
-    document.getElementById('supplierName').value = '';
-    const newName = document.getElementById('newSupplierNameInput');
-    if (newName) newName.value = '';
-    document.getElementById('supplierCompany').value = '';
-    document.getElementById('supplierPhone').value = '';
-    document.getElementById('supplierEmail').value = '';
-    document.getElementById('supplierGst').value = '';
-    
-    const brandSel = document.getElementById('brandSelect');
-    if (brandSel) brandSel.value = '';
-    const newBrandInput = document.getElementById('newBrandNameInput');
-    if (newBrandInput) newBrandInput.value = '';
-    setBrandMode('existing');
-
-    const addressTextarea = document.querySelector('textarea[name="address"]');
-    if (addressTextarea) addressTextarea.value = '';
-
-    const cityInput = document.querySelector('input[name="city"]');
-    if (cityInput) cityInput.value = '';
-
-    const termsInput = document.querySelector('input[name="payment_terms"]');
-    if (termsInput) termsInput.value = '';
-}
-
-function handleBillImageSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    document.getElementById('billFileName').textContent = file.name;
-    document.getElementById('billUploadPlaceholder').classList.add('d-none');
-    document.getElementById('billImagePreviewBox').classList.remove('d-none');
-
-    if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById('billPreviewImg').src = e.target.result;
-            document.getElementById('billPreviewImg').classList.remove('d-none');
-        };
-        reader.readAsDataURL(file);
-    } else {
-        document.getElementById('billPreviewImg').classList.add('d-none');
-    }
-}
-
-function removeBillImage() {
-    document.getElementById('billImageInput').value = '';
-    document.getElementById('billPreviewImg').src = '';
-    document.getElementById('billImagePreviewBox').classList.add('d-none');
-    document.getElementById('billUploadPlaceholder').classList.remove('d-none');
-}
-
-function handlePhase1Submit(event) {
-    const supplierNameInput = document.getElementById('supplierName');
-    let finalName = supplierNameInput.value.trim();
-
-    if (currentSupplierMode === 'new') {
-        const newName = document.getElementById('newSupplierNameInput').value.trim();
-        if (!newName || newName.length < 2) {
-            event.preventDefault();
-            document.getElementById('newSupplierNameInput').focus();
-            showValidationAlert('Supplier Contact / Name is mandatory (minimum 2 characters).');
-            return false;
-        }
-        supplierNameInput.value = newName;
-        document.getElementById('existingSupplierId').value = '';
-    } else {
-        const selVal = document.getElementById('supplierDropdownSelect').value;
-        if (!selVal || selVal === '__NEW__') {
-            event.preventDefault();
-            document.getElementById('supplierDropdownSelect').focus();
-            showValidationAlert('Please choose an existing supplier from the dropdown, or click "+ Add New Supplier".');
-            return false;
-        }
-        const supplier = existingSuppliersData.find(s => parseInt(s.id) === parseInt(selVal));
-        if (!supplier) {
-            event.preventDefault();
-            showValidationAlert('Selected supplier was not found.');
-            return false;
-        }
-        supplierNameInput.value = supplier.name;
-        document.getElementById('existingSupplierId').value = supplier.id;
-    }
-
-    // Brand Name Validation
-    const brandSel = document.getElementById('brandSelect');
-    const brandVal = brandSel ? brandSel.value : '';
-    const newBrandInput = document.getElementById('newBrandNameInput');
-    const newBrandVal = newBrandInput ? newBrandInput.value.trim() : '';
-
-    if (currentBrandMode === 'new' || brandVal === '__NEW__') {
-        if (!newBrandVal || newBrandVal.length < 2) {
-            event.preventDefault();
-            if (newBrandInput) newBrandInput.focus();
-            showValidationAlert('Brand Name is mandatory (minimum 2 characters).');
-            return false;
-        }
-    } else {
-        if (!brandVal && !newBrandVal) {
-            event.preventDefault();
-            if (brandSel) brandSel.focus();
-            showValidationAlert('Please select a Brand Name from the dropdown or click "+ Add New Brand".');
-            return false;
-        }
-    }
-
-    const btn = document.getElementById('btnSubmitPhase1');
-    btn.disabled = true;
-    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Saving Supplier Details...`;
-    return true;
-}
-
-function showValidationAlert(msg) {
-    const alertBox = document.getElementById('validationAlert');
-    document.getElementById('validationAlertText').textContent = msg;
-    alertBox.classList.remove('d-none');
-    alertBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
+window.existingSuppliersData = <?= json_encode($existingSuppliers ?? []) ?>;
+window.preselectedSellerId = <?= (int)($selectedSellerId ?? 0) ?>;
 </script>
+<script src="<?= asset('js/warehouse_supplier_create.js') ?>"></script>
 
 <style>
 .fs-8 { font-size: 0.74rem !important; }

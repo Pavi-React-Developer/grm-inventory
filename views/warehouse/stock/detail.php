@@ -4,11 +4,6 @@
         
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <button type="button" class="btn btn-outline-success shadow-sm fw-semibold" onclick="openEditPriceModalFromDetail()">
-            <i class="bi bi-pencil-square me-1"></i> Edit Price
-        </button>
-        <?php if (($totalAvailable ?? 0) > 0): ?>
-        <?php endif; ?>
         <a href="<?= url('warehouse/stock' . (!empty($selectedWarehouseId) ? ('?warehouse_id=' . (int)$selectedWarehouseId) : '')) ?>" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i> Back to Stock Ledger
         </a>
@@ -230,8 +225,14 @@
     <!-- Full Immutable Transaction History -->
     <div class="col-lg-8">
         <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-white py-3">
+            <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <h6 class="card-title mb-0 fw-bold"><i class="bi bi-clock-history me-2 text-primary"></i>Immutable Audit Ledger (Movement Trail)</h6>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="input-group input-group-sm" style="max-width:240px;">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" id="ledgerSearchInput" class="form-control form-control-sm border-start-0" placeholder="Filter ledger events..." oninput="filterLedgerRows(this.value)">
+                    </div>
+                </div>
             </div>
             <div class="card-body p-0">
                 <?php if (empty($transactions)): ?>
@@ -250,7 +251,7 @@
                             </thead>
                             <tbody>
                                 <?php foreach ($transactions as $tx): ?>
-                                    <tr>
+                                    <tr class="ledger-tx-row">
                                         <td>
                                             <small class="text-muted d-block"><?= date('d M Y', strtotime($tx['created_at'])) ?></small>
                                             <small class="text-secondary"><?= date('h:i:s A', strtotime($tx['created_at'])) ?></small>
@@ -304,15 +305,6 @@
                     <span>Damaged &amp; Quarantined Products</span>
                     <span class="badge rounded-pill font-monospace">
                         <?= count($damagedPieceList ?? []) ?>
-                    </span>
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link tab-blue fw-bold d-flex align-items-center gap-2 py-2 px-3" id="batch-history-tab" data-bs-toggle="pill" data-bs-target="#batch-history-pane" type="button" role="tab" aria-controls="batch-history-pane" aria-selected="false">
-                    <i class="bi bi-boxes"></i>
-                    <span>Inward Batch History</span>
-                    <span class="badge rounded-pill font-monospace">
-                        <?= count($variantBatchHistory ?? []) ?>
                     </span>
                 </button>
             </li>
@@ -382,7 +374,35 @@
                     <p class="small text-muted mb-0">All inward pieces may have been dispatched or moved to damaged quarantine.</p>
                 </div>
             <?php else: ?>
-                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-4 g-3">
+                <!-- Search Bar to easily find products by piece code / barcode / size / color -->
+                <div class="card border-0 bg-light p-3 rounded-3 mb-3 border">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-6 col-lg-5">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-end-0 text-primary">
+                                    <i class="bi bi-search"></i>
+                                </span>
+                                <input type="text" id="pieceCodeSearchInput" class="form-control border-start-0 border-end-0" 
+                                       placeholder="Find product by piece tag code, SKU, size, color... (e.g. WOMMAT...)" 
+                                       oninput="filterAvailablePieceCards(this.value)" autocomplete="off">
+                                <button class="btn btn-outline-secondary border-start-0 bg-white" type="button" 
+                                        id="btnClearPieceCodeSearch" onclick="clearAvailablePieceSearch()" style="display:none;" title="Clear Search">
+                                    <i class="bi bi-x-circle-fill text-muted"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-white text-dark border font-monospace py-2 px-3 shadow-xs" id="pieceCardsFilterCountBadge">
+                                <i class="bi bi-qr-code me-1 text-primary"></i>Showing <?= count($pieceQRs) ?> of <?= count($pieceQRs) ?> pieces
+                            </span>
+                        </div>
+                        <div class="col-auto ms-auto d-flex align-items-center gap-2">
+                            <small class="text-muted"><i class="bi bi-upc-scan me-1 text-warning"></i>Barcode scanner ready</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-4 g-3" id="availablePieceCardsGrid">
                     <?php foreach ($pieceQRs as $index => $pq): ?>
                         <?php 
                             $fmtMrp = ($pq['mrp'] == (int)$pq['mrp']) ? (int)$pq['mrp'] : number_format($pq['mrp'], 2, '.', '');
@@ -390,8 +410,9 @@
                             $qrPayload = $pq['tag_code'];
                             $isItemSeries = !empty($pq['is_series']) || !empty($pq['is_complementary']);
                             $packQty = (int)($pq['pack_quantity'] ?? $totalAvailable);
+                            $pieceSearchString = strtolower(htmlspecialchars(($pq['tag_code'] ?? '') . ' ' . ($pq['sku'] ?? '') . ' ' . ($variant['sku'] ?? '') . ' ' . ($variant['product_code'] ?? '') . ' ' . ($pq['size_name'] ?? '') . ' ' . ($pq['color_name'] ?? '') . ' ' . ($pq['category_hierarchy'] ?? '') . ' piece #' . ($pq['piece_no'] ?? ''), ENT_QUOTES, 'UTF-8'));
                         ?>
-                        <div class="col">
+                        <div class="col piece-card-col" data-search="<?= $pieceSearchString ?>" data-tag-code="<?= htmlspecialchars($pq['tag_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                             <div class="card border rounded-3 p-2.5 h-100 shadow-sm bg-white piece-card position-relative">
                                 <div class="d-flex align-items-center justify-content-between mb-1.5">
                                     <?php if ($isItemSeries): ?>
@@ -465,6 +486,16 @@
                         </div>
                     <?php endforeach; ?>
                 </div>
+
+                <!-- Alert when no pieces match the search code -->
+                <div id="noPieceCardsFoundAlert" class="text-center py-5 text-muted card bg-light border-0 my-3 rounded-3" style="display:none;">
+                    <i class="bi bi-search fs-1 d-block mb-2 text-secondary opacity-50"></i>
+                    <h6 class="fw-semibold text-dark">No piece found matching your code search</h6>
+                    <p class="small text-muted mb-3">Check the tag code, barcode, or style code and try again.</p>
+                    <button type="button" class="btn btn-sm btn-outline-primary mx-auto" onclick="clearAvailablePieceSearch()">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Reset Search
+                    </button>
+                </div>
             <?php endif; ?>
         </div>
 
@@ -519,10 +550,21 @@
 
                 <!-- Section: Damaged Piece QR Codes -->
                 <?php if (!empty($damagedPieceList)): ?>
-                    <h6 class="fw-bold text-dark mb-3">
-                        <i class="bi bi-qr-code me-1 text-danger"></i> Damaged Pieces Individual QR Codes &amp; Labels
-                    </h6>
-                    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-4 g-3 mb-4">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                        <h6 class="fw-bold text-dark mb-0">
+                            <i class="bi bi-qr-code me-1 text-danger"></i> Damaged Pieces Individual QR Codes &amp; Labels
+                        </h6>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="input-group input-group-sm" style="max-width:280px;">
+                                <span class="input-group-text bg-white border-end-0 text-danger"><i class="bi bi-search"></i></span>
+                                <input type="text" id="damagedPieceSearchInput" class="form-control border-start-0" placeholder="Find damaged piece by code..." oninput="filterDamagedPieceCards(this.value)">
+                            </div>
+                            <span class="badge bg-light text-dark border font-monospace py-1.5" id="damagedPieceCountBadge">
+                                <?= count($damagedPieceList) ?> pieces
+                            </span>
+                        </div>
+                    </div>
+                    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-4 g-3 mb-4" id="damagedPieceCardsGrid">
                         <?php foreach ($damagedPieceList as $dIndex => $dp): ?>
                             <?php 
                                 $dpMrp = (float)($dp['mrp'] ?? ($variant['mrp'] ?? 0));
@@ -532,8 +574,9 @@
                                 $dpSku = $dp['sku'] ?? ($variant['sku'] ?? '');
                                 $dpReason = $dp['damage_reason'] ?? 'Defective';
                                 $dmgQrPayload = $dp['tag_code'];
+                                $dmgSearchString = strtolower(htmlspecialchars(($dp['tag_code'] ?? '') . ' ' . ($dpSku ?? '') . ' ' . ($dp['size_name'] ?? '') . ' ' . ($dp['color_name'] ?? '') . ' ' . ($dp['damage_reason'] ?? '') . ' ' . ($dp['damage_number'] ?? ''), ENT_QUOTES, 'UTF-8'));
                             ?>
-                            <div class="col">
+                            <div class="col damaged-piece-col" data-search="<?= $dmgSearchString ?>">
                                 <div class="card border border-danger-subtle rounded-3 p-2.5 h-100 shadow-sm bg-white piece-card position-relative" style="background: #fff8f8 !important;">
                                     <div class="d-flex align-items-center justify-content-between mb-1.5">
                                         <span class="badge bg-danger-subtle text-danger border border-danger-subtle font-monospace" style="font-size: 0.68rem;">
@@ -679,7 +722,7 @@
         <!-- ================================================================= -->
         <!-- TAB 3: INWARD BATCH HISTORY & MANUFACTURING LINEAGE               -->
         <!-- ================================================================= -->
-        <div class="tab-pane fade p-4" id="batch-history-pane" role="tabpanel" aria-labelledby="batch-history-tab">
+        <div class="tab-pane fade p-4" id="batch-history-pane" role="tabpanel" aria-labelledby="batch-history-tab" hidden>
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 pb-2 border-bottom">
                 <div>
                     <h5 class="card-title mb-0 fw-bold text-primary">
@@ -689,15 +732,21 @@
                                 <i class="bi bi-geo-alt-fill me-1"></i><?= e($selectedWarehouse['name']) ?>
                             </span>
                         <?php endif; ?>
-                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill ms-2 font-monospace">
+                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill ms-2 font-monospace" id="batchHistoryCountBadge">
                             <?= count($variantBatchHistory ?? []) ?> Inward Batches
                         </span>
                     </h5>
                     <small class="text-muted">Track which manufacturing batches, production units &amp; gatepasses credited stock to this inventory</small>
                 </div>
-                <span class="badge bg-light text-dark border font-monospace px-2.5 py-1.5">
-                    <i class="bi bi-upc-scan me-1 text-primary"></i>SKU: <?= e($variant['sku']) ?>
-                </span>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="input-group input-group-sm" style="min-width:240px;">
+                        <span class="input-group-text bg-white border-end-0 text-primary"><i class="bi bi-search"></i></span>
+                        <input type="text" id="batchHistorySearchInput" class="form-control border-start-0" placeholder="Find batch by code or #..." oninput="filterBatchHistoryTable(this.value)">
+                    </div>
+                    <span class="badge bg-light text-dark border font-monospace px-2.5 py-1.5">
+                        <i class="bi bi-upc-scan me-1 text-primary"></i>SKU: <?= e($variant['sku']) ?>
+                    </span>
+                </div>
             </div>
 
             <?php if (empty($variantBatchHistory)): ?>
@@ -768,8 +817,11 @@
                         </thead>
                         <tbody>
                             <?php foreach ($variantBatchHistory as $b): ?>
-                                <?php $dmgQty = (int)($b['damage_qty'] ?? ($b['item_damaged_qty'] ?? 0)); ?>
-                                <tr>
+                                <?php 
+                                    $dmgQty = (int)($b['damage_qty'] ?? ($b['item_damaged_qty'] ?? 0));
+                                    $batchSearchString = strtolower(htmlspecialchars(($b['batch_number'] ?? '') . ' ' . ($b['program_number'] ?? '') . ' ' . ($b['unit_name'] ?? '') . ' ' . ($b['unit_code'] ?? '') . ' ' . ($b['outward_number'] ?? '') . ' ' . ($b['warehouse_name'] ?? ''), ENT_QUOTES, 'UTF-8'));
+                                ?>
+                                <tr class="batch-history-row" data-search="<?= $batchSearchString ?>">
                                     <td class="ps-3 text-nowrap">
                                         <a href="<?= url('warehouse/inward/view/' . $b['batch_id']) ?>" class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace px-2.5 py-1.5 fs-7 fw-bold text-decoration-none shadow-2xs d-inline-flex align-items-center gap-1">
                                             <i class="bi bi-box-seam text-primary"></i>
@@ -912,8 +964,8 @@
                                         · <?= !empty($sp['sold_at']) ? date('d M y', strtotime($sp['sold_at'])) : '' ?>
                                     </div>
                                 </div>
-                                <span class="badge bg-success-subtle text-success border border-success-subtle font-monospace" style="font-size: 0.68rem;">
-                                    SOLD
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle font-monospace" style="font-size: 0.68rem;">
+                                    SOLD OUT
                                 </span>
                             </div>
                         <?php endforeach; ?>
@@ -1156,11 +1208,6 @@
                         </span>
                     </h5>
                     <small class="text-muted">Complete audit log of all MRP, Selling Price, markup &amp; discount changes applied to this SKU</small>
-                </div>
-                <div class="d-flex gap-2 flex-wrap">
-                    <button type="button" class="btn btn-sm text-white fw-semibold shadow-sm" style="background-color: #7c3aed; border-color: #7c3aed;" onclick="openEditPriceModalFromDetail()">
-                        <i class="bi bi-pencil-square me-1"></i> Edit Price
-                    </button>
                 </div>
             </div>
 
@@ -1547,20 +1594,6 @@
 #stockDetailTabs .nav-link.tab-red.active i,
 #stockDetailTabs .nav-link.tab-red.active span:not(.badge) { color: #ffffff !important; }
 #stockDetailTabs .nav-link.tab-red.active .badge { background-color: #ffffff !important; color: #dc2626 !important; border-color: #ffffff !important; font-weight: 700 !important; }
-
-/* 3. BLUE TAB: Inward Batch History */
-#stockDetailTabs .nav-link.tab-blue i { color: #2563eb !important; font-size: 1.05rem; }
-#stockDetailTabs .nav-link.tab-blue .badge { background-color: #dbeafe !important; color: #1d4ed8 !important; border: 1px solid #bfdbfe !important; }
-#stockDetailTabs .nav-link.tab-blue:hover { background-color: #eff6ff !important; border-color: #93c5fd !important; color: #1d4ed8 !important; }
-#stockDetailTabs .nav-link.tab-blue.active {
-    background-color: #2563eb !important;
-    border-color: #2563eb !important;
-    color: #ffffff !important;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important;
-}
-#stockDetailTabs .nav-link.tab-blue.active i,
-#stockDetailTabs .nav-link.tab-blue.active span:not(.badge) { color: #ffffff !important; }
-#stockDetailTabs .nav-link.tab-blue.active .badge { background-color: #ffffff !important; color: #2563eb !important; border-color: #ffffff !important; font-weight: 700 !important; }
 
 /* 4. PINK TAB: Direct Sales / Sold Pieces */
 #stockDetailTabs .nav-link.tab-pink i { color: #db2777 !important; font-size: 1.05rem; }
@@ -2466,307 +2499,81 @@ function testPrintCurrentSettings() {
     ]);
 }
 
-/**
- * Edit Price Modal for Detail Page
- */
-const DETAIL_VARIANT_ID = <?= (int)$variant['id'] ?>;
-const DETAIL_SKU = <?= json_encode($variant['sku'] ?? '') ?>;
-const DETAIL_PRODUCT_NAME = <?= json_encode($variant['product_name'] ?? '') ?>;
-const DETAIL_COST_PRICE = <?= (float)(!empty($variant['purchase_price']) && $variant['purchase_price'] > 0 ? $variant['purchase_price'] : ($variant['production_cost'] ?? 0)) ?>;
-let DETAIL_SELLING_PRICE = <?= (float)($variant['display_selling_price'] ?? $variant['selling_price'] ?? 0) ?>;
-let DETAIL_MRP = <?= (float)($variant['display_mrp'] ?? $variant['mrp'] ?? 0) ?>;
+// =========================================================================
+// REAL-TIME SEARCH FOR PIECES, DAMAGED STOCK, BATCHES & LEDGER BY CODE
+// =========================================================================
+function filterAvailablePieceCards(query) {
+    const term = (query || '').toLowerCase().trim();
+    const clearBtn = document.getElementById('btnClearPieceCodeSearch');
+    if (clearBtn) clearBtn.style.display = term ? '' : 'none';
 
-function openEditPriceModalFromDetail() {
-    document.getElementById('detailModalVariantIdInput').value = DETAIL_VARIANT_ID;
-    document.getElementById('detailModalPriceHeaderSku').innerText = 'SKU: ' + DETAIL_SKU;
-    document.getElementById('detailModalPriceProductName').innerText = DETAIL_PRODUCT_NAME;
-    document.getElementById('detailModalPriceSkuBadge').innerText = DETAIL_SKU;
-    
-    document.getElementById('detailModalCostPriceRaw').value = DETAIL_COST_PRICE;
-    document.getElementById('detailModalPriceCostBadge').innerText = 'Cost: ₹' + DETAIL_COST_PRICE.toFixed(2);
-    
-    document.getElementById('detailModalSellingPriceInput').value = DETAIL_SELLING_PRICE > 0 ? DETAIL_SELLING_PRICE.toFixed(2) : '';
-    document.getElementById('detailModalMrpInput').value = DETAIL_MRP > 0 ? DETAIL_MRP.toFixed(2) : '';
-    document.getElementById('detailModalRevisionNotesInput').value = '';
-    
-    recalcDetailPriceDynamics();
-    
-    const modalEl = document.getElementById('detailEditPriceModal');
-    const modal = new bootstrap.Modal(modalEl);
-    modal.show();
-}
+    const cards = document.querySelectorAll('#availablePieceCardsGrid .piece-card-col');
+    let matchCount = 0;
+    let firstMatch = null;
 
-function recalcDetailPriceDynamics() {
-    const cost = parseFloat(document.getElementById('detailModalCostPriceRaw').value) || 0;
-    const selling = parseFloat(document.getElementById('detailModalSellingPriceInput').value) || 0;
-    const mrp = parseFloat(document.getElementById('detailModalMrpInput').value) || 0;
-    
-    // Markup over cost
-    const markupEl = document.getElementById('detailModalMarkupVal');
-    if (cost > 0 && selling > 0) {
-        const markup = ((selling - cost) / cost) * 100;
-        const sign = markup >= 0 ? '+' : '';
-        markupEl.innerText = sign + Math.round(markup) + '%';
-        markupEl.className = (markup >= 0 ? 'text-success' : 'text-danger') + ' ms-1 font-monospace';
-    } else {
-        markupEl.innerText = '—';
-        markupEl.className = 'text-muted ms-1 font-monospace';
-    }
-    
-    // Discount on MRP
-    const discountValEl = document.getElementById('detailModalDiscountVal');
-    const discountBadgeEl = document.getElementById('detailModalDiscountBadge');
-    
-    if (mrp > 0 && mrp > selling && selling > 0) {
-        const disc = ((mrp - selling) / mrp) * 100;
-        const discRound = Math.round(disc);
-        discountValEl.innerText = discRound + '% Off';
-        discountValEl.className = 'text-primary ms-1 font-monospace';
-        
-        discountBadgeEl.style.display = 'inline-block';
-        discountBadgeEl.innerText = discRound + '% Discount';
-    } else if (mrp > 0 && selling >= mrp) {
-        discountValEl.innerText = '0% Off';
-        discountValEl.className = 'text-muted ms-1 font-monospace';
-        discountBadgeEl.style.display = 'none';
-    } else {
-        discountValEl.innerText = '0% Off';
-        discountValEl.className = 'text-muted ms-1 font-monospace';
-        discountBadgeEl.style.display = 'none';
-    }
-}
+    cards.forEach(card => {
+        const searchText = card.getAttribute('data-search') || '';
+        const tagCode = card.getAttribute('data-tag-code') || '';
+        const isMatch = !term || searchText.includes(term) || tagCode.toLowerCase().includes(term);
 
-function handleDetailPriceSubmit(e) {
-    e.preventDefault();
-    const btn = document.getElementById('detailBtnSavePrice');
-    const origHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Saving...';
-    
-    const variantId = document.getElementById('detailModalVariantIdInput').value;
-    const sellingPrice = document.getElementById('detailModalSellingPriceInput').value;
-    const mrp = document.getElementById('detailModalMrpInput').value;
-    const notes = document.getElementById('detailModalRevisionNotesInput').value;
-    
-    const formData = new FormData();
-    formData.append('variant_id', variantId);
-    formData.append('selling_price', sellingPrice);
-    formData.append('mrp', mrp);
-    formData.append('revision_notes', notes);
-    
-    fetch('<?= url('warehouse/stock/update-price') ?>', {
-        method: 'POST',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: formData
-    })
-    .then(r => r.json())
-    .then(res => {
-        btn.disabled = false;
-        btn.innerHTML = origHtml;
-        
-        if (res.success) {
-            DETAIL_SELLING_PRICE = parseFloat(sellingPrice) || 0;
-            DETAIL_MRP = parseFloat(mrp) || DETAIL_SELLING_PRICE;
-            PRODUCT_INFO.mrp = DETAIL_MRP;
-            PRODUCT_INFO.sellingPrice = DETAIL_SELLING_PRICE;
-            
-            // Update metadata card
-            const mrpEl = document.getElementById('detail-mrp-val');
-            const sellingEl = document.getElementById('detail-selling-val');
-            if (mrpEl) mrpEl.innerText = res.formatted_mrp || ('₹' + parseFloat(mrp).toFixed(2));
-            if (sellingEl) sellingEl.innerText = res.formatted_selling_price || ('₹' + parseFloat(sellingPrice).toFixed(2));
-            
-            const modalEl = document.getElementById('detailEditPriceModal');
-            const modal = bootstrap.Modal.getInstance(modalEl);
-            if (modal) modal.hide();
-            
-            // Append log row to table
-            const noLogsMsg = document.getElementById('no-price-logs-msg');
-            if (noLogsMsg) noLogsMsg.classList.add('d-none');
-            const tableWrap = document.getElementById('price-logs-table-wrap');
-            if (tableWrap) tableWrap.classList.remove('d-none');
-            
-            const tbody = document.getElementById('price-logs-tbody');
-            if (tbody) {
-                const tr = document.createElement('tr');
-                tr.className = 'table-success table-opacity-10';
-                tr.innerHTML = `
-                    <td class="ps-3 text-nowrap">
-                        <div class="small fw-semibold text-dark">${res.updated_at || 'Just now'}</div>
-                        <small class="text-success d-block" style="font-size: 0.72rem;">Updated</small>
-                    </td>
-                    <td class="text-nowrap">
-                        <span class="fw-bold text-dark">${res.formatted_mrp}</span>
-                    </td>
-                    <td class="text-nowrap">
-                        <span class="fw-bold text-success">${res.formatted_selling_price}</span>
-                    </td>
-                    <td class="text-nowrap">
-                        <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 font-monospace">
-                            ${res.markup_percentage !== null ? (res.markup_percentage >= 0 ? '+' : '') + res.markup_percentage + '%' : '—'}
-                        </span>
-                    </td>
-                    <td class="text-nowrap">
-                        <span class="badge ${res.discount_percentage > 0 ? 'bg-danger-subtle text-danger border border-danger-subtle' : 'bg-light text-muted border'} px-2 py-1 font-monospace">
-                            ${res.discount_percentage > 0 ? res.discount_percentage + '% Off' : '0%'}
-                        </span>
-                    </td>
-                    <td style="max-width: 250px;">
-                        <span class="text-dark font-sans">${notes || 'Price adjustment via Stock Inventory'}</span>
-                    </td>
-                    <td class="pe-3 text-end text-nowrap">
-                        <span class="badge bg-light text-dark border px-2 py-1">
-                            <i class="bi bi-person-circle me-1 text-primary"></i>You
-                        </span>
-                    </td>
-                `;
-                tbody.insertBefore(tr, tbody.firstChild);
-            }
-            
-            // Reload window after brief moment or show success message
-            const alertDiv = document.createElement('div');
-            alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed bottom-0 end-0 m-3 shadow-lg z-3';
-            alertDiv.style.zIndex = '9999';
-            alertDiv.innerHTML = `
-                <div class="d-flex align-items-center gap-2">
-                    <i class="bi bi-check-circle-fill fs-5"></i>
-                    <div>
-                        <strong>Price Updated!</strong> ${res.message || 'Product pricing revised successfully. QR labels updated.'}
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            `;
-            document.body.appendChild(alertDiv);
-            setTimeout(() => {
-                location.reload();
-            }, 1200);
+        if (isMatch) {
+            card.style.display = '';
+            matchCount++;
+            if (!firstMatch && term) firstMatch = card;
         } else {
-            alert(res.message || 'Failed to update price. Please try again.');
+            card.style.display = 'none';
         }
-    })
-    .catch(err => {
-        btn.disabled = false;
-        btn.innerHTML = origHtml;
-        console.error(err);
-        alert('Server connection error. Please try again.');
+    });
+
+    const badge = document.getElementById('pieceCardsFilterCountBadge');
+    if (badge) {
+        if (!term) {
+            badge.innerHTML = `<i class="bi bi-qr-code me-1 text-primary"></i>Showing ${cards.length} of ${cards.length} pieces`;
+            badge.className = 'badge bg-white text-dark border font-monospace py-2 px-3 shadow-xs';
+        } else {
+            badge.innerHTML = `<i class="bi bi-search me-1 text-success"></i>Found ${matchCount} of ${cards.length} pieces`;
+            badge.className = 'badge bg-success-subtle text-success border border-success-subtle font-monospace py-2 px-3 shadow-xs';
+        }
+    }
+
+    const noAlert = document.getElementById('noPieceCardsFoundAlert');
+    if (noAlert) {
+        noAlert.style.display = (matchCount === 0 && cards.length > 0) ? '' : 'none';
+    }
+
+    // If single match or exact code match, auto-scroll and subtle highlight
+    if (term && matchCount === 1 && firstMatch) {
+        firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        firstMatch.classList.add('border-primary', 'shadow-lg');
+        setTimeout(() => firstMatch.classList.remove('border-primary', 'shadow-lg'), 1800);
+    }
+}
+
+function clearAvailablePieceSearch() {
+    const inp = document.getElementById('pieceCodeSearchInput');
+    if (inp) { inp.value = ''; inp.focus(); }
+    filterAvailablePieceCards('');
+}
+
+function filterDamagedPieceCards(query) {
+    const term = (query || '').toLowerCase().trim();
+    const cards = document.querySelectorAll('.damaged-piece-col');
+    let matchCount = 0;
+    cards.forEach(card => {
+        const searchText = card.getAttribute('data-search') || '';
+        const isMatch = !term || searchText.includes(term);
+        card.style.display = isMatch ? '' : 'none';
+        if (isMatch) matchCount++;
+    });
+    const badge = document.getElementById('damagedPieceCountBadge');
+    if (badge) badge.textContent = `${matchCount} of ${cards.length} pieces`;
+}
+
+function filterLedgerRows(query) {
+    const term = (query || '').toLowerCase().trim();
+    document.querySelectorAll('.ledger-tx-row').forEach(r => {
+        const text = r.textContent.toLowerCase();
+        r.style.display = (!term || text.includes(term)) ? '' : 'none';
     });
 }
 </script>
-
-<!-- Edit Price Modal for Stock Detail View -->
-<div class="modal fade" id="detailEditPriceModal" tabindex="-1" aria-labelledby="detailEditPriceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 520px;">
-        <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
-            <!-- Emerald Green Header -->
-            <div class="modal-header py-3 px-4 border-0" style="background-color: #127547; color: #ffffff;">
-                <div class="d-flex align-items-center gap-2.5">
-                    <div class="rounded-circle p-1.5 d-flex align-items-center justify-content-center" style="background: rgba(255,255,255,0.15);">
-                        <i class="bi bi-tag-fill fs-4 text-white"></i>
-                    </div>
-                    <div>
-                        <h5 class="modal-title fw-bold text-white mb-0" id="detailEditPriceModalLabel" style="font-size: 1.15rem; letter-spacing: -0.2px;">Edit Product Price</h5>
-                        <div class="text-white-50 font-monospace small" id="detailModalPriceHeaderSku" style="font-size: 0.76rem; letter-spacing: 0.5px;">SKU: ---</div>
-                    </div>
-                </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-
-            <form id="detailEditPriceModalForm" onsubmit="handleDetailPriceSubmit(event)">
-                <input type="hidden" name="variant_id" id="detailModalVariantIdInput" value="">
-                <input type="hidden" id="detailModalCostPriceRaw" value="0">
-
-                <div class="modal-body p-4 bg-white">
-                    <!-- Product Info Box -->
-                    <div class="border rounded-3 p-3 mb-3.5 bg-white shadow-2xs">
-                        <div class="fw-bold text-dark mb-2" id="detailModalPriceProductName" style="font-size: 0.96rem; line-height: 1.35;">
-                            Product Name Loading...
-                        </div>
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <span class="badge bg-dark text-white font-monospace px-2.5 py-1" id="detailModalPriceSkuBadge" style="font-size: 0.74rem;">
-                                SKU-CODE
-                            </span>
-                            <span class="badge bg-light text-secondary border px-2.5 py-1 font-monospace" id="detailModalPriceCostBadge" style="font-size: 0.74rem;">
-                                Cost: ₹0.00
-                            </span>
-                        </div>
-                    </div>
-
-                    <!-- MRP & Discount Price Row -->
-                    <div class="row g-3 mb-3.5">
-                        <!-- Maximum Retail Price (MRP) Input (First) -->
-                        <div class="col-6">
-                            <label class="form-label small fw-bold text-dark text-uppercase mb-1" style="font-size: 0.74rem; letter-spacing: 0.3px;">
-                                Maximum Retail Price (MRP ₹) <span class="text-danger">*</span>
-                            </label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-white text-secondary fw-bold border-end-0 fs-5 ps-3 pe-2" style="border-color: #cbd5e1;">₹</span>
-                                <input type="number" step="0.01" min="0" name="mrp" id="detailModalMrpInput" 
-                                       class="form-control border-start-0 fs-5 fw-bold text-dark ps-1" 
-                                       style="border-color: #cbd5e1;" placeholder="0.00" required oninput="recalcDetailPriceDynamics()">
-                            </div>
-                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">Printed sticker / catalog MRP</small>
-                        </div>
-
-                        <!-- Discount Price Input (Second) -->
-                        <div class="col-6">
-                            <label class="form-label small fw-bold text-dark text-uppercase mb-1" style="font-size: 0.74rem; letter-spacing: 0.3px;">
-                                Discount Price (₹) <span class="text-danger">*</span>
-                            </label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-white text-success fw-bold border-end-0 fs-5 ps-3 pe-2" style="border-color: #cbd5e1;">₹</span>
-                                <input type="number" step="0.01" min="0" name="selling_price" id="detailModalSellingPriceInput" 
-                                       class="form-control border-start-0 fs-5 fw-bold text-success ps-1" 
-                                       style="border-color: #cbd5e1;" placeholder="0.00" required oninput="recalcDetailPriceDynamics()">
-                            </div>
-                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">Active retail selling rate at POS</small>
-                        </div>
-                    </div>
-
-                    <!-- Price Dynamics & Margin Box -->
-                    <div class="border rounded-3 p-3 mb-3.5" style="background-color: #fcfdfd; border-color: #e2e8f0 !important;">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="text-uppercase fw-bold text-muted" style="font-size: 0.70rem; letter-spacing: 0.5px;">
-                                Price Dynamics &amp; Margin
-                            </span>
-                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle font-monospace px-2 py-0.5" id="detailModalDiscountBadge" style="font-size: 0.72rem; border-radius: 6px;">
-                                0% Discount
-                            </span>
-                        </div>
-                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 pt-1" style="font-size: 0.84rem;">
-                            <div>
-                                <span class="text-muted">Markup over Cost:</span>
-                                <strong class="text-success ms-1 font-monospace" id="detailModalMarkupVal">+0%</strong>
-                            </div>
-                            <div>
-                                <span class="text-muted">Discount on MRP:</span>
-                                <strong class="text-primary ms-1 font-monospace" id="detailModalDiscountVal">0% Off</strong>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Revision Notes / Reason -->
-                    <div class="mb-2">
-                        <label class="form-label small fw-bold text-muted text-uppercase mb-1" style="font-size: 0.72rem; letter-spacing: 0.3px;">
-                            Revision Notes / Reason (Optional)
-                        </label>
-                        <input type="text" name="revision_notes" id="detailModalRevisionNotesInput" class="form-control py-2" style="border-color: #cbd5e1; font-size: 0.85rem;" placeholder="e.g. Retail festive promotion, Season discount">
-                    </div>
-                </div>
-
-                <!-- Footer Action Buttons -->
-                <div class="modal-footer px-4 py-3 bg-white border-0 d-flex justify-content-between align-items-center">
-                    <button type="button" class="btn btn-light border px-4 py-2 fw-semibold" style="border-radius: 24px; color: #475569; font-size: 0.88rem;" data-bs-dismiss="modal">
-                        Cancel
-                    </button>
-                    <button type="submit" id="detailBtnSavePrice" class="btn btn-success px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm" style="border-radius: 24px; background-color: #127547; border-color: #127547; font-size: 0.88rem;">
-                        <i class="bi bi-check-circle-fill"></i>
-                        <span>Save Price Changes</span>
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-

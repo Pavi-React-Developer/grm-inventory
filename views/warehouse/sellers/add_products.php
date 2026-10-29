@@ -108,6 +108,72 @@
 </div>
 
 <!-- ========================================================================= -->
+<!-- EXISTING SUPPLIER PRODUCTS (READ ONLY) -->
+<!-- ========================================================================= -->
+<div class="card border-0 shadow-sm rounded-3 bg-white mb-4">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="card-title mb-0 fw-bold text-dark">
+                <i class="bi bi-box-seam text-primary me-2"></i>Existing Supplier Products
+            </h5>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1 fw-bold">
+                <?= count($existingSupplierProducts ?? []) ?> Product(s)
+            </span>
+        </div>
+        <span class="text-muted small"><i class="bi bi-eye me-1"></i>View only — these items are not included in the new inward bill.</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered table-hover align-middle mb-0 text-nowrap">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>Product</th>
+                    <th>Category</th>
+                    <th>Variant</th>
+                    <th>SKU</th>
+                    <th>HSN</th>
+                    <th class="text-end">Weight (kg)</th>
+                    <th class="text-end">MRP (₹)</th>
+                    <th class="text-end">Selling Price (₹)</th>
+                    <th class="text-end">Supplier Cost (₹)</th>
+                    <th class="text-end">Available Stock</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($existingSupplierProducts)): ?>
+                    <tr>
+                        <td colspan="11" class="text-center text-muted py-4">No existing products are linked to this supplier.</td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($existingSupplierProducts as $index => $product): ?>
+                        <?php
+                            $categoryPath = array_filter([
+                                $product['category_name'] ?? '',
+                                $product['subcategory_name'] ?? '',
+                                $product['sub_subcategory_name'] ?? '',
+                            ]);
+                        ?>
+                        <tr>
+                            <td><?= $index + 1 ?></td>
+                            <td class="fw-semibold"><?= e($product['product_name'] ?? '') ?></td>
+                            <td><?= e(implode(' › ', $categoryPath) ?: '—') ?></td>
+                            <td><?= e($product['variant_name'] ?? 'Standard') ?></td>
+                            <td class="font-monospace"><?= e($product['sku'] ?? '') ?: '—' ?></td>
+                            <td class="font-monospace"><?= e($product['hsn_code'] ?? '') ?: '—' ?></td>
+                            <td class="text-end"><?= number_format((float)($product['weight'] ?? 0), 3) ?></td>
+                            <td class="text-end">₹<?= number_format((float)($product['mrp'] ?? 0), 2) ?></td>
+                            <td class="text-end">₹<?= number_format((float)($product['selling_price'] ?? 0), 2) ?></td>
+                            <td class="text-end">₹<?= number_format((float)($product['purchase_price'] ?? 0), 2) ?></td>
+                            <td class="text-end fw-semibold"><?= number_format((float)($product['available_stock'] ?? 0), 0) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
 <!-- 1. CATEGORY & ATTRIBUTE VARIANT SELECTION (Full Width Streamlined) -->
 <!-- ========================================================================= -->
 <div class="card border-0 shadow-sm rounded-3 bg-white mb-4">
@@ -254,7 +320,7 @@
         </div>
         <div class="d-flex align-items-center gap-2 flex-wrap">
             <div class="text-muted small">
-                <i class="bi bi-pencil-square text-primary me-1"></i>Directly edit <strong>Price, Weight, HSN &amp; Qty</strong> in each row.
+                <i class="bi bi-info-circle text-primary me-1"></i>Only products added above are included in this inward bill; existing supplier products are not re-added.
             </div>
         </div>
     </div>
@@ -353,7 +419,7 @@
                         <th style="width: 125px;" class="text-end">Selling Price (₹) <span class="text-danger">*</span></th>
                         <th style="width: 120px;" class="text-end">Supplier Cost (₹) <span class="text-danger">*</span></th>
                         <th style="width: 80px;" class="text-center">Qty <span class="text-danger">*</span></th>
-                        <th style="width: 130px;" class="text-end">Line Total (₹)</th>
+                        <th style="width: 130px;" class="text-end">Line Retail Value (₹)</th>
                         <th style="width: 50px;" class="text-center">Action</th>
                     </tr>
                 </thead>
@@ -368,11 +434,16 @@
                 </tbody>
                 <tfoot class="table-light fw-bold">
                     <tr>
-                        <td colspan="5" class="text-end">Totals:</td>
+                        <td colspan="5" class="text-end">Retail Totals:</td>
                         <td class="text-end font-monospace" id="footerTotalWeight">0.000 kg</td>
                         <td colspan="4"></td>
                         <td class="text-center fs-7" id="footerTotalQty">0 pcs</td>
                         <td class="text-end text-primary fs-6" id="footerGrandTotal">₹0.00</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td colspan="11" class="text-end">Supplier Product Total (Cost + GST):</td>
+                        <td class="text-end text-success fs-6" id="footerSupplierProductTotal">₹0.00</td>
                         <td></td>
                     </tr>
                 </tfoot>
@@ -402,9 +473,6 @@
                 <a href="<?= url('warehouse/sellers/create') ?>" class="btn btn-outline-secondary">
                     <i class="bi bi-arrow-left me-1"></i> Back to Step 1
                 </a>
-                <div class="text-muted small d-none d-md-block">
-                    Total Inward Bill Amount: <strong class="text-dark fs-6" id="summaryGrandTotal">₹0.00</strong>
-                </div>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <button type="button" class="btn btn-primary px-5 py-2.5 fw-bold shadow" id="btnSaveAllProducts" onclick="submitFinalProducts()" disabled>
@@ -424,7 +492,6 @@ const ATTRIBUTES_DATA = <?= json_encode($allAttributes ?? [], JSON_UNESCAPED_UNI
 const DEFAULT_PRODUCTS_DATA = <?= json_encode($allDefaultProducts ?? [], JSON_UNESCAPED_UNICODE) ?>;
 const DEFAULT_BRAND_ID = <?= json_encode(!empty($billSetup['brand_id']) ? (int)$billSetup['brand_id'] : (!empty($seller['brand_id']) ? (int)$seller['brand_id'] : null)) ?>;
 const DEFAULT_BRAND_NAME = <?= json_encode(!empty($billSetup['brand_name']) ? $billSetup['brand_name'] : '') ?>;
-
 // Array of active inward products
 let addedProductsList = [];
 
@@ -1558,25 +1625,30 @@ function applyQuickFillToAll() {
 function recalculateAllTotals() {
     let totalQty = 0;
     let totalWeight = 0.000;
-    let grandTotal = 0.00;
+    let retailTotal = 0.00;
+    let supplierProductTotal = 0.00;
 
     addedProductsList.forEach(item => {
         const qty = parseInt(item.quantity) || 0;
         const wt = parseFloat(item.weight) || 0;
         const sp = parseFloat(item.selling_price) || 0;
+        const cost = parseFloat(item.purchase_price) || 0;
+        const gstPct = parseFloat(item.gst_percentage) || 0;
         item.line_total = sp * qty;
         totalQty += qty;
         totalWeight += (wt * qty);
-        grandTotal += item.line_total;
+        retailTotal += item.line_total;
+        const lineCost = Math.round((cost * qty + Number.EPSILON) * 100) / 100;
+        const lineTax = Math.round((lineCost * gstPct / 100 + Number.EPSILON) * 100) / 100;
+        supplierProductTotal += lineCost + lineTax;
     });
 
     document.getElementById('badgeItemCount').textContent = `${addedProductsList.length} Product(s)`;
     document.getElementById('footerTotalQty').textContent = `${totalQty} pcs`;
     document.getElementById('footerTotalWeight').textContent = `${totalWeight.toFixed(3)} kg`;
-    const formattedTotal = '₹' + grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    document.getElementById('footerGrandTotal').textContent = formattedTotal;
-    document.getElementById('summaryGrandTotal').textContent = formattedTotal;
-
+    document.getElementById('footerGrandTotal').textContent = '₹' + retailTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const supplierTotalEl = document.getElementById('footerSupplierProductTotal');
+    if (supplierTotalEl) supplierTotalEl.textContent = '₹' + supplierProductTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const btnSubmit = document.getElementById('btnSaveAllProducts');
     if (btnSubmit) {
         btnSubmit.disabled = (addedProductsList.length === 0);

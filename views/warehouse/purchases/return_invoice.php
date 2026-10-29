@@ -53,9 +53,6 @@ $pAction = $exchange['payment_action'] ?? 'NONE';
             <button onclick="window.print()" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">
                 <i class="bi bi-printer me-1"></i> Print Tax Receipt
             </button>
-            <a href="<?= url('warehouse/purchases') ?>" class="btn btn-outline-primary rounded-pill px-3 fw-semibold">
-                <i class="bi bi-receipt me-1"></i> Direct Purchases
-            </a>
         </div>
     </div>
 
@@ -205,14 +202,14 @@ $pAction = $exchange['payment_action'] ?? 'NONE';
                             <td class="ps-3 fw-bold text-dark">
                                 <div><?= e($ei['product_name']) ?></div>
                                 <div class="d-flex flex-wrap gap-1 mt-0.5">
-                                    <?php if (!empty($ei['product_code'])): ?>
+                                    <?php if (!empty($ei['product_code']) || !empty($ei['sku'])): ?>
                                         <span class="badge bg-light text-secondary border font-monospace" style="font-size:9px; padding:1px 4px;">
-                                            Code: <?= e($ei['product_code']) ?>
+                                            Code: <?= e($ei['product_code'] ?: $ei['sku']) ?>
                                         </span>
                                     <?php endif; ?>
                                     <?php if (!empty($ei['piece_tag'])): ?>
                                         <span class="badge" style="background:#1e293b; color:#38bdf8; font-family:monospace; font-size:9px; padding:1px 5px;">
-                                            <i class="bi bi-qr-code-scan me-1"></i>Piece Tag: <?= e($ei['piece_tag']) ?>
+                                            <i class="bi bi-qr-code-scan me-1"></i>QR Code: <?= e($ei['piece_tag']) ?>
                                         </span>
                                     <?php elseif (!empty($ei['qr_code']) && $ei['qr_code'] !== $ei['sku'] && !str_starts_with($ei['qr_code'], 'QR-')): ?>
                                         <span class="badge bg-light text-primary border font-monospace" style="font-size:9px; padding:1px 4px;">
@@ -255,18 +252,11 @@ $pAction = $exchange['payment_action'] ?? 'NONE';
                     </div>
                     <?php 
                     $paymentProofUrl = null;
-                    $displayNotes = $return['notes'] ?? '';
-                    if (preg_match('/Payment Proof:\s*(https?:\/\/[^\s]+)/', $displayNotes, $matches)) {
+                    $returnNotes = $return['notes'] ?? '';
+                    if (preg_match('/Payment Proof:\s*(https?:\/\/[^\s]+)/', $returnNotes, $matches)) {
                         $paymentProofUrl = $matches[1];
-                        $displayNotes = trim(str_replace($matches[0], '', $displayNotes));
                     }
                     ?>
-                    <?php if (!empty($displayNotes)): ?>
-                    <div class="small text-secondary">
-                        <strong>Notes:</strong> <?= nl2br(e($displayNotes)) ?>
-                    </div>
-                    <?php endif; ?>
-                    
                     <?php if ($paymentProofUrl): ?>
                     <div class="mt-2 no-print">
                         <strong class="small text-secondary d-block mb-1"><i class="bi bi-camera me-1"></i>Payment Proof Screenshot:</strong>

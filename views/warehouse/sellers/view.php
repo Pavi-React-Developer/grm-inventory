@@ -14,20 +14,6 @@
         </span>
     </div>
     <div class="d-flex flex-wrap gap-2">
-        <?php if (hasPermission('wh_catalog', 'create') || hasPermission('wh_sellers', 'edit')): ?>
-        <?php endif; ?>
-        <?php if (hasPermission('wh_sellers', 'edit')): ?>
-        <a href="<?= url('warehouse/sellers/edit/' . $seller['id']) ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-pencil me-1"></i> Edit Profile
-        </a>
-        <?php endif; ?>
-        <?php if (hasPermission('wh_sellers', 'delete') || hasPermission('warehouse', 'delete') || true): ?>
-        <form method="POST" action="<?= url('warehouse/sellers/delete/' . $seller['id']) ?>" class="d-inline mb-0" onsubmit="return confirm('Are you sure you want to delete supplier &quot;<?= e(addslashes($seller['name'])) ?>&quot;?');">
-            <button type="submit" class="btn btn-outline-danger">
-                <i class="bi bi-trash me-1"></i> Delete
-            </button>
-        </form>
-        <?php endif; ?>
         <a href="<?= url('warehouse/sellers') ?>" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i> Back to Suppliers
         </a>
@@ -393,7 +379,6 @@
                                             <th>Warehouse</th>
                                             <th>Date</th>
                                             <th class="text-center">Items / Units</th>
-                                            <th class="text-end">Amount (₹)</th>
                                             <th class="text-center">Stock Inward Status</th>
                                             <th class="text-end">Actions</th>
                                         </tr>
@@ -409,7 +394,6 @@
                                                     'warehouse'    => $po['warehouse_name'],
                                                     'total_items'  => $po['total_items'],
                                                     'total_qty'    => $po['total_qty'],
-                                                    'total_amount' => $po['total_amount'],
                                                     'order_date'   => $po['order_date'],
                                                     'seller_name'  => $seller['name']
                                                 ]);
@@ -425,7 +409,8 @@
                                                     <?php if (!empty($po['payment_screenshot_url'])): ?>
                                                         <?php 
                                                             $billImg = $po['payment_screenshot_url'];
-                                                            $isImg = preg_match('/\.(jpg|jpeg|png|webp|gif)$/i', $billImg) || str_contains($billImg, 'res.cloudinary.com');
+                                                            $isPdf = preg_match('/\.pdf(?:$|[?#])/i', $billImg);
+                                                            $isImg = !$isPdf && (preg_match('/\.(jpg|jpeg|png|webp|gif)$/i', $billImg) || str_contains($billImg, 'res.cloudinary.com'));
                                                         ?>
                                                         <?php if ($isImg): ?>
                                                             <div class="position-relative d-inline-block cursor-pointer" onclick="openImageModal('<?= e($billImg) ?>', 'Bill Screenshot - PO #<?= e($po['po_number']) ?>')">
@@ -447,9 +432,6 @@
                                                     <span class="badge bg-light text-dark border fw-bold"><?= number_format($po['total_qty']) ?> pcs</span>
                                                     <small class="text-muted d-block"><?= number_format($po['total_items']) ?> SKU(s)</small>
                                                 </td>
-                                                <td class="text-end">
-                                                    <span class="fw-bold text-success">₹<?= number_format($po['total_amount'], 2) ?></span>
-                                                </td>
                                                 <td class="text-center">
                                                     <?php if ($isPending): ?>
                                                         <span class="badge bg-warning text-dark px-2 py-1 shadow-sm border border-warning">
@@ -463,15 +445,11 @@
                                                 </td>
                                                 <td class="text-end">
                                                     <div class="d-flex justify-content-end gap-1">
-                                                        <?php if ($isPending && (hasPermission('purchases', 'receive') || hasPermission('inward', 'verify') || hasPermission('inward', 'create'))): ?>
-                                                            <button type="button" class="btn btn-sm btn-success fw-semibold shadow-sm" onclick='openInwardModal(<?= htmlspecialchars($poJson, ENT_QUOTES) ?>)' title="Confirm Admin Inward into Warehouse Inventory">
-                                                                 <i class="bi bi-box-arrow-in-down me-1"></i> Inward Stock
-                                                            </button>
-                                                        <?php endif; ?>
                                                         <?php if (!empty($po['payment_screenshot_url'])): ?>
                                                             <?php 
                                                                 $billImg = $po['payment_screenshot_url'];
-                                                                $isImg = preg_match('/\.(jpg|jpeg|png|webp|gif)$/i', $billImg) || str_contains($billImg, 'res.cloudinary.com');
+                                                                $isPdf = preg_match('/\.pdf(?:$|[?#])/i', $billImg);
+                                                                $isImg = !$isPdf && (preg_match('/\.(jpg|jpeg|png|webp|gif)$/i', $billImg) || str_contains($billImg, 'res.cloudinary.com'));
                                                             ?>
                                                             <?php if ($isImg): ?>
                                                                 <button type="button" class="btn btn-sm btn-outline-primary shadow-xs" onclick="openImageModal('<?= e($billImg) ?>', 'Supplier Bill / Invoice - PO #<?= e($po['po_number']) ?>')" title="View Uploaded Supplier Bill / Invoice">
@@ -483,9 +461,9 @@
                                                                 </a>
                                                             <?php endif; ?>
                                                         <?php else: ?>
-                                                            <a href="<?= url('warehouse/purchases/receive/' . $po['id']) ?>" class="btn btn-sm btn-outline-primary" title="View Tax Invoice &amp; Goods Receipt">
-                                                                <i class="bi bi-receipt me-1"></i> Invoice
-                                                            </a>
+                                                            <span class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true" title="No supplier invoice was uploaded for this bill">
+                                                                <i class="bi bi-receipt me-1"></i> No Invoice
+                                                            </span>
                                                         <?php endif; ?>
                                                     </div>
                                                 </td>

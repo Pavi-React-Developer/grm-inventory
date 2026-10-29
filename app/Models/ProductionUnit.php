@@ -81,18 +81,6 @@ class ProductionUnit {
      */
     public static function getWithMetrics(): array {
         $units = self::getAll();
-        if (empty($units)) {
-            // Auto seed default primary unit if empty
-            $defId = self::create([
-                'name'         => 'Main Garment Production Unit',
-                'code'         => 'PU-01',
-                'manager_name' => 'Production Supervisor',
-                'address'      => 'Industrial Estate, Sector 4, Tirupur, Tamil Nadu',
-                'phone'        => '9876500001',
-                'is_active'    => 1
-            ]);
-            $units = self::getAll();
-        }
 
         foreach ($units as &$unit) {
             $unitId = (int)$unit['id'];

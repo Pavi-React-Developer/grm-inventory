@@ -49,9 +49,6 @@
                             <button type="button" class="btn btn-warning px-4 fw-bold d-flex align-items-center gap-1 text-dark shadow-sm" id="btnLookupScan" title="Lookup / Add to Queue">
                                 <i class="bi bi-plus-circle"></i> <span>Add / Lookup</span>
                             </button>
-                            <button type="button" class="btn btn-outline-secondary px-3" data-bs-toggle="modal" data-bs-target="#cameraScanModal" title="Open Camera Scanner">
-                                <i class="bi bi-camera-video me-1"></i> Camera
-                            </button>
                         </div>
                         <!-- Live Instant Auto-Suggest Dropdown on Typing -->
                         <div id="liveSearchResults" class="position-absolute start-0 end-0 bg-white text-dark rounded-3 shadow-lg border mt-1 overflow-auto d-none" style="max-height: 380px; z-index: 1050;">
@@ -214,22 +211,6 @@
         </div>
     </div>
 </form>
-
-<!-- CAMERA SCANNER MODAL -->
-<div class="modal fade" id="cameraScanModal" tabindex="-1" aria-labelledby="cameraScanModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-3">
-            <div class="modal-header bg-dark text-white py-3">
-                <h5 class="modal-title fs-6 fw-bold" id="cameraScanModalLabel"><i class="bi bi-camera me-2 text-warning"></i>Live Camera QR / Barcode Scanner</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" id="btnCloseCameraModal"></button>
-            </div>
-            <div class="modal-body text-center p-3">
-                <div id="reader" style="width: 100%; min-height: 280px; background: #000; border-radius: 8px;"></div>
-                <div class="mt-2 text-muted small"><i class="bi bi-info-circle me-1 text-primary"></i>Hold piece QR tag or barcode in front of camera.</div>
-            </div>
-        </div>
-    </div>
-</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -728,54 +709,6 @@ document.addEventListener('DOMContentLoaded', function() {
         hiddenItemsJson.value = JSON.stringify(queue);
     });
 
-    // ==========================================
-    // HTML5 Camera QR/Barcode Scanner
-    // ==========================================
-    let html5QrCode = null;
-    const cameraModalEl = document.getElementById('cameraScanModal');
-
-    function startCameraScanner() {
-        const readerEl = document.getElementById('reader');
-        readerEl.innerHTML = '<div class="text-white-50 p-4"><div class="spinner-border text-warning spinner-border-sm me-2"></div>Initializing camera feed...</div>';
-
-        if (typeof Html5Qrcode !== 'undefined') {
-            html5QrCode = new Html5Qrcode("reader");
-            const config = { fps: 15, qrbox: { width: 250, height: 250 } };
-
-            const startWithFacingMode = (facing) => {
-                return html5QrCode.start(
-                    { facingMode: facing },
-                    config,
-                    (decodedText, decodedResult) => {
-                        // Success callback
-                        lookupProduct(decodedText);
-                        
-                        // Close modal
-                        const modalInstance = bootstrap.Modal.getInstance(cameraModalEl);
-                        if (modalInstance) modalInstance.hide();
-                        
-                        // Stop camera
-                        html5QrCode.stop().then(() => {
-                            html5QrCode.clear();
-                        }).catch(err => {});
-                    },
-                    (errorMessage) => {
-                        // ignore scan failure frames
-                    }
-                );
-            };
-
-            // Try environment (back camera) first, fallback to user (front camera)
-            startWithFacingMode("environment").catch(err => {
-                startWithFacingMode("user").catch(err2 => {
-                    readerEl.innerHTML = '<div class="text-danger p-3"><i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>Unable to access camera: ' + (err2.message || err2) + '<br><small class="text-muted">Please ensure camera permissions are granted or use manual barcode scan.</small></div>';
-                });
-            });
-        } else {
-            readerEl.innerHTML = '<div class="text-warning p-3"><i class="bi bi-exclamation-circle fs-3 d-block mb-2"></i>QR Scanner library not loaded. Please use the barcode input box.</div>';
-        }
-    }
-
     // Photo preview listener
     const photoInput = document.getElementById('damagePhotoInput');
     const photoContainer = document.getElementById('photoPreviewContainer');
@@ -802,18 +735,5 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    cameraModalEl.addEventListener('shown.bs.modal', function() {
-        startCameraScanner();
-    });
-
-    cameraModalEl.addEventListener('hidden.bs.modal', function() {
-        if (html5QrCode) {
-            try {
-                html5QrCode.stop().then(() => {
-                    html5QrCode.clear();
-                }).catch(err => {});
-            } catch(e) {}
-        }
-    });
 });
 </script>

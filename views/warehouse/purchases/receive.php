@@ -7,9 +7,6 @@
         <button onclick="window.print()" class="btn btn-success shadow-sm">
             <i class="bi bi-printer me-1"></i> Print Tax Invoice
         </button>
-        <a href="<?= url('warehouse/purchases/edit/' . $po['id']) ?>" class="btn btn-outline-primary">
-            <i class="bi bi-pencil me-1"></i> Edit Order
-        </a>
         <a href="<?= url('warehouse/purchases') ?>" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i> Back to Direct Purchases
         </a>
@@ -106,7 +103,7 @@
             <thead class="table-light">
                 <tr>
                     <th style="width: 4%;">#</th>
-                    <th style="width: 34%;">Product &amp; SKU Description</th>
+                    <th style="width: 34%;">Product Description</th>
                     <th class="text-center" style="width: 10%;">Size / Color</th>
                     <th class="text-center" style="width: 7%;">Qty</th>
                     <th class="text-end" style="width: 11%;">Rate (₹)</th>
@@ -143,9 +140,8 @@
                         <td>
                             <div class="fw-bold text-dark"><?= e($item['product_name']) ?></div>
                             <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
-                                <span class="badge bg-dark text-white font-monospace fs-8">SKU: <?= e($item['sku']) ?></span>
                                 <?php if (!empty($item['batch_lot_no'])): ?>
-                                    <span class="badge bg-success font-monospace fs-8 text-white"><i class="bi bi-qr-code-scan me-1"></i>Piece: <?= e($item['batch_lot_no']) ?></span>
+                                    <span class="badge bg-success font-monospace fs-8 text-white"><i class="bi bi-qr-code-scan me-1"></i>QR: <?= e($item['batch_lot_no']) ?></span>
                                 <?php elseif (!empty($item['qr_code'])): ?>
                                     <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace fs-8"><i class="bi bi-qr-code me-1"></i><?= e($item['qr_code']) ?></span>
                                 <?php endif; ?>

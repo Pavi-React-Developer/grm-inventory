@@ -367,9 +367,6 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
                                     Scan QR tag / barcode or type product code / SKU / name — <kbd class="bg-dark text-warning border border-secondary px-1 py-0" style="font-size:0.7rem;">Alt + S</kbd> to focus
                                 </span>
                             </div>
-                            <button type="button" class="btn btn-xs btn-outline-light py-0.5 px-2" data-bs-toggle="modal" data-bs-target="#cameraScanModal">
-                                <i class="bi bi-camera-video me-1 text-warning"></i> Camera Scanner
-                            </button>
                         </div>
                         
                         <!-- Search & Scanner Input with Floating Auto-Suggest Dropdown -->
@@ -434,7 +431,7 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
                                         $unitPrice = $isComp ? 0.00 : (float)$item['unit_price'];
                                         $mrp = $isComp ? 0.00 : (float)($item['mrp'] ?? ($selectedVariant['selling_price'] > 0 ? $selectedVariant['selling_price'] : ($selectedVariant['mrp'] ?? $unitPrice)));
                                         if (!$isComp && $mrp <= 0) $mrp = $unitPrice;
-                                        $gstRate = $isComp ? 0.0 : (float)($item['gst_percentage'] ?? ($selectedVariant['gst_rate'] ?? 5));
+                                        $gstRate = $isComp ? 0.0 : ((float)($item['gst_percentage'] ?? 0) > 0 ? (float)$item['gst_percentage'] : (float)($selectedVariant['gst_rate'] ?? 5));
                                         $itemQty = (float)($item['quantity'] ?? 1);
                                         
                                         // Inclusive GST & line math:
@@ -634,26 +631,6 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
         </div>
     </div>
 </form>
-
-<!-- ========================================================================= -->
-<!-- MODAL: CAMERA QR / BARCODE SCANNER -->
-<!-- ========================================================================= -->
-<div class="modal fade" id="cameraScanModal" tabindex="-1" aria-labelledby="cameraScanModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-dark text-white py-2 px-3">
-                <h6 class="modal-title" id="cameraScanModalLabel"><i class="bi bi-camera me-1.5 text-warning"></i>Camera QR Scanner</h6>
-                <button type="button" class="btn-close btn-close-white btn-sm" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center p-2.5">
-                <div id="reader" style="width: 100%; min-height: 240px; background: #000; border-radius: 6px;"></div>
-                <div class="mt-1.5 text-muted small" style="font-size: 0.75rem;">Hold QR tag or barcode in front of camera</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-
 
 <style>
 .search-result-item {
@@ -1442,7 +1419,8 @@ function onRowPriceChange(priceEl) {
     }
     
     const qty = parseFloat(qtyInput ? qtyInput.value : 1) || 1;
-    const gstRate = isComp ? 0.0 : (parseFloat(gstInput ? gstInput.value : 5.0) || 5.0);
+    const gstValue = parseFloat(gstInput ? gstInput.value : 5.0);
+    const gstRate = isComp ? 0.0 : (Number.isFinite(gstValue) ? gstValue : 5.0);
     
     const lineBilledTotal = Math.max(0, billed * qty);
     const lineMrpGross = mrp * qty;
@@ -2049,7 +2027,8 @@ function calculateTotals() {
             if (mrpEl) mrpEl.value = mrp.toFixed(2);
         }
         const qty = parseFloat(qtyEl ? qtyEl.value : 1) || 1;
-        const gstRate = parseFloat(gstEl ? gstEl.value : 5.0) || 5.0;
+        const gstValue = parseFloat(gstEl ? gstEl.value : 5.0);
+        const gstRate = Number.isFinite(gstValue) ? gstValue : 5.0;
 
         const lineMrpGross = mrp * qty;
         const lineBilledTotal = Math.max(0, billed * qty);
@@ -2260,36 +2239,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, true);
 
-    // Camera Scanner
-    let html5QrCode = null;
-    const cameraModalEl = document.getElementById('cameraScanModal');
-    if (cameraModalEl) {
-        cameraModalEl.addEventListener('shown.bs.modal', function() {
-            if (typeof Html5Qrcode !== 'undefined') {
-                html5QrCode = new Html5Qrcode("reader");
-                const config = { fps: 10, qrbox: { width: 220, height: 220 } };
-                html5QrCode.start(
-                    { facingMode: "environment" },
-                    config,
-                    (decodedText) => {
-                        handleScanInput(decodedText);
-                        const modalInstance = bootstrap.Modal.getInstance(cameraModalEl);
-                        if (modalInstance) modalInstance.hide();
-                        html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
-                    },
-                    () => {}
-                ).catch(err => {
-                    document.getElementById('reader').innerHTML = '<div class="text-danger p-3 small">Camera access failed: ' + err + '</div>';
-                });
-            }
-        });
-
-        cameraModalEl.addEventListener('hidden.bs.modal', function() {
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
-            }
-        });
-    }
 });
 
 // Customer Profile & Purchase History Modal Handlers

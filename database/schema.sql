@@ -665,6 +665,7 @@ CREATE TABLE `exchange_items` (
   `quantity` int NOT NULL,
   `unit_price` decimal(10,2) NOT NULL,
   `total_amount` decimal(10,2) NOT NULL,
+  `piece_tag` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `exchange_id` (`exchange_id`),
   KEY `variant_id` (`variant_id`),
@@ -950,6 +951,7 @@ CREATE TABLE `production_batch_items` (
   `production_batch_id` int unsigned NOT NULL,
   `variant_id` int unsigned NOT NULL,
   `quantity` int NOT NULL DEFAULT '0',
+  `piece_tags` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `received_qty` int NOT NULL DEFAULT '0',
   `damaged_qty` int NOT NULL DEFAULT '0',
   `missing_qty` int NOT NULL DEFAULT '0',
@@ -2321,7 +2323,7 @@ CREATE TABLE `warehouse_sub_subcategories` (
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `code` (`code`),
-  UNIQUE KEY `slug` (`slug`),
+  UNIQUE KEY `unique_subcat_slug` (`subcategory_id`, `slug`),
   KEY `subcategory_id` (`subcategory_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -2344,7 +2346,7 @@ CREATE TABLE `warehouse_subcategories` (
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `code` (`code`),
-  UNIQUE KEY `slug` (`slug`),
+  UNIQUE KEY `unique_category_slug` (`category_id`, `slug`),
   KEY `category_id` (`category_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -2356,6 +2358,7 @@ CREATE TABLE `warehouse_suppliers` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `company` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `brand_id` int unsigned DEFAULT NULL,
   `phone` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `email` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `gst_number` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
@@ -2368,7 +2371,8 @@ CREATE TABLE `warehouse_suppliers` (
   `is_active` tinyint(1) DEFAULT '1',
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_warehouse_suppliers_brand` (`brand_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------

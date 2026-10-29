@@ -4,9 +4,6 @@
         
     </div>
     <div class="d-flex gap-2">
-        <a href="<?= url('warehouse/purchases/returns') ?>" class="btn btn-outline-danger shadow-sm fw-semibold">
-            <i class="bi bi-arrow-repeat me-1"></i> Returns &amp; Exchanges
-        </a>
         <?php if (hasPermission('purchases', 'create')): ?>
         <a href="<?= url('warehouse/purchases/create') ?>" class="btn btn-primary shadow-sm">
             <i class="bi bi-plus-circle me-1"></i> New Direct Customer Purchase
@@ -81,9 +78,6 @@
 <!-- ========================================================================= -->
 <div class="card border-0 shadow-sm mb-4 bg-white rounded-3">
     <div class="card-body">
-        <?php 
-        $hasActiveFilter = !empty($search) || !empty($customerId) || !empty($warehouseId) || !empty($status);
-        ?>
         <form id="purchaseFilterForm" method="GET" action="<?= url('warehouse/purchases') ?>" class="row g-3 align-items-end">
             <div class="col-md-4">
                 <label class="form-label small fw-semibold d-flex align-items-center justify-content-between">
@@ -142,19 +136,19 @@
                 </select>
             </div>
             <div class="col-md-1">
-                <a href="<?= url('warehouse/purchases') ?>" 
-                   class="btn btn-sm w-100 <?= $hasActiveFilter ? 'btn-outline-danger' : 'btn-light text-muted disabled' ?>" 
+                <button type="button" onclick="resetPurchaseFilters()"
+                   class="btn btn-sm btn-outline-secondary w-100"
                    title="Clear all active filters" 
                    style="height: 31px; display: flex; align-items: center; justify-content: center;">
                     <i class="bi bi-arrow-clockwise me-1"></i> Reset
-                </a>
+                </button>
             </div>
         </form>
     </div>
 </div>
 
 <!-- ========================================================================= -->
-<!-- SEPARATE TABS: 1. REGULAR BUY CUSTOMERS  |  2. ONE-TIME PURCHASES -->
+<!-- SEPARATE TABS: 1. ALL INVOICES | 2. ONE-TIME PURCHASES | 3. REGULAR CUSTOMERS -->
 <!-- ========================================================================= -->
 <?php 
 $regularCount = count($regularCustomers ?? []);
@@ -165,13 +159,13 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
     <!-- View Mode Tabs Bar -->
     <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
         <ul class="nav nav-pills gap-2" id="customerCategoryTabs" role="tablist">
-            <!-- TAB 1: REGULAR CUSTOMERS (FIRST) -->
+            <!-- TAB 1: ALL INVOICES -->
             <li class="nav-item" role="presentation">
                 <button class="nav-link active py-2 px-3 fw-semibold small shadow-sm d-flex align-items-center gap-1.5" 
-                        id="tab-regular-btn" data-bs-toggle="pill" data-bs-target="#tab-regular-pane" type="button" role="tab">
-                    <i class="bi bi-arrow-repeat text-white fs-6"></i>
-                    <span>Regular Customers (Repeat Buyers)</span>
-                    <span class="badge bg-white text-primary rounded-pill ms-1 fw-bold"><?= $regularCount ?></span>
+                        id="tab-all-btn" data-bs-toggle="pill" data-bs-target="#tab-all-pane" type="button" role="tab">
+                    <i class="bi bi-receipt me-1 text-white"></i>
+                    <span>All Invoices (Order-by-Order)</span>
+                    <span class="badge bg-white text-primary rounded-pill ms-1 fw-bold"><?= count($purchases ?? []) ?></span>
                 </button>
             </li>
             
@@ -185,13 +179,13 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                 </button>
             </li>
 
-            <!-- TAB 3: ALL ORDERS LOG (OPTIONAL CONSOLIDATED) -->
+            <!-- TAB 3: REGULAR CUSTOMERS -->
             <li class="nav-item" role="presentation">
                 <button class="nav-link py-2 px-3 fw-semibold small text-secondary border bg-light d-flex align-items-center gap-1.5" 
-                        id="tab-all-btn" data-bs-toggle="pill" data-bs-target="#tab-all-pane" type="button" role="tab">
-                    <i class="bi bi-receipt me-1 text-success"></i>
-                    <span>All Invoices (Order-by-Order)</span>
-                    <span class="badge bg-secondary-subtle text-secondary rounded-pill ms-1"><?= count($purchases ?? []) ?></span>
+                        id="tab-regular-btn" data-bs-toggle="pill" data-bs-target="#tab-regular-pane" type="button" role="tab">
+                    <i class="bi bi-arrow-repeat me-1 text-primary fs-6"></i>
+                    <span>Regular Customers (Repeat Buyers)</span>
+                    <span class="badge bg-secondary text-white rounded-pill ms-1"><?= $regularCount ?></span>
                 </button>
             </li>
         </ul>
@@ -201,9 +195,9 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
         <div class="tab-content" id="customerCategoryTabContent">
             
             <!-- ============================================================= -->
-            <!-- TAB 1: REGULAR BUY CUSTOMERS LIST (FIRST) -->
+            <!-- TAB 3: REGULAR BUY CUSTOMERS LIST -->
             <!-- ============================================================= -->
-            <div class="tab-pane fade show active" id="tab-regular-pane" role="tabpanel">
+            <div class="tab-pane fade" id="tab-regular-pane" role="tabpanel">
                 <?php if (empty($regularCustomers)): ?>
                     <div class="text-center py-5">
                         <div class="rounded-circle bg-light d-inline-flex p-3 mb-2 text-muted">
@@ -301,34 +295,14 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                                     <i class="bi bi-person-lines-fill me-1"></i> Profile
                                                 </button>
                                                 
-                                                <!-- Separate Invoices Dropdown -->
-                                                <div class="btn-group btn-group-sm">
-                                                    <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="View Invoices Separately">
-                                                        <i class="bi bi-receipt me-1"></i> Invoices
-                                                    </button>
-                                                    <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size: 0.82rem; min-width: 230px;">
-                                                        <li class="dropdown-header small fw-semibold text-muted">Separate Tax Invoices (<?= count($cust['invoices']) ?>)</li>
-                                                        <?php foreach ($cust['invoices'] as $inv): ?>
-                                                            <li>
-                                                                <a class="dropdown-item d-flex align-items-center justify-content-between py-1.5" 
-                                                                   href="<?= url('warehouse/purchases/receive/' . $inv['id']) ?>" 
-                                                                   target="_blank">
-                                                                    <span class="font-monospace fw-bold me-2"><i class="bi bi-file-earmark-text text-primary me-1"></i><?= e($inv['po_number']) ?></span>
-                                                                    <span class="badge bg-success-subtle text-success">₹<?= number_format($inv['total_amount'], 2) ?></span>
-                                                                </a>
-                                                            </li>
-                                                        <?php endforeach; ?>
-                                                    </ul>
-                                                </div>
-
-                                                <!-- New Purchase -->
-                                                <?php if (hasPermission('purchases', 'create')): ?>
-                                                <a href="<?= url('warehouse/purchases/create?customer_id=' . $cust['customer_id']) ?>" 
-                                                   class="btn btn-outline-secondary" 
-                                                   title="New Purchase for this Customer">
-                                                    <i class="bi bi-cart-plus"></i>
-                                                </a>
-                                                <?php endif; ?>
+                                                <button type="button"
+                                                        class="btn btn-outline-primary"
+                                                        data-customer-name="<?= e($cust['customer_name']) ?>"
+                                                        data-invoices="<?= e(json_encode($cust['invoices'], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP)) ?>"
+                                                        onclick="openCustomerInvoicesModal(this)"
+                                                        title="View this customer's invoices">
+                                                    <i class="bi bi-receipt me-1"></i> Invoices
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -468,9 +442,9 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
             </div>
 
             <!-- ============================================================= -->
-            <!-- TAB 3: ALL INDIVIDUAL INVOICES (CONSOLIDATED LOG) -->
+            <!-- TAB 1: ALL INDIVIDUAL INVOICES (CONSOLIDATED LOG) -->
             <!-- ============================================================= -->
-            <div class="tab-pane fade" id="tab-all-pane" role="tabpanel">
+            <div class="tab-pane fade show active" id="tab-all-pane" role="tabpanel">
                 <?php if (empty($purchases)): ?>
                     <div class="text-center py-5">
                         <i class="bi bi-bag-x fs-1 text-muted d-block mb-3"></i>
@@ -602,6 +576,26 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                 <?php endif; ?>
             </div>
 
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- CUSTOMER INVOICES QUICK VIEW MODAL -->
+<!-- ========================================================================= -->
+<div class="modal fade" id="customerInvoicesModal" tabindex="-1" aria-labelledby="customerInvoicesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-light">
+                <div>
+                    <h5 class="modal-title fw-bold" id="customerInvoicesModalLabel">Customer Invoices</h5>
+                    <div class="small text-muted" id="customerInvoicesModalCustomer"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-2">
+                <div id="customerInvoicesModalList" class="list-group list-group-flush"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -891,6 +885,43 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
 let currentLoadedCustomer = null;
 let currentLoadedProducts = [];
 let currentLoadedOrders = [];
+
+function openCustomerInvoicesModal(button) {
+    const modalEl = document.getElementById('customerInvoicesModal');
+    const listEl = document.getElementById('customerInvoicesModalList');
+    const customerEl = document.getElementById('customerInvoicesModalCustomer');
+    let invoices = [];
+
+    try {
+        invoices = JSON.parse(button.dataset.invoices || '[]');
+        if (!Array.isArray(invoices)) throw new Error('Invoice list is not an array.');
+    } catch (error) {
+        console.error('Unable to read customer invoices:', error);
+        listEl.innerHTML = '<div class="text-danger text-center small py-3">Unable to load this invoice list.</div>';
+        customerEl.textContent = button.dataset.customerName || '';
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        return;
+    }
+
+    customerEl.textContent = button.dataset.customerName || '';
+    if (invoices.length === 0) {
+        listEl.innerHTML = '<div class="text-muted text-center small py-3">No invoices found for this customer.</div>';
+    } else {
+        listEl.innerHTML = invoices.map(invoice => `
+            <a href="<?= url('warehouse/purchases/receive/') ?>${encodeURIComponent(invoice.id)}"
+               target="_blank" rel="noopener"
+               class="list-group-item list-group-item-action d-flex align-items-center justify-content-between gap-2 py-2">
+                <span class="min-w-0">
+                    <span class="d-block fw-semibold font-monospace text-primary small">${escapeHtml(invoice.po_number || 'Invoice')}</span>
+                    <span class="d-block text-muted" style="font-size: 0.72rem;">${escapeHtml(formatDate(invoice.order_date))}</span>
+                </span>
+                <span class="badge rounded-pill bg-success-subtle text-success flex-shrink-0">₹${Number(invoice.total_amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </a>
+        `).join('');
+    }
+
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+}
 
 function openCustomerProfileModal(customerId, customerName = '') {
     if (!customerId) return;
@@ -1248,6 +1279,12 @@ function autoTriggerFilter() {
     if (form) {
         form.submit();
     }
+}
+
+function resetPurchaseFilters() {
+    clearTimeout(searchDebounceTimer);
+    sessionStorage.removeItem('purchases_search_focused');
+    window.location.assign('<?= url("warehouse/purchases") ?>');
 }
 
 function clearSearchFilter() {

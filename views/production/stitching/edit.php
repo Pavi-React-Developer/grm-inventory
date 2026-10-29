@@ -324,12 +324,12 @@
                                         <td>
                                             <input type="number" name="items[<?= $idx ?>][base_price]" 
                                                 class="form-control form-control-sm text-center stitching-base-price-input" 
-                                                min="0.01" step="0.01" value="<?= $basePriceVal ?>" placeholder="0.00" required oninput="this.classList.remove('is-invalid', 'border-danger')">
+                                                min="0.01" step="0.01" value="<?= $basePriceVal ?>" placeholder="0.00" required oninput="validateStitchingPricePair(this.closest('tr'))">
                                         </td>
                                         <td>
                                             <input type="number" name="items[<?= $idx ?>][discount_price]" 
                                                 class="form-control form-control-sm text-center stitching-discount-price-input" 
-                                                min="0.01" step="0.01" value="<?= $discountPriceVal ?>" placeholder="0.00" required oninput="this.classList.remove('is-invalid', 'border-danger')">
+                                                min="0.01" step="0.01" value="<?= $discountPriceVal ?>" placeholder="0.00" required oninput="validateStitchingPricePair(this.closest('tr'))">
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -530,6 +530,31 @@ function onCatalogPriceDropdownChange(targetCatalog) {
     }
 }
 
+function validateStitchingPricePair(row) {
+    if (!row) return true;
+    const baseInput = row.querySelector('.stitching-base-price-input');
+    const discountInput = row.querySelector('.stitching-discount-price-input');
+    if (!baseInput || !discountInput) return true;
+
+    const basePrice = parseFloat(baseInput.value);
+    const discountPrice = parseFloat(discountInput.value);
+    const pricesEntered = baseInput.value.trim() !== '' && discountInput.value.trim() !== ''
+        && Number.isFinite(basePrice) && Number.isFinite(discountPrice);
+    const isInvalid = pricesEntered && discountPrice >= basePrice;
+
+    baseInput.classList.toggle('is-invalid', isInvalid);
+    baseInput.classList.toggle('border-danger', isInvalid);
+    discountInput.classList.toggle('is-invalid', isInvalid);
+    discountInput.classList.toggle('border-danger', isInvalid);
+    if (isInvalid) {
+        discountInput.setCustomValidity('Discount Price must be less than Base Price.');
+    } else {
+        discountInput.setCustomValidity('');
+    }
+
+    return !isInvalid;
+}
+
 function applyQuickPricesFromBar() {
     const catSelect = document.getElementById('quickPriceCatalogSelect');
     const targetCatalog = catSelect ? catSelect.value : 'ALL';
@@ -539,18 +564,16 @@ function applyQuickPricesFromBar() {
     let baseVal = parseFloat(baseInp?.value) || 0;
     let discVal = parseFloat(discInp?.value) || 0;
 
-    if (baseVal <= 0 && discVal <= 0) {
-        alert('Please enter a valid Base Price (₹) or Discount Price (₹) greater than 0.');
+    if (baseVal <= 0 || discVal <= 0) {
+        alert('Enter both prices. Discount Price must be less than Base Price.');
         if (baseInp) baseInp.focus();
         return;
     }
 
-    if (baseVal > 0 && discVal <= 0) {
-        discVal = baseVal;
-        if (discInp) discInp.value = discVal.toFixed(2);
-    } else if (discVal > 0 && baseVal <= 0) {
-        baseVal = discVal;
-        if (baseInp) baseInp.value = baseVal.toFixed(2);
+    if (discVal >= baseVal) {
+        alert('Discount Price must be less than Base Price.');
+        if (discInp) discInp.focus();
+        return;
     }
 
     let appliedCount = 0;
@@ -571,6 +594,7 @@ function applyQuickPricesFromBar() {
                 dInp.classList.add('bg-success-subtle');
                 setTimeout(() => dInp.classList.remove('bg-success-subtle'), 1200);
             }
+            validateStitchingPricePair(tr);
             appliedCount++;
         }
     });
@@ -588,8 +612,12 @@ function applyQuickPriceToCatalog(catalogName, baseInputId, discInputId) {
     const baseVal = parseFloat(document.getElementById(baseInputId)?.value) || 0;
     const discVal = parseFloat(document.getElementById(discInputId)?.value) || 0;
 
-    if (baseVal <= 0 && discVal <= 0) {
-        alert('Please enter a valid Base Price or Discount Price greater than 0.');
+    if (baseVal <= 0 || discVal <= 0) {
+        alert('Enter both prices. Discount Price must be less than Base Price.');
+        return;
+    }
+    if (discVal >= baseVal) {
+        alert('Discount Price must be less than Base Price.');
         return;
     }
 
@@ -607,6 +635,7 @@ function applyQuickPriceToCatalog(catalogName, baseInputId, discInputId) {
                 discInp.value = discVal.toFixed(2);
                 discInp.classList.remove('is-invalid', 'border-danger');
             }
+            validateStitchingPricePair(tr);
             appliedCount++;
         }
     });
@@ -692,6 +721,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     discountPriceInp?.classList.add('is-invalid', 'border-danger');
                 } else {
                     discountPriceInp?.classList.remove('is-invalid', 'border-danger');
+                }
+
+                if (bpVal > 0 && dpVal > 0 && dpVal >= bpVal) {
+                    e.preventDefault();
+                    basePriceInp?.classList.add('is-invalid', 'border-danger');
+                    discountPriceInp?.classList.add('is-invalid', 'border-danger');
+                    alert(`Row #${i + 1} (${variantLabel}): Discount Price must be less than Base Price.`);
+                    discountPriceInp?.focus();
+                    return false;
                 }
 
                 if (missingFields.length > 0) {

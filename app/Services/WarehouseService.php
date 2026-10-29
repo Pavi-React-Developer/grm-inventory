@@ -113,7 +113,7 @@ class WarehouseService {
         $matchedItem = null;
 
         if ($isMasterCarton) {
-            // Master carton QR received: bulk increment all variants to expected quantity
+            // Master carton QR received: verify only the quantities assigned to this production batch.
             foreach ($items as $item) {
                 $vid = (int)$item['variant_id'];
                 $scannedMap[$vid] = (int)$item['quantity'];
@@ -124,36 +124,40 @@ class WarehouseService {
                 $itemSku = trim($item['sku'] ?? '');
                 $itemQr = trim($item['qr_code'] ?? '');
                 $varId = (string)($item['variant_id'] ?? '');
+                $outwardPieceTags = array_values(array_filter(array_map(
+                    static fn($tag) => strtoupper(trim((string)$tag)),
+                    is_array($item['outward_piece_tags'] ?? null) ? $item['outward_piece_tags'] : []
+                )));
 
-                $isMatch = (
-                    ($itemQr !== '' && strcasecmp($itemQr, $scannedCode) === 0) ||
-                    ($itemQr !== '' && strcasecmp($itemQr, $extractedCode) === 0) ||
-                    ($itemSku !== '' && strcasecmp($itemSku, $scannedCode) === 0) ||
-                    ($itemSku !== '' && strcasecmp($itemSku, $extractedCode) === 0) ||
-                    ($extractedSku !== '' && strcasecmp($itemSku, $extractedSku) === 0) ||
-                    $varId === $scannedCode ||
-                    $varId === $extractedCode
-                );
-
-                // Match by exact production piece tag code
-                if (!$isMatch && !empty($item['piece_tags'])) {
-                    $pieceUpper = array_map('strtoupper', $item['piece_tags']);
-                    if (in_array(strtoupper($scannedCode), $pieceUpper) || (!empty($extractedTag) && in_array(strtoupper($extractedTag), $pieceUpper))) {
-                        $isMatch = true;
+                $scannedPieceTag = $extractedTag !== '' ? $extractedTag : $scannedCode;
+                $looksLikePieceTag = preg_match('/^[A-Z]{2,}\d{4,}$/i', $scannedPieceTag) === 1;
+                if ($extractedTag !== '' || $looksLikePieceTag) {
+                    if (!empty($outwardPieceTags)) {
+                        $isMatch = in_array(strtoupper($scannedPieceTag), $outwardPieceTags, true);
+                    } else {
+                        $legacyPieceTags = array_values(array_filter(array_map(
+                            static fn($tag) => strtoupper(trim((string)$tag)),
+                            is_array($item['piece_tags'] ?? null) ? $item['piece_tags'] : []
+                        )));
+                        $isMatch = in_array(strtoupper($scannedPieceTag), $legacyPieceTags, true);
                     }
+                } else {
+                    $isMatch = (
+                        ($itemQr !== '' && strcasecmp($itemQr, $scannedCode) === 0) ||
+                        ($itemQr !== '' && strcasecmp($itemQr, $extractedCode) === 0) ||
+                        ($itemSku !== '' && strcasecmp($itemSku, $scannedCode) === 0) ||
+                        ($itemSku !== '' && strcasecmp($itemSku, $extractedCode) === 0) ||
+                        ($extractedSku !== '' && strcasecmp($itemSku, $extractedSku) === 0) ||
+                        $varId === $scannedCode ||
+                        $varId === $extractedCode
+                    );
                 }
 
-                // Match by start/end code sequence range
-                if (!$isMatch && !empty($item['start_seq']) && !empty($item['end_seq'])) {
-                    $testCodes = array_filter([$scannedCode, $extractedCode, $extractedTag]);
-                    foreach ($testCodes as $tc) {
-                        if (preg_match('/(\d+)$/', $tc, $mNum)) {
-                            $seq = (int)$mNum[1];
-                            if ($seq >= (int)$item['start_seq'] && $seq <= (int)$item['end_seq']) {
-                                $isMatch = true;
-                                break;
-                            }
-                        }
+                // Legacy batches without an assigned tag list may still match their saved sequence range.
+                if (!$isMatch && empty($outwardPieceTags) && $looksLikePieceTag && !empty($item['start_seq']) && !empty($item['end_seq'])) {
+                    if (preg_match('/(\d+)$/', $scannedPieceTag, $mNum)) {
+                        $seq = (int)$mNum[1];
+                        $isMatch = $seq >= (int)$item['start_seq'] && $seq <= (int)$item['end_seq'];
                     }
                 }
 
@@ -165,7 +169,7 @@ class WarehouseService {
             }
 
             // Fallback match for single-item batches or partial matches
-            if (!$matchedVariantId && count($items) === 1) {
+            if (!$matchedVariantId && count($items) === 1 && !$looksLikePieceTag) {
                 $matchedVariantId = (int)$items[0]['variant_id'];
                 $matchedItem = $items[0];
             }
@@ -179,6 +183,16 @@ class WarehouseService {
                 ];
             }
 
+            $expectedCount = max(0, (int)$matchedItem['quantity']);
+            if ($expectedCount === 0) {
+                return [
+                    'success' => false,
+                    'message' => "No outwarded pieces are available for {$matchedItem['sku']} in this batch.",
+                    'matched_item' => $matchedItem,
+                    'scanned_map' => $scannedMap,
+                ];
+            }
+
             $isSeriesOrComp = (!empty($matchedItem['is_series']) || !empty($matchedItem['is_complementary']) || ($matchedItem['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($matchedItem['pack_quantity'] ?? 1) > 1);
             if ($isSeriesOrComp) {
                 // Single scan inwards ALL counts for series and complementary products
@@ -186,7 +200,15 @@ class WarehouseService {
                 $scanMessage = "Scanned {$matchedItem['sku']} (All counts inwarded: +{$matchedItem['quantity']} pcs)";
             } else {
                 // Normal products: 1 piece per scan
-                $currentCount = (int)($scannedMap[$matchedVariantId] ?? 0);
+                $currentCount = max(0, min($expectedCount, (int)($scannedMap[$matchedVariantId] ?? 0)));
+                if ($currentCount >= $expectedCount) {
+                    return [
+                        'success' => false,
+                        'message' => "All {$expectedCount} outwarded pieces for {$matchedItem['sku']} have already been scanned.",
+                        'matched_item' => $matchedItem,
+                        'scanned_map' => $scannedMap,
+                    ];
+                }
                 $scannedMap[$matchedVariantId] = $currentCount + 1;
                 $scanMessage = "Scanned {$matchedItem['sku']} (+1 pc)";
             }
@@ -201,7 +223,7 @@ class WarehouseService {
         foreach ($items as $item) {
             $vid = (int)$item['variant_id'];
             $expected = (int)$item['quantity'];
-            $scanned = (int)($scannedMap[$vid] ?? 0);
+            $scanned = max(0, min($expected, (int)($scannedMap[$vid] ?? 0)));
             $diff = $scanned - $expected;
 
             $totalExpected += $expected;
@@ -241,7 +263,7 @@ class WarehouseService {
         }
 
         $overallDiff = $totalScanned - $totalExpected;
-        $isComplete = empty($missingItems) && $totalScanned >= $totalExpected;
+        $isComplete = empty($missingItems) && $totalScanned === $totalExpected;
 
         return [
             'success'          => true,
@@ -296,6 +318,7 @@ class WarehouseService {
             // Process stock inward for each variant in batch
             foreach ($items as $item) {
                 $vid = (int)$item['variant_id'];
+                $itemReceivedData = $receivedItems[$vid] ?? [];
                 $expectedQty = (float)$item['quantity'];
                 $totalExpected += $expectedQty;
 
@@ -303,12 +326,37 @@ class WarehouseService {
                 $prevDamagedQty = (float)($item['damaged_qty'] ?? 0);
 
                 if ($receivedItems !== null && isset($receivedItems[$vid])) {
-                    $acceptedQty = (float)($receivedItems[$vid]['received_qty'] ?? $receivedItems[$vid]['accepted_qty'] ?? 0);
-                    $damagedQty = (float)($receivedItems[$vid]['damaged_qty'] ?? 0);
+                    $acceptedQty = (float)($itemReceivedData['received_qty'] ?? $itemReceivedData['accepted_qty'] ?? 0);
+                    $damagedQty = (float)($itemReceivedData['damaged_qty'] ?? 0);
                 } else {
                     // Default to full received qty
                     $acceptedQty = $expectedQty;
                     $damagedQty = 0;
+                }
+
+                if ($acceptedQty < 0 || $damagedQty < 0 || ($acceptedQty + $damagedQty) > $expectedQty) {
+                    throw new Exception("Inward quantity for SKU {$item['sku']} cannot exceed the {$expectedQty} pieces dispatched for this batch.");
+                }
+                if (floor($acceptedQty) !== $acceptedQty || floor($damagedQty) !== $damagedQty) {
+                    throw new Exception("Inward quantities for SKU {$item['sku']} must be whole pieces.");
+                }
+
+                $receivedTagList = array_values(array_filter(array_map('trim', explode(',', (string)($itemReceivedData['received_tags'] ?? '')))));
+                $damagedTagList = array_values(array_filter(array_map('trim', explode(',', (string)($itemReceivedData['damaged_tags'] ?? '')))));
+                $outwardPieceTags = array_values(array_filter(array_map(
+                    static fn($tag) => strtoupper(trim((string)$tag)),
+                    is_array($item['outward_piece_tags'] ?? null) ? $item['outward_piece_tags'] : []
+                )));
+                $reportedPieceTags = array_map('strtoupper', array_merge($receivedTagList, $damagedTagList));
+                if (
+                    count($receivedTagList) !== count(array_unique(array_map('strtoupper', $receivedTagList)))
+                    || count($damagedTagList) !== count(array_unique(array_map('strtoupper', $damagedTagList)))
+                    || count($receivedTagList) > $acceptedQty
+                    || count($damagedTagList) > $damagedQty
+                    || array_intersect(array_map('strtoupper', $receivedTagList), array_map('strtoupper', $damagedTagList))
+                    || (!empty($outwardPieceTags) && array_diff($reportedPieceTags, $outwardPieceTags))
+                ) {
+                    throw new Exception("Piece QR codes for SKU {$item['sku']} do not match the verified inward quantities.");
                 }
 
                 $missingQty = max(0, (int)($expectedQty - ($acceptedQty + $damagedQty)));
@@ -321,10 +369,12 @@ class WarehouseService {
                 }
 
                 // Extract or resolve actual piece QR codes for received and damaged garments
-                $itemRecvTags = trim($receivedItems[$vid]['received_tags'] ?? '');
-                $itemDmgTags = trim($receivedItems[$vid]['damaged_tags'] ?? '');
+                $itemRecvTags = trim($itemReceivedData['received_tags'] ?? '');
+                $itemDmgTags = trim($itemReceivedData['damaged_tags'] ?? '');
 
-                $pieceTags = !empty($item['piece_tags']) ? $item['piece_tags'] : [];
+                $pieceTags = !empty($item['outward_piece_tags'])
+                    ? $item['outward_piece_tags']
+                    : (!empty($item['piece_tags']) ? $item['piece_tags'] : []);
                 if (empty($itemRecvTags) && !empty($pieceTags) && $acceptedQty > 0) {
                     $recvList = array_slice($pieceTags, 0, (int)$acceptedQty);
                     $itemRecvTags = implode(',', $recvList);
@@ -499,6 +549,32 @@ class WarehouseService {
     // 2. EXTERNAL PURCHASES & SUPPLIER GRN
     // =========================================================================
 
+    private static function isDirectPurchaseFulfilled(array $poData): bool {
+        return in_array(strtoupper(trim((string)($poData['status'] ?? ''))), ['COMPLETED', 'DISPATCHED', 'RECEIVED'], true);
+    }
+
+    private static function applyDirectPurchaseStock(array $items, int $poId, int $warehouseId, int $userId, string $poNumber): void {
+        foreach ($items as $item) {
+            $quantity = (float)($item['quantity'] ?? 0);
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            StockService::decrease(
+                variantId: (int)$item['variant_id'],
+                locationType: 'WAREHOUSE',
+                locationId: $warehouseId,
+                stockState: 'AVAILABLE',
+                quantity: $quantity,
+                transactionType: 'WAREHOUSE_DIRECT_SALE',
+                referenceType: 'purchase_orders',
+                referenceId: $poId,
+                userId: $userId,
+                notes: "Customer Direct Purchase #" . $poNumber
+            );
+        }
+    }
+
     /**
      * Create Direct Customer Purchase / Order with tax & discount calculation.
      */
@@ -609,6 +685,7 @@ class WarehouseService {
             $poData['cgst_amount'] = $totalCgst;
             $poData['sgst_amount'] = $totalSgst;
             $poData['igst_amount'] = $totalIgst;
+            $poData['tax_amount'] = $totalCgst + $totalSgst + $totalIgst;
             $poData['total_amount'] = $grandTotal;
 
             $poId = PurchaseOrder::create($poData);
@@ -616,22 +693,16 @@ class WarehouseService {
             foreach ($processedItems as $pItem) {
                 $pItem['purchase_order_id'] = $poId;
                 PurchaseItem::create($pItem);
+            }
 
-                // If marked as COMPLETED or DISPATCHED, decrease available inventory
-                if (in_array(($poData['status'] ?? ''), ['COMPLETED', 'DISPATCHED', 'RECEIVED'])) {
-                    StockService::decrease(
-                        variantId: (int)$pItem['variant_id'],
-                        locationType: 'WAREHOUSE',
-                        locationId: (int)$poData['warehouse_id'],
-                        stockState: 'AVAILABLE',
-                        quantity: (float)$pItem['quantity'],
-                        transactionType: 'WAREHOUSE_DIRECT_SALE',
-                        referenceType: 'purchase_orders',
-                        referenceId: $poId,
-                        userId: $userId,
-                        notes: "Customer Direct Purchase #" . $poData['po_number']
-                    );
-                }
+            if (self::isDirectPurchaseFulfilled($poData)) {
+                self::applyDirectPurchaseStock(
+                    $processedItems,
+                    $poId,
+                    (int)$poData['warehouse_id'],
+                    $userId,
+                    (string)$poData['po_number']
+                );
             }
 
             AuditService::log('warehouse', 'create', 'purchase_orders', $poId, null, $poData);
@@ -754,7 +825,49 @@ class WarehouseService {
             $poData['cgst_amount'] = $totalCgst;
             $poData['sgst_amount'] = $totalSgst;
             $poData['igst_amount'] = $totalIgst;
+            $poData['tax_amount'] = $totalCgst + $totalSgst + $totalIgst;
             $poData['total_amount'] = $grandTotal;
+
+            $previousStockTransactions = Database::fetchAll(
+                "SELECT variant_id, location_type, location_id, SUM(quantity) as net_quantity
+                 FROM stock_transactions
+                 WHERE reference_type = 'purchase_orders'
+                   AND reference_id = ?
+                   AND transaction_type IN ('WAREHOUSE_DIRECT_SALE', 'WAREHOUSE_DIRECT_SALE_REVERSAL')
+                   AND stock_state = 'AVAILABLE'
+                 GROUP BY variant_id, location_type, location_id",
+                [$id]
+            );
+            foreach ($previousStockTransactions as $transaction) {
+                $netQuantity = (float)$transaction['net_quantity'];
+                if ($netQuantity < 0) {
+                    StockService::increase(
+                        variantId: (int)$transaction['variant_id'],
+                        locationType: $transaction['location_type'],
+                        locationId: (int)$transaction['location_id'],
+                        stockState: 'AVAILABLE',
+                        quantity: abs($netQuantity),
+                        transactionType: 'WAREHOUSE_DIRECT_SALE_REVERSAL',
+                        referenceType: 'purchase_orders',
+                        referenceId: $id,
+                        userId: $userId,
+                        notes: "Reconcile edited Direct Purchase #" . ($existing['po_number'] ?? $id)
+                    );
+                } elseif ($netQuantity > 0) {
+                    StockService::decrease(
+                        variantId: (int)$transaction['variant_id'],
+                        locationType: $transaction['location_type'],
+                        locationId: (int)$transaction['location_id'],
+                        stockState: 'AVAILABLE',
+                        quantity: $netQuantity,
+                        transactionType: 'WAREHOUSE_DIRECT_SALE',
+                        referenceType: 'purchase_orders',
+                        referenceId: $id,
+                        userId: $userId,
+                        notes: "Reconcile edited Direct Purchase #" . ($existing['po_number'] ?? $id)
+                    );
+                }
+            }
 
             PurchaseOrder::update($id, $poData);
             PurchaseItem::deleteByPurchaseOrder($id);
@@ -762,6 +875,16 @@ class WarehouseService {
             foreach ($processedItems as $pItem) {
                 $pItem['purchase_order_id'] = $id;
                 PurchaseItem::create($pItem);
+            }
+
+            if (self::isDirectPurchaseFulfilled($poData)) {
+                self::applyDirectPurchaseStock(
+                    $processedItems,
+                    $id,
+                    (int)($poData['warehouse_id'] ?? $existing['warehouse_id']),
+                    $userId,
+                    (string)($existing['po_number'] ?? $id)
+                );
             }
 
             AuditService::log('warehouse', 'edit', 'purchase_orders', $id, $existing, $poData);
@@ -1277,6 +1400,7 @@ class WarehouseService {
                 $totalRefund += $itemRefund;
 
                 $replacementVariantId = !empty($it['replacement_variant_id']) ? (int)$it['replacement_variant_id'] : null;
+                $replacementPieceTag = trim((string)($it['replacement_piece_tag'] ?? ''));
                 $pieceTags = !empty($it['piece_tags']) && is_array($it['piece_tags']) ? implode(', ', array_filter($it['piece_tags'])) : (is_string($it['piece_tags'] ?? null) ? trim($it['piece_tags']) : '');
 
                 $processedItems[] = [
@@ -1287,6 +1411,7 @@ class WarehouseService {
                     'unit_price'             => $unitPrice,
                     'refund_amount'          => $itemRefund,
                     'replacement_variant_id' => $replacementVariantId,
+                    'replacement_piece_tag'  => $replacementPieceTag,
                     'piece_tags'             => $pieceTags,
                 ];
             }
@@ -1514,9 +1639,9 @@ class WarehouseService {
                             $repVar = Database::fetchOne("SELECT selling_price FROM product_variants WHERE id = ?", [$repVarId]);
                             $repPrice = (float)($repVar['selling_price'] ?? $it['unit_price']);
                             Database::execute(
-                                "INSERT INTO exchange_items (exchange_id, item_type, variant_id, quantity, unit_price, total_amount)
-                                 VALUES (?, 'NEW', ?, ?, ?, ?)",
-                                [$exchangeId, $repVarId, $it['quantity'], $repPrice, $repPrice * $it['quantity']]
+                                "INSERT INTO exchange_items (exchange_id, item_type, variant_id, quantity, unit_price, total_amount, piece_tag)
+                                 VALUES (?, 'NEW', ?, ?, ?, ?, ?)",
+                                [$exchangeId, $repVarId, $it['quantity'], $repPrice, $repPrice * $it['quantity'], $it['replacement_piece_tag'] ?: null]
                             );
                         }
                     }
@@ -1528,12 +1653,23 @@ class WarehouseService {
                         $nVarId = (int)($nItem['variant_id'] ?? 0);
                         $nQty = (int)($nItem['quantity'] ?? 0);
                         if ($nVarId <= 0 || $nQty <= 0) continue;
-                        $nVar = Database::fetchOne("SELECT selling_price FROM product_variants WHERE id = ?", [$nVarId]);
+                        $nVar = Database::fetchOne("SELECT selling_price, sku FROM product_variants WHERE id = ?", [$nVarId]);
                         $nPrice = (float)($nVar['selling_price'] ?? 0);
+                        $rawPieceTags = is_array($nItem['scanned_tags'] ?? null)
+                            ? $nItem['scanned_tags']
+                            : (is_string($nItem['piece_tag'] ?? null) ? [$nItem['piece_tag']] : (is_string($nItem['qr_code'] ?? null) ? explode(',', $nItem['qr_code']) : []));
+                        $sku = strtoupper(trim((string)($nVar['sku'] ?? '')));
+                        $pieceTags = array_values(array_unique(array_filter(array_map(static fn($tag) => trim((string)$tag), $rawPieceTags), static function ($tag) use ($sku) {
+                            $normalizedTag = strtoupper($tag);
+                            return $normalizedTag !== ''
+                                && $normalizedTag !== $sku
+                                && !str_starts_with($normalizedTag, 'QR-');
+                        })));
+                        $pieceTag = $pieceTags ? implode(', ', $pieceTags) : null;
                         Database::execute(
-                            "INSERT INTO exchange_items (exchange_id, item_type, variant_id, quantity, unit_price, total_amount)
-                             VALUES (?, 'NEW', ?, ?, ?, ?)",
-                            [$exchangeId, $nVarId, $nQty, $nPrice, $nPrice * $nQty]
+                            "INSERT INTO exchange_items (exchange_id, item_type, variant_id, quantity, unit_price, total_amount, piece_tag)
+                             VALUES (?, 'NEW', ?, ?, ?, ?, ?)",
+                            [$exchangeId, $nVarId, $nQty, $nPrice, $nPrice * $nQty, $pieceTag]
                         );
                     }
                 }
@@ -1750,4 +1886,3 @@ class WarehouseService {
         ];
     }
 }
-

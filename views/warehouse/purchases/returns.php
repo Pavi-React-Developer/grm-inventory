@@ -20,19 +20,6 @@ $catalogVariants = $catalogVariants ?? [];
             <h2 class="fw-bold mb-1 text-dark">Customer Returns &amp; Exchanges Portal</h2>
            
         </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <a href="<?= url('warehouse/stock') ?>" class="btn btn-sm btn-outline-secondary rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-boxes me-1"></i> Warehouse Stock
-            </a>
-            <a href="<?= url('warehouse/purchases') ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-receipt me-1"></i> Direct Purchases List
-            </a>
-            <?php if (hasPermission('purchases_returns', 'create') || hasPermission('purchases', 'create') || hasPermission('returns', 'receive') || hasPermission('returns', 'create')): ?>
-            <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm fw-semibold" onclick="focusSearch()">
-                <i class="bi bi-search me-1"></i> Lookup Purchase
-            </button>
-            <?php endif; ?>
-        </div>
     </div>
 
     <!-- 5 QUICK ANALYSIS & FILTER CARDS -->

@@ -153,7 +153,7 @@
                                                 <input type="number" name="items[<?= $idx ?>][inspected_qty]" class="form-control form-control-sm text-center fw-bold bg-light" value="<?= (int)$it['stitched_qty'] ?>" readonly>
                                             </td>
                                             <td class="text-center">
-                                                <input type="number" name="items[<?= $idx ?>][passed_qty]" class="form-control form-control-sm text-center text-secondary fw-bold" min="0" value="0" placeholder="0">
+                                                <input type="number" name="items[<?= $idx ?>][passed_qty]" class="form-control form-control-sm text-center text-secondary fw-bold bg-light" min="0" value="0" placeholder="0" readonly>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>

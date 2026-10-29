@@ -60,16 +60,13 @@
         <p class="text-muted small mb-0">Reserve available warehouse inventory for dispatching to retail stores or online sales channels.</p>
     </div>
     <div class="d-flex gap-2">
-        <a href="<?= url('warehouse/allocation?tab=batches') ?>" class="btn btn-outline-success">
-            <i class="bi bi-boxes me-1"></i> Batches
-        </a>
         <a href="<?= url('warehouse/allocation') ?>" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i> Back to Allocations
         </a>
     </div>
 </div>
 
-<form method="POST" action="<?= url('warehouse/allocation/store') ?>" class="card border-0 shadow-sm rounded-3 p-4">
+<form method="POST" action="<?= url('warehouse/allocation/store') ?>" id="allocationForm" class="card border-0 shadow-sm rounded-3 p-4">
     <?= CSRF::field() ?>
 
     <div class="row g-2 mb-4">
@@ -168,9 +165,8 @@
                        class="form-control form-control-lg border-primary border-opacity-25 font-monospace fw-bold" 
                        placeholder="Scan QR Code or Type Piece Tag / SKU (e.g. TTS092601, RMT092606)..." 
                        autocomplete="off" 
-                       onkeydown="if(event.key === 'Enter') { event.preventDefault(); if (window.handleQrScanInput) window.handleQrScanInput(this.value); }"
                        autofocus>
-                <button type="button" class="btn btn-primary px-4 fw-bold d-flex align-items-center gap-2" id="triggerScanBtn" onclick="if (window.handleQrScanInput) { window.handleQrScanInput(document.getElementById('allocation_qr_input') ? document.getElementById('allocation_qr_input').value : ''); }">
+                <button type="button" class="btn btn-primary px-4 fw-bold d-flex align-items-center gap-2" id="triggerScanBtn">
                     <i class="bi bi-lightning-charge-fill"></i> Scan / Add
                 </button>
                 <button type="button" class="btn btn-outline-secondary px-3" id="clearScanInputBtn" title="Clear input">
@@ -191,9 +187,6 @@
     <div class="card border-0 shadow-sm rounded-3 mb-4">
         <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
             <h5 class="fw-bold text-dark mb-0"><i class="bi bi-box-seam me-2 text-primary"></i>Requisition Items</h5>
-            <button type="button" class="btn btn-outline-primary btn-sm fw-semibold" id="addRowBtn" onclick="addOrderItemRow()">
-                <i class="bi bi-plus-lg me-1"></i> Add Another SKU
-            </button>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -531,6 +524,7 @@ const variantsList = <?= json_encode($variants ?? [], JSON_HEX_TAG | JSON_HEX_AM
 
 // Global Registry of Scanned Piece Tags for Strict Duplicate Prevention
 const SCANNED_ALLOCATION_TAGS = new Set();
+const PENDING_ALLOCATION_TAGS = new Set();
 
 // Web Audio API Sound Synthesizer
 let audioCtx = null;
@@ -651,6 +645,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function supportsAdjustableAllocationQty(product) {
+        const categoryType = getAllocationProductType(product);
+        const qrType = String(product.qr_type || product.qrType || product.dataset?.qrType || '').trim().toUpperCase();
+        return categoryType === 'SERIES'
+            || categoryType === 'COMPLEMENTARY'
+            || qrType === 'SERIES_BATCH';
+    }
+
+    function getAllocationProductType(product) {
+        const categoryType = String(product.category_type || product.categoryType || product.dataset?.categoryType || '').trim().toUpperCase();
+        const qrType = String(product.qr_type || product.qrType || product.dataset?.qrType || '').trim().toUpperCase();
+        const isComplementary = product.is_complementary === true
+            || product.is_complementary === 1
+            || product.is_complementary === '1'
+            || product.isComplementary === '1'
+            || product.dataset?.isComplementary === '1';
+        if (isComplementary || categoryType === 'COMPLEMENTARY') return 'COMPLEMENTARY';
+        if (qrType === 'SERIES_BATCH' || categoryType === 'SERIES') return 'SERIES';
+        return categoryType || 'NORMAL';
+    }
+
     // =========================================================================
     // TABLE ROW MANAGEMENT & DYNAMIC VARIANT SELECTION
     // =========================================================================
@@ -661,7 +676,12 @@ document.addEventListener('DOMContentLoaded', function() {
         let opts = '<option value="">-- Select Product Variant --</option>';
         variantsList.forEach(v => {
             const isSel = (selectedVariantId && String(selectedVariantId) === String(v.id)) ? 'selected' : '';
+            if (!isSel) return;
+
             const stock = parseFloat(v.total_warehouse_stock || 0);
+            const categoryType = getAllocationProductType(v);
+            const isComplementary = categoryType === 'COMPLEMENTARY';
+            const isSeries = categoryType === 'SERIES' || v.qr_type === 'SERIES_BATCH';
 
             let catDisplay = v.sub_subcategory_name || v.subcategory_name || v.category_name || 'General';
             let label = `${v.product_name} | SKU: ${v.sku} (${v.color_name ? v.color_name + ' | ' : ''}Size: ${v.size_name || 'Std'}, Stock: ${stock} pcs)`;
@@ -671,6 +691,11 @@ document.addEventListener('DOMContentLoaded', function() {
                              data-qr="${v.barcode || v.sku || ''}"
                              data-category="${escapeHtml(catDisplay)}"
                              data-size="${escapeHtml(v.size_name || 'Free')}"
+                             data-category-type="${escapeHtml(categoryType)}"
+                             data-qr-type="${escapeHtml(v.qr_type || 'INDIVIDUAL')}"
+                             data-pack-quantity="${parseInt(v.pack_quantity || 1)}"
+                             data-is-series="${isSeries ? '1' : '0'}"
+                             data-is-complementary="${isComplementary ? '1' : '0'}"
                              data-stock="${stock}" ${isSel}>
                         ${escapeHtml(label)}
                      </option>`;
@@ -689,7 +714,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 <span class="badge bg-secondary-subtle text-secondary category-badge">-</span>
             </td>
             <td>
-                <select name="variant_ids[]" class="form-select variant-select" required onchange="onVariantChange(this)">
+                <input type="hidden" name="variant_ids[]" class="variant-id-input" value="${selectedVariantId || ''}">
+                <select class="form-select variant-select" aria-label="Selected product variant" disabled>
                     ${opts}
                 </select>
             </td>
@@ -701,16 +727,18 @@ document.addEventListener('DOMContentLoaded', function() {
             </td>
             <td class="text-center">
                 <div class="input-group input-group-sm mx-auto shadow-xs" style="max-width: 110px;">
-                    <button type="button" class="btn btn-outline-secondary px-2 py-0 fw-bold" onclick="changeRowQty(this, -1)" title="Decrease quantity">-</button>
+                    <button type="button" class="btn btn-outline-secondary px-2 py-0 fw-bold qty-stepper d-none" onclick="changeRowQty(this, -1)" title="Decrease quantity">-</button>
                     <input type="number" 
                            name="requested_qty[]" 
                            class="form-control text-center fw-bold qty-input fs-6 px-1" 
                            value="${rowQty}" 
                            min="1" 
+                           readonly
+                           aria-readonly="true"
                            required 
                            oninput="updateRowStockCalculations(this.closest('tr'))" 
                            onchange="updateRowStockCalculations(this.closest('tr'))">
-                    <button type="button" class="btn btn-outline-secondary px-2 py-0 fw-bold" onclick="changeRowQty(this, 1)" title="Increase quantity">+</button>
+                    <button type="button" class="btn btn-outline-secondary px-2 py-0 fw-bold qty-stepper d-none" onclick="changeRowQty(this, 1)" title="Increase quantity">+</button>
                 </div>
             </td>
             <td class="text-center">
@@ -744,15 +772,16 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!row) return;
         const input = row.querySelector('.qty-input');
         if (!input) return;
+        const sel = row.querySelector('.variant-select');
+        const opt = sel ? sel.options[sel.selectedIndex] : null;
+        if (!opt || !supportsAdjustableAllocationQty(opt.dataset)) return;
         let currentVal = parseInt(input.value) || 0;
         let newVal = Math.max(1, currentVal + delta);
 
-        const sel = row.querySelector('.variant-select');
-        const opt = sel ? sel.options[sel.selectedIndex] : null;
-        if (opt && opt.value) {
-            const stock = parseFloat(opt.getAttribute('data-stock') || 0);
-            if (stock > 0 && newVal > stock) {
-                newVal = stock;
+        if (opt.value) {
+            const maxAllowed = parseFloat(input.max || opt.dataset.stock || '0');
+            if (maxAllowed > 0 && newVal > maxAllowed) {
+                newVal = maxAllowed;
             }
         }
         input.value = newVal;
@@ -776,7 +805,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const qtyInput = row.querySelector('.qty-input');
                 if (qtyInput) {
                     qtyInput.value = 1;
-                    qtyInput.readOnly = false;
                     qtyInput.style.backgroundColor = '';
                 }
                 row.dataset.scannedQrs = JSON.stringify([]);
@@ -800,20 +828,41 @@ document.addEventListener('DOMContentLoaded', function() {
         const catBadge = row.querySelector('.category-badge');
         const sizeBadge = row.querySelector('.size-badge');
         const qtyInput = row.querySelector('.qty-input');
+        const variantIdInput = row.querySelector('.variant-id-input');
+        const qtySteppers = row.querySelectorAll('.qty-stepper');
 
         if (opt && opt.value) {
             const cat = opt.getAttribute('data-category') || 'General';
             const size = opt.getAttribute('data-size') || 'Free';
+            const categoryType = (opt.dataset.categoryType || '').trim().toUpperCase();
+            const canAdjustQty = supportsAdjustableAllocationQty(opt.dataset);
+            const availableStock = parseFloat(opt.dataset.stock || '0');
 
             if (catBadge) catBadge.textContent = cat;
             if (sizeBadge) sizeBadge.textContent = size;
-            if (!qtyInput.value || parseInt(qtyInput.value) <= 0) {
+            if (!canAdjustQty) {
+                qtyInput.value = 1;
+            } else if (!qtyInput.value || parseInt(qtyInput.value) <= 0) {
                 qtyInput.value = 1;
             }
+            if (variantIdInput) variantIdInput.value = opt.value;
+            if (qtyInput) {
+                qtyInput.readOnly = !canAdjustQty;
+                qtyInput.disabled = false;
+                qtyInput.max = String(availableStock);
+                qtyInput.setAttribute('aria-readonly', canAdjustQty ? 'false' : 'true');
+            }
+            qtySteppers.forEach(button => button.classList.toggle('d-none', !canAdjustQty));
         } else {
             if (catBadge) catBadge.textContent = '-';
             if (sizeBadge) sizeBadge.textContent = '-';
-            if (qtyInput) qtyInput.value = 1;
+            if (qtyInput) {
+                qtyInput.value = 1;
+                qtyInput.readOnly = true;
+                qtyInput.setAttribute('aria-readonly', 'true');
+            }
+            if (variantIdInput) variantIdInput.value = '';
+            qtySteppers.forEach(button => button.classList.add('d-none'));
         }
 
         updateRowQrDisplay(row);
@@ -835,21 +884,38 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-        // 2. Update stock display on each row
+        // 2. Calculate each row's available stock in requisition order.
+        const allocatedBeforeRow = {};
         rows.forEach(r => {
             const sel = r.querySelector('.variant-select');
             const opt = sel ? sel.options[sel.selectedIndex] : null;
             const vId = sel ? sel.value : null;
+            const qtyInput = r.querySelector('.qty-input');
             const totalStockBadge = r.querySelector('.total-stock-badge');
             const availBadge = r.querySelector('.available-stock-badge');
 
             let totalStock = 0;
             if (opt && opt.value) {
-                totalStock = parseFloat(opt.getAttribute('data-stock') || 0);
+                totalStock = Math.max(0, parseFloat(opt.dataset.stock || '0'));
             }
 
+            const qty = Math.max(0, parseInt(qtyInput ? qtyInput.value : '0') || 0);
+            const allocatedBefore = allocatedBeforeRow[vId] || 0;
             const totalReservedForVariant = reservedMap[vId] || 0;
-            const remainingAvailable = totalStock - totalReservedForVariant;
+            const maxAfterOtherRows = Math.max(0, totalStock - (totalReservedForVariant - qty));
+
+            if (qtyInput && opt && opt.value) {
+                qtyInput.max = String(maxAfterOtherRows);
+                qtyInput.setCustomValidity(maxAfterOtherRows < 1
+                    ? 'No available stock remains for this variant.'
+                    : '');
+            } else if (qtyInput) {
+                qtyInput.setCustomValidity('');
+            }
+
+            const currentQty = Math.max(0, parseInt(qtyInput ? qtyInput.value : '0') || 0);
+            const remainingAvailable = Math.max(0, totalStock - allocatedBefore - currentQty);
+            if (vId) allocatedBeforeRow[vId] = allocatedBefore + currentQty;
 
             if (totalStockBadge) {
                 totalStockBadge.textContent = `${totalStock} pcs`;
@@ -866,8 +932,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     availBadge.className = 'badge bg-warning-subtle text-warning border border-warning-subtle fw-bold fs-6 available-stock-badge';
                     availBadge.innerHTML = `0 pcs`;
                 } else {
-                    availBadge.className = 'badge bg-danger text-white fw-bold fs-6 available-stock-badge';
-                    availBadge.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>${remainingAvailable} pcs`;
+                    availBadge.className = 'badge bg-warning-subtle text-warning border border-warning-subtle fw-bold fs-6 available-stock-badge';
+                    availBadge.textContent = '0 pcs';
                 }
             }
         });
@@ -876,6 +942,26 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.updateRowStockCalculations = function(row) {
+        const qtyInput = row ? row.querySelector('.qty-input') : null;
+        const select = row ? row.querySelector('.variant-select') : null;
+        const variantId = select ? select.value : '';
+        const option = select && select.selectedIndex >= 0 ? select.options[select.selectedIndex] : null;
+        if (qtyInput && variantId && option) {
+            const otherReserved = Array.from(document.querySelectorAll('#orderItemsContainer tr.item-row'))
+                .filter(otherRow => otherRow !== row)
+                .reduce((sum, otherRow) => {
+                    const otherSelect = otherRow.querySelector('.variant-select');
+                    const otherQty = otherRow.querySelector('.qty-input');
+                    return otherSelect && otherSelect.value === variantId
+                        ? sum + (parseInt(otherQty ? otherQty.value : '0') || 0)
+                        : sum;
+                }, 0);
+            const maxAllowed = Math.max(0, parseFloat(option.dataset.stock || '0') - otherReserved);
+            qtyInput.max = String(maxAllowed);
+            if (maxAllowed >= 1 && (parseInt(qtyInput.value) || 0) > maxAllowed) {
+                qtyInput.value = String(maxAllowed);
+            }
+        }
         updateAllRowsStockCalculations();
     };
 
@@ -884,6 +970,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const opt = sel ? sel.options[sel.selectedIndex] : null;
         const sku = opt ? (opt.getAttribute('data-sku') || '') : '';
         const defaultQr = opt ? (opt.getAttribute('data-qr') || sku || '-') : '-';
+        const categoryType = opt ? getAllocationProductType(opt.dataset) : '';
+        const productTypeLabel = categoryType === 'SERIES'
+            ? 'SERIES PRODUCT'
+            : (categoryType === 'COMPLEMENTARY' ? 'COMPLEMENTARY PRODUCT' : 'NORMAL PRODUCT');
+        const productTypeClass = categoryType === 'SERIES'
+            ? 'bg-primary-subtle text-primary'
+            : (categoryType === 'COMPLEMENTARY' ? 'bg-warning-subtle text-warning-emphasis' : 'bg-secondary-subtle text-secondary');
         const cell = row.querySelector('.qr-sku-cell');
         if (!cell) return;
 
@@ -900,8 +993,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (sku) {
                 html += `<small class="text-muted d-block font-monospace" style="font-size:0.72rem;">SKU: ${escapeHtml(sku)}</small>`;
             }
+            html += `<span class="badge ${productTypeClass} mt-1" style="font-size:0.62rem;">${productTypeLabel}</span>`;
         } else {
             html += `<span class="badge bg-light text-dark border font-monospace qr-badge" style="font-size:0.80rem;">${escapeHtml(defaultQr)}</span>`;
+            if (opt && opt.value) {
+                html += `<span class="badge ${productTypeClass} ms-1" style="font-size:0.62rem;">${productTypeLabel}</span>`;
+            }
         }
 
         html += `<input type="hidden" name="selected_qr_codes[]" class="scanned-qrs-input" value="${escapeHtml(scannedVal)}">`;
@@ -976,10 +1073,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         tagCode = tagCode.toUpperCase();
 
+        if (PENDING_ALLOCATION_TAGS.has(tagCode)) {
+            playDuplicateSound();
+            showScanAlert('duplicate', `⚠️ <strong>Scan in Progress:</strong> Piece Tag <code>${tagCode}</code> is already being processed.`);
+            clearAndRefocusScanInput();
+            return;
+        }
+
         // 1. DUPLICATE CHECK
         if (SCANNED_ALLOCATION_TAGS.has(tagCode)) {
             // Check if this tag belongs to an existing row that is a series product
-            let existingSeriesRow = null;
+            let existingPackRow = null;
             const rows = document.querySelectorAll('#orderItemsContainer tr.item-row');
             rows.forEach(r => {
                 let scannedQrs = getRowScannedQrs(r);
@@ -987,29 +1091,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     const sel = r.querySelector('.variant-select');
                     const vId = sel ? sel.value : null;
                     const vObj = variantsList.find(v => String(v.id) === String(vId));
-                    const isSeries = vObj && (vObj.is_series == 1 || vObj.qr_type === 'SERIES_BATCH' || (vObj.pack_quantity && parseInt(vObj.pack_quantity) > 1) || vObj.category_type === 'SERIES');
-                    if (isSeries) {
-                        existingSeriesRow = r;
+                    if (vObj && supportsAdjustableAllocationQty(vObj)) {
+                        existingPackRow = r;
                     }
                 }
             });
 
-            if (existingSeriesRow) {
-                // For series products, re-scanning increments the quantity allocated up to available warehouse stock
-                const qtyInput = existingSeriesRow.querySelector('.qty-input');
-                const sel = existingSeriesRow.querySelector('.variant-select');
+            if (existingPackRow) {
+                const qtyInput = existingPackRow.querySelector('.qty-input');
+                const sel = existingPackRow.querySelector('.variant-select');
                 const opt = sel ? sel.options[sel.selectedIndex] : null;
                 const totalStock = opt ? parseFloat(opt.getAttribute('data-stock') || 0) : 0;
                 let currentVal = parseInt(qtyInput ? qtyInput.value : 1) || 1;
 
                 if (currentVal + 1 <= totalStock) {
                     qtyInput.value = currentVal + 1;
-                    updateRowStockCalculations(existingSeriesRow);
+                    updateRowStockCalculations(existingPackRow);
                     playSuccessSound();
-                    showScanAlert('success', `📦 Series QR <code>${tagCode}</code> re-scanned: Allocated quantity increased to <strong>${currentVal + 1} pcs</strong> (Remaining in warehouse: ${totalStock - (currentVal + 1)} pcs).`);
-                    existingSeriesRow.classList.add('row-scan-highlight');
-                    setTimeout(() => existingSeriesRow.classList.remove('row-scan-highlight'), 1500);
-                    existingSeriesRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    showScanAlert('success', `📦 Pack QR <code>${tagCode}</code> re-scanned: Allocated quantity increased to <strong>${currentVal + 1} pcs</strong> (Remaining in warehouse: ${totalStock - (currentVal + 1)} pcs).`);
+                    existingPackRow.classList.add('row-scan-highlight');
+                    setTimeout(() => existingPackRow.classList.remove('row-scan-highlight'), 1500);
+                    existingPackRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 } else {
                     playDuplicateSound();
                     showScanAlert('warning', `⚠️ <strong>Warehouse Stock Limit:</strong> Series Tag <code>${tagCode}</code> has only <strong>${totalStock} pcs</strong> available in this warehouse. All available pieces are already allocated!`);
@@ -1029,7 +1131,8 @@ document.addEventListener('DOMContentLoaded', function() {
             resolvedTag = (resolvedTag || tagCode).toUpperCase();
 
             // Determine if this is a series or complementary product pack
-            const isSeriesOrComp = !!(data.is_series || (data.qr_type === 'SERIES_BATCH') || parseInt(data.is_complementary || 0) === 1 || (data.pack_quantity && parseInt(data.pack_quantity) > 1) || data.category_type === 'SERIES');
+            const categoryType = String(data.category_type || '').trim().toUpperCase();
+            const isSeriesOrComp = supportsAdjustableAllocationQty(data);
 
             if (SCANNED_ALLOCATION_TAGS.has(resolvedTag) && !isSeriesOrComp) {
                 playDuplicateSound();
@@ -1046,9 +1149,9 @@ document.addEventListener('DOMContentLoaded', function() {
             // For series products, allocate 1 piece initially so remainder is retained in warehouse
             const targetQty = isSeriesOrComp ? (data.is_series ? 1 : packQty) : 1;
 
-            // Ensure variant exists in variantsList cache
-            if (vId && !variantsList.some(v => String(v.id) === String(vId))) {
-                variantsList.push({
+            // Refresh the cached stock and category metadata from the scan response.
+            let cachedVariant = variantsList.find(v => String(v.id) === String(vId));
+            const scannedVariantData = {
                     id: vId,
                     sku: data.sku || '',
                     barcode: data.barcode || data.sku || '',
@@ -1058,12 +1161,32 @@ document.addEventListener('DOMContentLoaded', function() {
                     category_name: data.category_name || '',
                     subcategory_name: data.subcategory_name || '',
                     sub_subcategory_name: data.sub_subcategory_name || '',
-                    total_warehouse_stock: parseFloat(data.available_stock || data.total_stock || 0),
-                    is_series: isSeriesOrComp ? 1 : 0,
-                    qr_type: data.qr_type || (isSeriesOrComp ? 'SERIES_BATCH' : 'INDIVIDUAL'),
+                    category_type: getAllocationProductType(data),
+                    is_complementary: getAllocationProductType(data) === 'COMPLEMENTARY' ? 1 : 0,
+                    total_warehouse_stock: parseFloat(data.available_stock ?? data.total_stock ?? 0),
+                    is_series: categoryType === 'SERIES' || data.qr_type === 'SERIES_BATCH' ? 1 : 0,
+                    qr_type: data.qr_type || 'INDIVIDUAL',
                     pack_quantity: packQty
-                });
+            };
+            if (cachedVariant) {
+                Object.assign(cachedVariant, scannedVariantData);
+            } else {
+                variantsList.push(scannedVariantData);
+                cachedVariant = scannedVariantData;
             }
+
+            document.querySelectorAll('#orderItemsContainer .variant-select').forEach(select => {
+                Array.from(select.options).forEach(option => {
+                    if (String(option.value) !== String(vId)) return;
+                    option.dataset.categoryType = cachedVariant.category_type;
+                    option.dataset.qrType = cachedVariant.qr_type;
+                    option.dataset.packQuantity = String(cachedVariant.pack_quantity);
+                    option.dataset.isSeries = cachedVariant.is_series ? '1' : '0';
+                    option.dataset.isComplementary = cachedVariant.is_complementary ? '1' : '0';
+                    option.dataset.stock = String(cachedVariant.total_warehouse_stock);
+                    option.textContent = `${cachedVariant.product_name} | SKU: ${cachedVariant.sku} (${cachedVariant.color_name ? cachedVariant.color_name + ' | ' : ''}Size: ${cachedVariant.size_name || 'Std'}, Stock: ${cachedVariant.total_warehouse_stock} pcs)`;
+                });
+            });
 
             // If first row is completely empty, use it; otherwise create a brand new distinct row
             let emptyRow = null;
@@ -1080,8 +1203,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const qtyInput = targetRow.querySelector('.qty-input');
                 if (qtyInput) {
                     qtyInput.value = targetQty;
-                    qtyInput.readOnly = false;
-                    qtyInput.style.backgroundColor = '';
                 }
                 const sel = targetRow.querySelector('.variant-select');
                 if (sel) {
@@ -1093,10 +1214,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         opt.setAttribute('data-qr', data.barcode || data.sku || '');
                         opt.setAttribute('data-category', data.hierarchy || data.category_name || 'General');
                         opt.setAttribute('data-size', data.size_name || 'Free');
-                        opt.setAttribute('data-stock', data.available_stock || data.total_stock || 0);
+                        opt.setAttribute('data-category-type', cachedVariant.category_type);
+                        opt.setAttribute('data-qr-type', cachedVariant.qr_type);
+                        opt.setAttribute('data-pack-quantity', parseInt(data.pack_quantity || 1));
+                        opt.setAttribute('data-is-series', cachedVariant.is_series ? '1' : '0');
+                        opt.setAttribute('data-is-complementary', cachedVariant.is_complementary ? '1' : '0');
+                        opt.setAttribute('data-stock', cachedVariant.total_warehouse_stock);
                         sel.appendChild(opt);
                     }
                     sel.value = vId;
+                    const variantIdInput = targetRow.querySelector('.variant-id-input');
+                    if (variantIdInput) variantIdInput.value = vId;
                     onVariantChange(sel);
                 }
             } else {
@@ -1109,8 +1237,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 targetRow.dataset.scannedQrs = JSON.stringify([resolvedTag]);
                 const qtyInput = targetRow.querySelector('.qty-input');
                 if (qtyInput) {
-                    qtyInput.readOnly = false;
-                    qtyInput.style.backgroundColor = '';
                     if (parseInt(qtyInput.value) !== targetQty) {
                         qtyInput.value = targetQty;
                     }
@@ -1124,13 +1250,17 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             playSuccessSound();
-            const packBadge = isSeriesOrComp ? ` <span class="badge bg-primary ms-1">📦 Series (${data.available_stock || data.total_stock || packQty} Pcs in Warehouse)</span>` : '';
-            showScanAlert('success', `✅ Scanned <strong class="font-monospace">${resolvedTag}</strong> &rarr; ${data.product_name || data.sku} (${data.size_name || 'Std'})${packBadge} added! You can adjust/split the allocation quantity as needed.`);
+            const packBadge = isSeriesOrComp ? ` <span class="badge bg-primary ms-1">📦 Pack (${data.available_stock || data.total_stock || packQty} Pcs in Warehouse)</span>` : '';
+            const quantityMessage = isSeriesOrComp
+                ? 'You can adjust/split the allocation quantity as needed.'
+                : 'Individual QR quantity is fixed at 1.';
+            showScanAlert('success', `✅ Scanned <strong class="font-monospace">${resolvedTag}</strong> &rarr; ${data.product_name || data.sku} (${data.size_name || 'Std'})${packBadge} added! ${quantityMessage}`);
             updateGlobalScannedCounter();
             clearAndRefocusScanInput();
         }
 
         // 2. Try backend API matcher with fallback to client-side
+        PENDING_ALLOCATION_TAGS.add(tagCode);
         fetch(`<?= url("api/warehouse/scan-allocation-qr") ?>?warehouse_id=${whId}&code=${encodeURIComponent(rawCode)}`)
             .then(res => {
                 if (!res.ok) throw new Error('API lookup failed');
@@ -1144,6 +1274,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     showScanAlert('duplicate', `🚫 <strong>Piece Already Allocated:</strong> Tag <code class="fw-bold">${data.tag_code || tagCode}</code> has ALREADY been allocated in Pass <strong>#${data.allocation_number}</strong> (${data.allocation_status}) at <em>${data.allocated_warehouse || 'Warehouse'}</em> for ${data.allocated_product || 'item'}. Cannot allocate the same piece QR twice!`);
                     clearAndRefocusScanInput();
                 } else if (data.is_no_stock) {
+                    playDuplicateSound();
+                    showScanAlert('danger', `❌ <strong>Scan Failed:</strong> ${data.message}`);
+                    clearAndRefocusScanInput();
+                } else if (data.is_ambiguous) {
                     playDuplicateSound();
                     showScanAlert('danger', `❌ <strong>Scan Failed:</strong> ${data.message}`);
                     clearAndRefocusScanInput();
@@ -1171,6 +1305,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     showScanAlert('danger', `❌ <strong>Scan Failed:</strong> No product variant found matching <code>${tagCode}</code>.`);
                     clearAndRefocusScanInput();
                 }
+            })
+            .finally(() => {
+                PENDING_ALLOCATION_TAGS.delete(tagCode);
             });
     }
 
@@ -1207,48 +1344,53 @@ document.addEventListener('DOMContentLoaded', function() {
     function refreshVariantStockForWarehouse(whId) {
         if (!whId) return;
         fetch(`<?= url("api/warehouse/variant-stock-hierarchy") ?>?warehouse_id=${whId}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.success && data.variants) {
-                    const stockMap = {};
-                    data.variants.forEach(v => {
-                        stockMap[v.id] = parseFloat(v.available_stock || 0);
-                    });
-                    
-                    variantsList.forEach(v => {
-                        if (stockMap[v.id] !== undefined) {
-                            v.total_warehouse_stock = stockMap[v.id];
-                        }
-                    });
-
-                    // Update all existing dropdowns in the table
-                    document.querySelectorAll('#orderItemsContainer tr.item-row').forEach(row => {
-                        const sel = row.querySelector('.variant-select');
-                        if (!sel) return;
-                        const currentVal = sel.value;
-                        
-                        let opts = '<option value="">-- Select Product Variant --</option>';
-                        variantsList.forEach(v => {
-                            const isSel = (currentVal && String(currentVal) === String(v.id)) ? 'selected' : '';
-                            const stock = parseFloat(v.total_warehouse_stock || 0);
-                            let catDisplay = v.sub_subcategory_name || v.subcategory_name || v.category_name || 'General';
-                            let label = `${v.product_name} | SKU: ${v.sku} (${v.color_name ? v.color_name + ' | ' : ''}Size: ${v.size_name || 'Std'}, Stock: ${stock} pcs)`;
-
-                            opts += `<option value="${v.id}" 
-                                             data-sku="${v.sku || ''}" 
-                                             data-qr="${v.barcode || v.sku || ''}"
-                                             data-category="${escapeHtml(catDisplay)}"
-                                             data-size="${escapeHtml(v.size_name || 'Free')}"
-                                             data-stock="${stock}" ${isSel}>
-                                        ${escapeHtml(label)}
-                                     </option>`;
-                        });
-                        sel.innerHTML = opts;
-                        updateRowStockCalculations(row);
-                    });
-                }
+            .then(res => {
+                if (!res.ok) throw new Error('Warehouse stock lookup failed.');
+                return res.json();
             })
-            .catch(() => {});
+            .then(data => {
+                if (!data.success || !Array.isArray(data.variants)) {
+                    throw new Error(data.message || 'Warehouse stock lookup returned invalid data.');
+                }
+
+                const stockMap = new Map(data.variants.map(v => [String(v.id), v]));
+                variantsList.forEach(v => {
+                    const stockVariant = stockMap.get(String(v.id));
+                    if (!stockVariant) return;
+                    v.total_warehouse_stock = parseFloat(stockVariant.available_stock ?? 0);
+                    v.category_type = getAllocationProductType(stockVariant);
+                    v.qr_type = stockVariant.qr_type || v.qr_type || 'INDIVIDUAL';
+                    v.pack_quantity = parseInt(stockVariant.pack_quantity || v.pack_quantity || 1);
+                    v.is_complementary = parseInt(stockVariant.is_complementary ?? v.is_complementary ?? 0);
+                    v.is_series = v.category_type === 'SERIES' || v.qr_type === 'SERIES_BATCH' ? 1 : 0;
+                });
+
+                document.querySelectorAll('#orderItemsContainer tr.item-row').forEach(row => {
+                    const select = row.querySelector('.variant-select');
+                    if (!select) return;
+
+                    Array.from(select.options).forEach(option => {
+                        const variant = variantsList.find(v => String(v.id) === String(option.value));
+                        if (!variant) return;
+
+                        const categoryType = getAllocationProductType(variant);
+                        const stock = parseFloat(variant.total_warehouse_stock || 0);
+                        option.dataset.categoryType = categoryType;
+                        option.dataset.qrType = variant.qr_type || 'INDIVIDUAL';
+                        option.dataset.packQuantity = String(variant.pack_quantity || 1);
+                        option.dataset.isSeries = categoryType === 'SERIES' || variant.qr_type === 'SERIES_BATCH' ? '1' : '0';
+                        option.dataset.isComplementary = categoryType === 'COMPLEMENTARY' ? '1' : '0';
+                        option.dataset.stock = String(stock);
+                        option.textContent = `${variant.product_name} | SKU: ${variant.sku} (${variant.color_name ? variant.color_name + ' | ' : ''}Size: ${variant.size_name || 'Std'}, Stock: ${stock} pcs)`;
+                    });
+
+                    onVariantChange(select);
+                });
+            })
+            .catch(err => {
+                console.error('Unable to refresh allocation stock for selected warehouse.', err);
+                showScanAlert('danger', 'Unable to refresh product stock for the selected warehouse. Please reload the page and try again.');
+            });
     }
 
     if (warehouseSelect) {
@@ -1259,9 +1401,6 @@ document.addEventListener('DOMContentLoaded', function() {
             refreshVariantStockForWarehouse(warehouseSelect.value);
         }
     }
-
-    // Initialize with 1 empty item row matching Image 2
-    addOrderItemRow();
 
     // =========================================================================
     // WAREHOUSE QUICK-ADD, EDIT & DELETE AJAX
@@ -1631,5 +1770,17 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    const allocationForm = document.getElementById('allocationForm');
+    if (allocationForm) {
+        allocationForm.addEventListener('submit', function(event) {
+            const hasDestination = Array.from(destSelects).some(select => select.value !== '');
+            if (hasDestination) return;
+
+            event.preventDefault();
+            showScanAlert('warning', 'Please select a destination before submitting. Your scanned products are still on this page.');
+            document.getElementById('source_shop_select')?.focus();
+        });
+    }
 });
 </script>

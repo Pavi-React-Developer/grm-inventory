@@ -1,18 +1,6 @@
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
         <h2 class="mb-1"><i class="bi bi-pencil-square me-2 text-primary"></i>Edit Third-Party Supplier &amp; Products: <?= e($seller['name']) ?></h2>
-       
-    </div>
-    <div class="d-flex gap-2">
-        <a href="<?= url('warehouse/sellers/view/' . $seller['id']) ?>" class="btn btn-outline-primary">
-            <i class="bi bi-eye me-1"></i> View Profile &amp; History
-        </a>
-        <!-- <a href="<?= url('warehouse/sellers/buy?seller_id=' . $seller['id']) ?>" class="btn btn-outline-success">
-            <i class="bi bi-cart-plus me-1"></i> Buy Stock
-        </a> -->
-        <a href="<?= url('warehouse/sellers') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-left me-1"></i> Back to Suppliers Hub
-        </a>
     </div>
 </div>
 
@@ -294,7 +282,9 @@
     </div>
 </form>
 
-<form id="deleteSupplierForm" method="POST" action="<?= url('warehouse/sellers/delete/' . $seller['id']) ?>" style="display:none;"></form>
+<form id="deleteSupplierForm" method="POST" action="<?= url('warehouse/sellers/delete/' . $seller['id']) ?>" style="display:none;">
+    <?= csrf_field() ?>
+</form>
 
 <!-- Template for adding new product rows during supplier edit -->
 <template id="newProductRowTemplate">
@@ -387,111 +377,4 @@
 }
 </style>
 
-<script>
-function handleExistingRowQRModeChange(select) {
-    const row = select.closest('tr');
-    if (!row) return;
-    const seriesBox = row.querySelector('.existing-series-box');
-    if (select.value === 'SERIES_BATCH') {
-        if (seriesBox) seriesBox.classList.remove('d-none');
-    } else {
-        if (seriesBox) seriesBox.classList.add('d-none');
-    }
-}
-
-function handleNewRowQRModeChange(select) {
-    const row = select.closest('tr');
-    if (!row) return;
-    const seriesBox = row.querySelector('.row-series-box');
-    if (select.value === 'SERIES_BATCH') {
-        if (seriesBox) seriesBox.classList.remove('d-none');
-        const skuInput = row.querySelector('.sku-input');
-        const startInput = row.querySelector('.series-start-input');
-        const endInput = row.querySelector('.series-end-input');
-        let sku = (skuInput?.value || '').trim();
-        if (!sku) {
-            const name = row.querySelector('.item-name-input')?.value || document.getElementById('supplierCompanyInput')?.value || 'ITEM';
-            const color = row.querySelector('.color-input')?.value || '';
-            const size = row.querySelector('.size-input')?.value || '';
-            sku = generateCleanSku(name, color, size);
-            if (skuInput) skuInput.value = sku;
-        }
-        if (startInput && !startInput.value.trim()) startInput.value = sku + '-001';
-        if (endInput && !endInput.value.trim()) endInput.value = sku + '-010';
-    } else {
-        if (seriesBox) seriesBox.classList.add('d-none');
-    }
-}
-
-function generateCleanSku(name, color, size) {
-    name = (name || '').trim();
-    color = (color || '').trim();
-    size = (size || '').trim();
-    const cleanName = name.replace(/[^A-Za-z0-9]/g, '').substring(0, 5).toUpperCase() || 'ITEM';
-    const cleanColor = color ? '-' + color.replace(/[^A-Za-z0-9]/g, '').substring(0, 3).toUpperCase() : '';
-    const cleanSize = size ? '-' + size.replace(/[^A-Za-z0-9]/g, '').substring(0, 4).toUpperCase() : '';
-    const rand = Math.floor(100 + Math.random() * 900);
-    return 'TP-' + cleanName + cleanColor + cleanSize + '-' + rand;
-}
-
-function autoGenerateNewSku(btn) {
-    const row = btn.closest('tr');
-    const name = row.querySelector('.item-name-input')?.value || document.getElementById('supplierCompanyInput')?.value || 'ITEM';
-    const color = row.querySelector('.color-input')?.value || '';
-    const size = row.querySelector('.size-input')?.value || '';
-    const skuInput = row.querySelector('.sku-input');
-    if (skuInput) skuInput.value = generateCleanSku(name, color, size);
-}
-
-function handleNewProductNameInput(input) {
-    const row = input.closest('tr');
-    const skuInput = row.querySelector('.sku-input');
-    if (skuInput && !skuInput.value.trim()) {
-        const color = row.querySelector('.color-input')?.value || '';
-        const size = row.querySelector('.size-input')?.value || '';
-        const newSku = generateCleanSku(input.value, color, size);
-        skuInput.value = newSku;
-    }
-}
-
-function handleNewVariantPropInput(input) {
-    const row = input.closest('tr');
-    const skuInput = row.querySelector('.sku-input');
-    if (skuInput && (!skuInput.value.trim() || skuInput.value.startsWith('TP-'))) {
-        const name = row.querySelector('.item-name-input')?.value || document.getElementById('supplierCompanyInput')?.value || 'ITEM';
-        const color = row.querySelector('.color-input')?.value || '';
-        const size = row.querySelector('.size-input')?.value || '';
-        skuInput.value = generateCleanSku(name, color, size);
-    }
-}
-
-function addNewProductRow() {
-    const placeholder = document.getElementById('noNewRowsPlaceholder');
-    if (placeholder) placeholder.style.display = 'none';
-
-    const template = document.getElementById('newProductRowTemplate');
-    const tbody = document.getElementById('newProductsTableBody');
-    const clone = template.content.cloneNode(true);
-    tbody.appendChild(clone);
-    updateNewRowNumbers();
-}
-
-function removeNewProductRow(btn) {
-    const row = btn.closest('tr');
-    row.remove();
-    updateNewRowNumbers();
-    const rows = document.querySelectorAll('#newProductsTableBody tr.new-product-row');
-    if (rows.length === 0) {
-        const placeholder = document.getElementById('noNewRowsPlaceholder');
-        if (placeholder) placeholder.style.display = '';
-    }
-}
-
-function updateNewRowNumbers() {
-    const rows = document.querySelectorAll('#newProductsTableBody tr.new-product-row');
-    rows.forEach((row, idx) => {
-        const numEl = row.querySelector('.new-row-num');
-        if (numEl) numEl.textContent = idx + 1;
-    });
-}
-</script>
+<script src="<?= asset('js/warehouse_supplier_edit.js') ?>"></script>

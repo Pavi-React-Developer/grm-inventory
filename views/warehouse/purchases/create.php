@@ -157,12 +157,6 @@
                         </div>
                     </div>
 
-                    <!-- 5. GST Number (Optional) -->
-                    <div class="mb-2.5">
-                        <label class="form-label small fw-semibold mb-1 text-secondary">GSTIN Number <span class="text-muted fw-normal">(Optional)</span></label>
-                        <input type="text" name="customer_gst" id="custGst" class="form-control form-control-sm text-uppercase font-monospace" placeholder="e.g. 33AAACG1234F1Z5" maxlength="15">
-                    </div>
-
                     <!-- History link when customer selected -->
                     <div id="custHistorySection" class="d-none pt-1 mb-2.5">
                         <button type="button" class="btn btn-xs btn-outline-primary w-100 py-1 fw-semibold" onclick="openSelectedCustomerHistory()" title="View products and previous orders bought by this customer">
@@ -378,9 +372,6 @@
                                     Scan QR tag / barcode or type product code / SKU / name — <kbd class="bg-dark text-warning border border-secondary px-1 py-0" style="font-size:0.7rem;">Alt + S</kbd> to focus
                                 </span>
                             </div>
-                            <button type="button" class="btn btn-xs btn-outline-light py-0.5 px-2" data-bs-toggle="modal" data-bs-target="#cameraScanModal">
-                                <i class="bi bi-camera-video me-1 text-warning"></i> Camera Scanner
-                            </button>
                         </div>
                         
                         <!-- Search & Scanner Input with Floating Auto-Suggest Dropdown -->
@@ -443,6 +434,7 @@
                                                                 $isComp = ((isset($v['category_type']) && $v['category_type'] === 'COMPLEMENTARY') || !empty($v['is_complementary']) || !empty($v['p_is_comp']));
                                                                 $isSeries = ((isset($v['category_type']) && $v['category_type'] === 'SERIES') || ($v['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($v['pack_quantity'] ?? 1) > 1);
                                                                 $retailPrice = $isComp ? 0.00 : (float)($v['selling_price'] > 0 ? $v['selling_price'] : $v['mrp']);
+                                                                $mrpPrice = $isComp ? 0.00 : (float)($v['mrp'] > 0 ? $v['mrp'] : $retailPrice);
                                                                 $availStock = (int)($v['available_stock'] ?? 0);
                                                                 $qrTag = !empty($v['qr_code']) ? $v['qr_code'] : $v['sku'];
                                                                 $catName = $v['category_name'] ?? 'General';
@@ -461,7 +453,7 @@
                                                                     data-qr-type="<?= e($qrType) ?>"
                                                                     data-size="<?= e($sizeText) ?>"
                                                                     data-price="<?= $retailPrice ?>"
-                                                                    data-mrp="<?= $retailPrice ?>"
+                                                                    data-mrp="<?= $mrpPrice ?>"
                                                                     data-gst="<?= $isComp ? 0 : (float)($v['gst_rate'] ?? 5) ?>"
                                                                     data-stock="<?= $availStock ?>">
                                                                 <?= e($v['product_name']) ?> | <?= e($v['sku']) ?> (<?= e($sizeText) ?>)<?= $isComp ? ' [Complementary - ₹0.00]' : ($isSeries ? ' [Series]' : '') ?>
@@ -599,25 +591,30 @@
     </div>
 </form>
 
-<!-- ========================================================================= -->
-<!-- MODAL: CAMERA QR / BARCODE SCANNER -->
-<!-- ========================================================================= -->
-<div class="modal fade" id="cameraScanModal" tabindex="-1" aria-labelledby="cameraScanModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-dark text-white py-2 px-3">
-                <h6 class="modal-title" id="cameraScanModalLabel"><i class="bi bi-camera me-1.5 text-warning"></i>Camera QR Scanner</h6>
-                <button type="button" class="btn-close btn-close-white btn-sm" data-bs-dismiss="modal" aria-label="Close"></button>
+<div class="modal fade" id="scanAlertModal" tabindex="-1" aria-labelledby="scanAlertTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header border-0 pb-0">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="rounded-circle bg-danger-subtle text-danger d-flex align-items-center justify-content-center" style="width: 46px; height: 46px;">
+                        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-dark mb-0" id="scanAlertTitle">Unable to scan item</h5>
+                        <small class="text-muted">Please check this item before continuing.</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close align-self-start" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body text-center p-2.5">
-                <div id="reader" style="width: 100%; min-height: 240px; background: #000; border-radius: 6px;"></div>
-                <div class="mt-1.5 text-muted small" style="font-size: 0.75rem;">Hold QR tag or barcode in front of camera</div>
+            <div class="modal-body pt-3">
+                <div class="p-3 rounded-3 bg-light border text-secondary" id="scanAlertMessage" style="line-height: 1.55;"></div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-primary px-4 fw-semibold rounded-3" data-bs-dismiss="modal">Got it</button>
             </div>
         </div>
     </div>
 </div>
-
-
 
 <style>
 .search-result-item {
@@ -1083,7 +1080,6 @@ function selectCustomer(cust) {
     const addrInput = document.getElementById('custAddress');
     const cityInput = document.getElementById('custCity');
     const stateInput = document.getElementById('custState');
-    const gstInput = document.getElementById('custGst');
     const btnClear = document.getElementById('btnClearCustomer');
     const histSec = document.getElementById('custHistorySection');
 
@@ -1105,7 +1101,6 @@ function selectCustomer(cust) {
         }
     }
     if (stateInput) stateInput.value = cust.state || 'Tamil Nadu';
-    if (gstInput) gstInput.value = cust.gst_number || '';
     if (btnClear) btnClear.style.display = 'block';
     if (histSec) histSec.classList.remove('d-none');
 
@@ -1119,7 +1114,6 @@ function clearCustomerInputs() {
     const addrInput = document.getElementById('custAddress');
     const cityInput = document.getElementById('custCity');
     const stateInput = document.getElementById('custState');
-    const gstInput = document.getElementById('custGst');
     const btnClear = document.getElementById('btnClearCustomer');
     const histSec = document.getElementById('custHistorySection');
     const counter = document.getElementById('phoneCounter');
@@ -1133,7 +1127,6 @@ function clearCustomerInputs() {
     if (addrInput) addrInput.value = '';
     if (cityInput) cityInput.value = 'Tiruppur';
     if (stateInput) stateInput.value = 'Tamil Nadu';
-    if (gstInput) gstInput.value = '';
     if (btnClear) btnClear.style.display = 'none';
     if (histSec) histSec.classList.add('d-none');
     if (counter) {
@@ -1444,7 +1437,8 @@ function onRowPriceChange(priceEl) {
     }
     
     const qty = parseFloat(qtyInput ? qtyInput.value : 1) || 1;
-    const gstRate = isComp ? 0.0 : (parseFloat(gstInput ? gstInput.value : 5.0) || 5.0);
+    const gstValue = parseFloat(gstInput ? gstInput.value : 5.0);
+    const gstRate = isComp ? 0.0 : (Number.isFinite(gstValue) ? gstValue : 5.0);
     
     const lineBilledTotal = Math.max(0, billed * qty);
     const lineMrpGross = mrp * qty;
@@ -1498,7 +1492,7 @@ function addItemRow(selectedVariantId = null, initialQr = null) {
         const isComp = (v.category_type === 'COMPLEMENTARY' || v.is_complementary == 1 || v.p_is_comp == 1);
         const isSeries = (v.category_type === 'SERIES' || v.qr_type === 'SERIES_BATCH' || v.is_series == 1 || parseInt(v.pack_quantity) > 1);
         const sellPrice = isComp ? 0 : (parseFloat(v.selling_price > 0 ? v.selling_price : v.mrp) || 0);
-        const mrp = isComp ? 0 : sellPrice;
+        const mrp = isComp ? 0 : (parseFloat(v.mrp > 0 ? v.mrp : sellPrice) || sellPrice);
         const stock = parseInt(v.available_stock) || 0;
         const isSelected = selectedVariantId && (String(v.id) === String(selectedVariantId));
         const qrTag = v.qr_code || v.sku;
@@ -1531,7 +1525,7 @@ function addItemRow(selectedVariantId = null, initialQr = null) {
     const isMatchedSeries = matchedVariant && (matchedVariant.category_type === 'SERIES' || matchedVariant.qr_type === 'SERIES_BATCH' || matchedVariant.is_series == 1 || parseInt(matchedVariant.pack_quantity) > 1);
 
     const initPrice = isMatchedComp ? '0.00' : (matchedVariant ? parseFloat(matchedVariant.selling_price > 0 ? matchedVariant.selling_price : matchedVariant.mrp).toFixed(2) : '0.00');
-    const initMrp = isMatchedComp ? '0.00' : initPrice;
+    const initMrp = isMatchedComp ? '0.00' : (matchedVariant ? parseFloat(matchedVariant.mrp > 0 ? matchedVariant.mrp : initPrice).toFixed(2) : initPrice);
     const initStock = matchedVariant ? parseInt(matchedVariant.available_stock || 0) : 0;
     const initCat = matchedVariant ? (matchedVariant.category_name || 'General') : '-';
     const initSize = matchedVariant ? ((matchedVariant.size_name || 'Free') + ' / ' + (matchedVariant.color_name || 'Std')).trim() : '-';
@@ -1879,10 +1873,17 @@ function handleScanInput(rawCode) {
             if (data.success && data.variant) {
                 const existingIdx = VARIANTS_LIST.findIndex(v => String(v.id) === String(data.variant.id));
                 if (existingIdx >= 0) {
-                    VARIANTS_LIST[existingIdx].available_stock = data.variant.available_stock;
+                    VARIANTS_LIST[existingIdx] = Object.assign({}, VARIANTS_LIST[existingIdx], data.variant);
                 } else {
                     VARIANTS_LIST.push(data.variant);
                 }
+                document.querySelectorAll('#itemsTableBody .variant-select').forEach(select => {
+                    const option = Array.from(select.options).find(item => String(item.value) === String(data.variant.id));
+                    if (!option) return;
+                    option.setAttribute('data-price', data.variant.selling_price);
+                    option.setAttribute('data-mrp', data.variant.mrp);
+                    option.setAttribute('data-stock', data.variant.available_stock);
+                });
                 applyVariantToTable(data.variant, data.tag_code || clean);
             } else {
                 playBeep('error');
@@ -1890,15 +1891,17 @@ function handleScanInput(rawCode) {
                     feedbackBox.className = 'mt-2 small alert alert-danger py-1.5 px-2.5 mb-0 d-block shadow-sm';
                     feedbackBox.innerHTML = `${escapeHtml(data.message || 'Scanned QR code is not in active warehouse stock!')}`;
                 }
-                alert(data.message || 'Scanned QR code is not in active warehouse stock!');
+                showScanAlert(data.message || 'Scanned QR code is not in active warehouse stock!');
             }
         })
         .catch(() => {
             playBeep('error');
+            const message = `Error verifying scan code: ${clean}`;
             if (feedbackBox) {
                 feedbackBox.className = 'mt-2 small alert alert-danger py-1 px-2.5 mb-0 d-block shadow-sm';
-                feedbackBox.innerHTML = `⚠️ Error verifying scan code: <strong>${escapeHtml(clean)}</strong>`;
+                feedbackBox.innerHTML = `⚠️ ${escapeHtml(message)}`;
             }
+            showScanAlert(message);
         });
 
     const scanInput = document.getElementById('purchaseScanInput');
@@ -1906,6 +1909,29 @@ function handleScanInput(rawCode) {
         scanInput.value = '';
         scanInput.focus();
     }
+}
+
+function showScanAlert(message) {
+    const modalEl = document.getElementById('scanAlertModal');
+    const titleEl = document.getElementById('scanAlertTitle');
+    const messageEl = document.getElementById('scanAlertMessage');
+    if (!modalEl || !titleEl || !messageEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+        return;
+    }
+
+    const normalizedMessage = message.toLowerCase();
+    titleEl.textContent = normalizedMessage.includes('already sold')
+        ? 'This item is already sold'
+        : normalizedMessage.includes('already been scanned')
+            ? 'Duplicate scan'
+            : normalizedMessage.includes('out of stock') || normalizedMessage.includes('no pieces available')
+                ? 'Out of stock'
+                : 'Unable to scan item';
+    messageEl.textContent = message;
+    modalEl.addEventListener('hidden.bs.modal', function focusScannerInput() {
+        document.getElementById('purchaseScanInput')?.focus();
+    }, { once: true });
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
 
 function applyVariantToTable(matched, tagLabel = '') {
@@ -1939,7 +1965,7 @@ function applyVariantToTable(matched, tagLabel = '') {
                 dupRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 setTimeout(() => dupRow.classList.remove('table-danger'), 2500);
             }
-            alert(`🚫 Duplicate Scan Blocked:\n\nPiece QR / Tag "${cleanTag}" has ALREADY been scanned into this purchase order.\nEach piece QR tag can only be added once.`);
+            showScanAlert(`Piece QR / Tag "${cleanTag}" has already been scanned into this purchase order. Each individual piece QR tag can only be added once.`);
             return;
         }
     }
@@ -1952,7 +1978,7 @@ function applyVariantToTable(matched, tagLabel = '') {
             feedbackBox.className = 'mt-2 small alert alert-danger py-1.5 px-2.5 mb-0 d-block shadow-sm';
             feedbackBox.innerHTML = `🚫 <strong>Out of Stock in Warehouse:</strong> <strong>${escapeHtml(matched.product_name)}</strong> (${escapeHtml(matched.sku)}) has 0 pcs available in this warehouse inventory.`;
         }
-        alert(`🚫 Out of Stock in Warehouse:\n\n"${matched.product_name}" (${matched.sku}) has 0 pcs available in the selected warehouse inventory.`);
+        showScanAlert(`"${matched.product_name}" (${matched.sku}) has no pieces available in the selected warehouse.`);
         return;
     }
 
@@ -1972,7 +1998,7 @@ function applyVariantToTable(matched, tagLabel = '') {
             feedbackBox.className = 'mt-2 small alert alert-danger py-1.5 px-2.5 mb-0 d-block shadow-sm';
             feedbackBox.innerHTML = `⚠️ <strong>Warehouse Stock Limit Reached:</strong> Cannot add more! Selected Warehouse has only <strong>${maxAvailable} pcs</strong> available for <strong>${escapeHtml(matched.product_name)}</strong> (${escapeHtml(matched.sku)}). You have already scanned <strong>${currentVariantTotalQty} pcs</strong> in this order.`;
         }
-        alert(`⚠️ Warehouse Stock Limit Reached:\n\nSelected Warehouse has only ${maxAvailable} pcs available in stock for "${matched.product_name}" (${matched.sku}).\n\nYou already have ${currentVariantTotalQty} pcs added in this purchase order.\nCannot scan or add more pieces than available warehouse stock.`);
+        showScanAlert(`Only ${maxAvailable} pcs are available for "${matched.product_name}" (${matched.sku}) in this warehouse. This order already contains ${currentVariantTotalQty} pcs.`);
         return;
     }
 
@@ -2051,7 +2077,8 @@ function calculateTotals() {
             if (mrpEl) mrpEl.value = mrp.toFixed(2);
         }
         const qty = parseFloat(qtyEl ? qtyEl.value : 1) || 1;
-        const gstRate = parseFloat(gstEl ? gstEl.value : 5.0) || 5.0;
+        const gstValue = parseFloat(gstEl ? gstEl.value : 5.0);
+        const gstRate = Number.isFinite(gstValue) ? gstValue : 5.0;
 
         const lineMrpGross = mrp * qty;
         const lineBilledTotal = Math.max(0, billed * qty);
@@ -2171,7 +2198,7 @@ function validateBeforeSubmit(e) {
         if (tag && !isSeries) {
             if (seenTags.has(tag)) {
                 r.classList.add('table-danger');
-                alert(`🚫 Duplicate Scan Error:\n\nPiece QR tag "${tag}" is added multiple times.\nEach piece QR tag must be unique in this purchase order.`);
+                showScanAlert(`Piece QR tag "${tag}" is added multiple times. Each piece QR tag must be unique in this purchase order.`);
                 return false;
             }
             seenTags.add(tag);
@@ -2262,36 +2289,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, true);
 
-    // Camera Scanner
-    let html5QrCode = null;
-    const cameraModalEl = document.getElementById('cameraScanModal');
-    if (cameraModalEl) {
-        cameraModalEl.addEventListener('shown.bs.modal', function() {
-            if (typeof Html5Qrcode !== 'undefined') {
-                html5QrCode = new Html5Qrcode("reader");
-                const config = { fps: 10, qrbox: { width: 220, height: 220 } };
-                html5QrCode.start(
-                    { facingMode: "environment" },
-                    config,
-                    (decodedText) => {
-                        handleScanInput(decodedText);
-                        const modalInstance = bootstrap.Modal.getInstance(cameraModalEl);
-                        if (modalInstance) modalInstance.hide();
-                        html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
-                    },
-                    () => {}
-                ).catch(err => {
-                    document.getElementById('reader').innerHTML = '<div class="text-danger p-3 small">Camera access failed: ' + err + '</div>';
-                });
-            }
-        });
-
-        cameraModalEl.addEventListener('hidden.bs.modal', function() {
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
-            }
-        });
-    }
 });
 
 // Customer Profile & Purchase History Modal Handlers

@@ -75,18 +75,6 @@ class Shop {
         $sql .= " ORDER BY s.name ASC";
         $rows = Database::fetchAll($sql, $params);
 
-        if (empty($rows) && empty($filters['search'])) {
-            self::create([
-                'name'         => 'GRM Retail Flagship Store',
-                'code'         => 'SH-01',
-                'manager_name' => 'Store Manager',
-                'address'      => 'Main Bazaar Road, Tirupur, Tamil Nadu',
-                'phone'        => '9876543210',
-                'gst_number'   => '33AAAAA0000A1Z5',
-                'is_active'    => 1
-            ]);
-            $rows = Database::fetchAll($sql, $params);
-        }
         return $rows;
     }
 

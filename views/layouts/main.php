@@ -249,11 +249,11 @@ if (!empty($authUser['shop_name'])) {
                             <?php if (hasPermission('stock', 'view')): ?>
                             <li><a href="<?= url('warehouse/stock') ?>" class="<?= ($activeMenu ?? '') === 'wh-stock' ? 'active' : '' ?>">Stock</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('wh_sellers', 'view')): ?>
-                            <li><a href="<?= url('warehouse/sellers') ?>" class="<?= ($activeMenu ?? '') === 'wh-sellers' ? 'active' : '' ?>">Suppliers</a></li>
-                            <?php endif; ?>
                             <?php if (hasPermission('wh_catalog', 'view')): ?>
                             <li><a href="<?= url('warehouse/catalog') ?>" class="<?= ($activeMenu ?? '') === 'wh-catalog' ? 'active' : '' ?>">Catalog</a></li>
+                            <?php endif; ?>
+                            <?php if (hasPermission('wh_sellers', 'view')): ?>
+                            <li><a href="<?= url('warehouse/sellers') ?>" class="<?= ($activeMenu ?? '') === 'wh-sellers' ? 'active' : '' ?>">Suppliers</a></li>
                             <?php endif; ?>
                             <?php if (hasPermission('wh_labels', 'view')): ?>
                             <li><a href="<?= url('warehouse/labels') ?>" class="<?= ($activeMenu ?? '') === 'wh-labels' ? 'active' : '' ?>">QR Labels</a></li>
@@ -266,9 +266,6 @@ if (!empty($authUser['shop_name'])) {
                             <?php endif; ?>
                             <?php if (hasPermission('allocation', 'view')): ?>
                             <li><a href="<?= url('warehouse/allocation') ?>" class="<?= in_array(($activeMenu ?? ''), ['allocation', 'wh-allocations']) ? 'active' : '' ?>">Allocation</a></li>
-                            <?php endif; ?>
-                            <?php if (hasPermission('wh_batches', 'view')): ?>
-                            <li><a href="<?= url('warehouse/allocation?tab=batches') ?>" class="<?= ($activeMenu ?? '') === 'wh-batches' ? 'active' : '' ?>">Batches</a></li>
                             <?php endif; ?>
                             <?php if (hasPermission('allocation_outward', 'view')): ?>
                             <li><a href="<?= url('warehouse/allocation/outward') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-outward', 'allocation-outward']) ? 'active' : '' ?>">Outward</a></li>
@@ -620,34 +617,6 @@ if (!empty($authUser['shop_name'])) {
                     <?php endif; ?>
                 </div>
                 <div class="navbar-right">
-                    <!-- Assigned Defined Unit Indicator in Top Header -->
-                    <?php if (!empty($userAssignedUnits)): ?>
-                        <div class="active-unit-badges d-none d-sm-flex align-items-center gap-2">
-                            <?php foreach ($userAssignedUnits as $uItem): ?>
-                            <div class="unit-indicator-pill px-2.5 py-1 rounded-pill bg-light border d-inline-flex align-items-center gap-1.5 shadow-xs" title="Assigned <?= e($uItem['type']) ?>: <?= e($uItem['name']) ?>">
-                                <i class="<?= $uItem['icon'] ?> text-primary" style="font-size: 0.92rem;"></i>
-                                <span class="badge <?= $uItem['badge_class'] ?> rounded-pill text-uppercase" style="font-size: 0.62rem; font-weight: 700; padding: 2px 6px;">
-                                    <?= e($uItem['short_type']) ?>
-                                </span>
-                                <span class="fw-semibold text-dark text-truncate" style="max-width: 220px; font-size: 0.8rem;">
-                                    <?= e($uItem['name']) ?>
-                                </span>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php elseif ($isAdminRole): ?>
-                        <div class="active-unit-badges d-none d-sm-flex align-items-center">
-                            <div class="unit-indicator-pill px-2.5 py-1 rounded-pill bg-light border d-inline-flex align-items-center gap-1.5 shadow-xs" title="Super Admin Scope">
-                                <i class="bi bi-globe-americas text-primary" style="font-size: 0.92rem;"></i>
-                                <span class="badge bg-dark rounded-pill text-uppercase" style="font-size: 0.62rem; font-weight: 700; padding: 2px 6px;">
-                                    ADMIN
-                                </span>
-                                <span class="fw-semibold text-secondary" style="font-size: 0.8rem;">
-                                    Enterprise (All Units)
-                                </span>
-                            </div>
-                        </div>
-                    <?php endif; ?>
                     <!-- User Dropdown -->
                     <div class="dropdown">
                         <button class="user-dropdown" data-bs-toggle="dropdown">

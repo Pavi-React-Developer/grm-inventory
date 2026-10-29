@@ -146,17 +146,6 @@ class Warehouse {
      */
     public static function getWithMetrics(bool $unscoped = false): array {
         $warehouses = self::getAll($unscoped ? ['unscoped' => true] : []);
-        if (empty($warehouses)) {
-            // Seed initial primary warehouse if empty
-            $defId = self::create([
-                'name'      => 'Central Distribution Warehouse',
-                'code'      => 'WH-01',
-                'address'   => 'Warehouse Complex, Ring Road, Tirupur, Tamil Nadu',
-                'phone'     => '+91 98765 00002',
-                'is_active' => 1
-            ]);
-            $warehouses = self::getAll($unscoped ? ['unscoped' => true] : []);
-        }
 
         foreach ($warehouses as &$wh) {
             $whId = (int)$wh['id'];
@@ -229,4 +218,3 @@ class Warehouse {
         return (int)($row['cnt'] ?? 0);
     }
 }
-

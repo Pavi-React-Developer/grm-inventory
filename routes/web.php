@@ -520,6 +520,7 @@ class Router {
         $this->post('api/warehouse/catalog/default-products/save', 'WarehouseController', 'ajaxSaveDefaultProducts', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'edit']]);
         $this->get('api/warehouse/catalog/products-by-category', 'WarehouseController', 'ajaxGetProductsByCategory', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'view']]);
         $this->post('api/warehouse/catalog/create-full-hierarchy', 'WarehouseController', 'ajaxCreateFullHierarchy', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'create']]);
+        $this->post('api/warehouse/catalog/update-full-hierarchy', 'WarehouseController', 'ajaxUpdateFullHierarchy', ['AuthMiddleware', ['PermissionMiddleware', 'wh_catalog', 'edit']]);
 
         // Warehouse Sellers & Third-Party Purchases
         $this->get('warehouse/sellers', 'WarehouseController', 'sellerList', ['AuthMiddleware', ['PermissionMiddleware', 'wh_sellers', 'view']]);

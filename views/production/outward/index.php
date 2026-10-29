@@ -250,6 +250,7 @@
                                         <th>Size</th>
                                         <th>Color</th>
                                         <th class="text-end">Quantity (pcs)</th>
+                                        <th>Outward Piece QR Codes</th>
                                     </tr>
                                 </thead>
                                 <tbody id="vodItemsTableBody">
@@ -451,7 +452,7 @@ function viewOutwardDispatchDetails(outwardId) {
             const tbody = document.getElementById('vodItemsTableBody');
             tbody.innerHTML = '';
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No individual variant breakdown records found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No individual variant breakdown records found.</td></tr>';
             } else {
                 items.forEach((it, idx) => {
                     const row = document.createElement('tr');
@@ -461,8 +462,45 @@ function viewOutwardDispatchDetails(outwardId) {
                         <td><span class="badge bg-secondary-subtle text-secondary border font-monospace">${escapeHtml(it.size_name || 'Std')}</span></td>
                         <td><span class="badge bg-info-subtle text-info border font-monospace">${escapeHtml(it.color_name || 'Std')}</span></td>
                         <td class="text-end fw-bold text-success">${parseInt(it.quantity || 0).toLocaleString()} pcs</td>
+                        <td><div class="d-flex flex-wrap gap-2 vod-piece-qrs"></div></td>
                     `;
                     tbody.appendChild(row);
+
+                    const qrList = row.querySelector('.vod-piece-qrs');
+                    const pieceTags = Array.isArray(it.outward_piece_tags) ? it.outward_piece_tags : [];
+                    if (!pieceTags.length) {
+                        qrList.innerHTML = '<span class="small text-muted">Individual piece QR tags are unavailable.</span>';
+                        return;
+                    }
+
+                    pieceTags.forEach((tag, pieceIndex) => {
+                        const pieceCard = document.createElement('div');
+                        pieceCard.className = 'border rounded-2 p-1 text-center bg-white';
+                        pieceCard.style.width = '76px';
+                        pieceCard.title = `Piece ${pieceIndex + 1}: ${tag}`;
+
+                        const qr = document.createElement('div');
+                        qr.className = 'vod-piece-qr mx-auto';
+                        qr.setAttribute('aria-label', `QR code for ${tag}`);
+                        const code = document.createElement('div');
+                        code.className = 'font-monospace text-dark text-break mt-1';
+                        code.style.fontSize = '0.62rem';
+                        code.textContent = tag;
+                        pieceCard.append(qr, code);
+                        qrList.appendChild(pieceCard);
+
+                        if (typeof QRCode === 'undefined') {
+                            qr.textContent = 'QR unavailable';
+                            qr.className += ' small text-danger';
+                            return;
+                        }
+                        new QRCode(qr, {
+                            text: tag,
+                            width: 60,
+                            height: 60,
+                            correctLevel: QRCode.CorrectLevel.M
+                        });
+                    });
                 });
             }
 
@@ -575,4 +613,3 @@ if (document.readyState === 'loading') {
     initOutwardPagination();
 }
 </script>
-

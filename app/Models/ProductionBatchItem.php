@@ -31,12 +31,13 @@ class ProductionBatchItem {
     public static function create(array $data): int {
         Database::execute(
             "INSERT INTO production_batch_items 
-             (production_batch_id, variant_id, quantity)
-             VALUES (?, ?, ?)",
+             (production_batch_id, variant_id, quantity, piece_tags)
+             VALUES (?, ?, ?, ?)",
             [
                 $data['production_batch_id'],
                 $data['variant_id'],
                 $data['quantity'] ?? 0,
+                !empty($data['piece_tags']) ? json_encode(array_values($data['piece_tags']), JSON_UNESCAPED_UNICODE) : null,
             ]
         );
         return (int)Database::lastInsertId();

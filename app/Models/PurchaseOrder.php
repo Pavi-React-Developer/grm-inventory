@@ -133,8 +133,8 @@ class PurchaseOrder {
     public static function create(array $data): int {
         Database::execute(
             "INSERT INTO purchase_orders 
-             (po_number, customer_id, seller_id, warehouse_supplier_id, warehouse_id, order_date, expected_date, subtotal, discount_amount, cgst_amount, sgst_amount, igst_amount, total_amount, payment_status, payment_method, payment_screenshot_url, payment_screenshot_public_id, status, notes, created_by, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+             (po_number, customer_id, seller_id, warehouse_supplier_id, warehouse_id, order_date, expected_date, subtotal, discount_amount, cgst_amount, sgst_amount, igst_amount, tax_amount, total_amount, payment_status, payment_method, payment_screenshot_url, payment_screenshot_public_id, status, notes, created_by, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
             [
                 $data['po_number'],
                 !empty($data['customer_id']) ? (int)$data['customer_id'] : null,
@@ -148,6 +148,7 @@ class PurchaseOrder {
                 $data['cgst_amount'] ?? 0.00,
                 $data['sgst_amount'] ?? 0.00,
                 $data['igst_amount'] ?? 0.00,
+                $data['tax_amount'] ?? 0.00,
                 $data['total_amount'] ?? 0.00,
                 $data['payment_status'] ?? 'PENDING',
                 $data['payment_method'] ?? 'CASH',
@@ -168,7 +169,7 @@ class PurchaseOrder {
         return Database::execute(
             "UPDATE purchase_orders 
              SET customer_id = ?, seller_id = ?, warehouse_id = ?, order_date = ?, expected_date = ?,
-                 subtotal = ?, discount_amount = ?, cgst_amount = ?, sgst_amount = ?, igst_amount = ?, total_amount = ?,
+                 subtotal = ?, discount_amount = ?, cgst_amount = ?, sgst_amount = ?, igst_amount = ?, tax_amount = ?, total_amount = ?,
                  payment_status = ?, payment_method = ?, status = ?, notes = ?, updated_at = NOW()
              WHERE id = ?",
             [
@@ -182,6 +183,7 @@ class PurchaseOrder {
                 $data['cgst_amount'] ?? 0.00,
                 $data['sgst_amount'] ?? 0.00,
                 $data['igst_amount'] ?? 0.00,
+                $data['tax_amount'] ?? 0.00,
                 $data['total_amount'] ?? 0.00,
                 $data['payment_status'] ?? 'PENDING',
                 $data['payment_method'] ?? 'CASH',
@@ -209,5 +211,4 @@ class PurchaseOrder {
         return PurchaseItem::getByPurchaseOrder($id);
     }
 }
-
 
