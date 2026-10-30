@@ -1,10 +1,30 @@
 <?php
-    $isFullyReceived = ($allocation['status'] === 'RECEIVED' || $allocation['status'] === 'COMPLETED');
-    $isPartiallyReceived = ($allocation['status'] === 'PARTIAL_RECEIVED');
+    $statusFullyReceived = ($allocation['status'] === 'RECEIVED' || $allocation['status'] === 'COMPLETED');
+    $hasReceiptMismatch = false;
+    if ($statusFullyReceived) {
+        foreach ($items as $item) {
+            $expected = (int)($item['dispatched_qty'] > 0 ? $item['dispatched_qty'] : $item['requested_qty']);
+            $received = (int)($item['received_qty'] ?? $expected);
+            $damaged = (int)($item['damaged_qty'] ?? 0);
+            if ($received > $expected || $damaged > $received) {
+                $hasReceiptMismatch = true;
+                break;
+            }
+        }
+    }
+    $isFullyReceived = $statusFullyReceived && !$hasReceiptMismatch;
+    $isPartiallyReceived = ($allocation['status'] === 'PARTIAL_RECEIVED') || $hasReceiptMismatch;
     $isReceived = $isFullyReceived;
+    if ($statusFullyReceived) {
+        foreach ($items as &$item) {
+            if (empty($item['received_qty']) && empty($item['damaged_qty'])) {
+                $item['received_qty'] = (int)($item['dispatched_qty'] > 0 ? $item['dispatched_qty'] : $item['requested_qty']);
+                $item['damaged_qty'] = 0;
+            }
+        }
+        unset($item);
+    }
     $canInward = hasPermission('shop_inward', 'verify') || hasPermission('shop_inward', 'receive') || hasPermission('shop_inward', 'create');
-    $canPrintInward = hasPermission('shop_inward', 'print');
-
     // Calculate actual total received, damaged, and missing quantities across all items
     $totalRecvCount = 0;
     $totalDamCount = 0;
@@ -30,14 +50,6 @@
         <span class="text-muted">Compare Outward Dispatch vs Inward Product Scans, Identify Missing QRs &amp; Update Shop Stock</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <?php if ($canPrintInward): ?>
-            <a href="<?= url('shop/inward/label/' . $allocation['id']) ?>" target="_blank" class="btn btn-outline-primary">
-                <i class="bi bi-printer me-1"></i> Print Carton QR Sticker
-            </a>
-            <a href="<?= url('shop/inward/gatepass/' . $allocation['id']) ?>" target="_blank" class="btn btn-outline-dark">
-                <i class="bi bi-file-earmark-text me-1"></i> Print Delivery Gate Pass
-            </a>
-        <?php endif; ?>
         <a href="<?= url('shop/inward') ?>" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i> Inward Queue
         </a>
@@ -184,7 +196,7 @@
         </div>
     </div>
 
-    <!-- RIGHT COLUMN: Scanner Engine & Cross-Check Matrix -->
+    <!-- RIGHT COLUMN: Cross-Check Matrix -->
     <div class="col-lg-8">
         <?php if (!$isFullyReceived && $canInward): ?>
             <!-- RESTORED SCAN DRAFT ALERT BANNER -->
@@ -209,104 +221,12 @@
                     </div>
                 </div>
             </div>
-
-            <!-- 2. LIVE CROSS-CHECK SCANNER CARD -->
-            <div class="card border-0 shadow-sm mb-4 border-start border-primary border-4">
-                <div class="card-body p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-                        <label class="form-label fw-bold text-dark mb-0">
-                            <i class="bi bi-upc-scan text-primary me-1"></i> Live Product &amp; QR Cross-Check Scanner
-                        </label>
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <!-- Scanner Mode Toggle: Good vs Damaged -->
-                            <div class="btn-group btn-group-sm shadow-2xs" role="group" aria-label="Scan Mode">
-                                <input type="radio" class="btn-check" name="scanModeToggle" id="modeGood" value="good" autocomplete="off" checked onchange="setScanMode('good')">
-                                <label class="btn btn-outline-success fw-semibold px-2.5 py-1 d-inline-flex align-items-center gap-1" for="modeGood">
-                                    <i class="bi bi-check-circle-fill"></i> <span>🟢 Good / Intact</span>
-                                </label>
-                                <input type="radio" class="btn-check" name="scanModeToggle" id="modeDamage" value="damage" autocomplete="off" onchange="setScanMode('damage')">
-                                <label class="btn btn-outline-danger fw-semibold px-2.5 py-1 d-inline-flex align-items-center gap-1" for="modeDamage">
-                                    <i class="bi bi-exclamation-octagon-fill"></i> <span>🔴 Damaged / Defect</span>
-                                </label>
-                            </div>
-                            <span id="draftSaveIndicator" class="badge bg-light text-muted border small d-none">
-                                <i class="bi bi-cloud-check text-success me-1"></i><span id="draftSaveText">Progress Auto-Saved</span>
-                            </span>
-                            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#cameraScanModal">
-                                <i class="bi bi-camera me-1"></i> Camera Scanner
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="input-group input-group-lg mb-2">
-                        <span class="input-group-text bg-white"><i class="bi bi-qr-code text-primary"></i></span>
-                        <input type="text" id="liveScannerInput" class="form-control font-monospace" placeholder="Scan Variant QR / Barcode / SKU / Master Consignment..." autofocus autocomplete="off">
-                        <button class="btn btn-primary px-4 fw-semibold" type="button" id="btnLiveScanSubmit">
-                            <i class="bi bi-plus-circle me-1"></i> Scan
-                        </button>
-                    </div>
-
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 text-muted small">
-                        <span><i class="bi bi-lightning-charge-fill text-warning me-1"></i>Physical USB/Bluetooth barcode guns will instantly cross-check on scan.</span>
-                        <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" id="btnAutoFillExpected">
-                            <i class="bi bi-magic me-1"></i> Quick Fill All Expected (Master Scan)
-                        </button>
-                    </div>
-
-                    <div id="scanAlertMsg" class="mt-3 d-none"></div>
-                </div>
-            </div>
         <?php endif; ?>
 
-        <?php if (!$isFullyReceived): ?>
-            <!-- 3. LIVE MISSING PRODUCT QR CODES TRACKER (PROFILE-WISE BREAKDOWN) -->
-            <div class="card border-0 shadow-sm mb-4 border-start border-danger border-4" id="missingProductsCard">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div>
-                        <h6 class="card-title mb-0 fw-bold text-danger">
-                            <i class="bi bi-exclamation-triangle-fill me-2"></i>Missing / Unscanned Products &amp; QR Codes (Profile-Wise)
-                        </h6>
-                        <small class="text-muted">Shows the full product variant profile first, followed by pending missing pieces</small>
-                    </div>
-                    <span class="badge bg-danger rounded-pill px-3 py-2 fs-7" id="missingBadgeCount">0 items pending</span>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive" id="missingTableContainer">
-                        <table class="table table-hover align-middle mb-0" id="missingTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Product Variant Profile</th>
-                                    <th>QR Code / Tag</th>
-                                    <th>Size &amp; Color</th>
-                                    <th class="text-center">Expected</th>
-                                    <th class="text-center">Scanned</th>
-                                    <th class="text-end">Missing Qty</th>
-                                    <th class="text-center">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="missingTableBody">
-                                <!-- Populated dynamically by JS -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="missingEmptyNotice" class="text-center py-4 d-none text-success">
-                        <i class="bi bi-check-circle-fill fs-3 d-block mb-1"></i>
-                        <span class="fw-bold">All outward products matched perfectly! Zero missing items.</span>
-                    </div>
-                </div>
-            </div>
-        <?php endif; ?>
-
-        <!-- 4. CROSS-CHECK MATRIX TABLE & FORM -->
+        <!-- CROSS-CHECK MATRIX TABLE & FORM -->
         <form method="POST" action="<?= url('shop/inward/verify/' . $allocation['id']) ?>" id="inwardForm">
             <?= CSRF::input() ?>
             <div class="card border-0 shadow-sm mb-4">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="card-title mb-0 fw-bold">
-                        <i class="bi bi-table me-2 text-primary"></i>Outward vs Inward Cross-Check Matrix
-                    </h6>
-                    <span class="text-muted small">Edit received/damaged quantities directly or via scanner</span>
-                </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0" id="matrixTable">
@@ -314,13 +234,15 @@
                                 <tr>
                                     <th>#</th>
                                     <th>SKU &amp; Product</th>
+                                    <th>QR Code / Tag</th>
                                     <th>Size &amp; Color</th>
                                     <th class="text-end">Outward Qty</th>
                                     <th class="text-center" style="width: 140px;">Inward Recv</th>
                                     <th class="text-center" style="width: 110px;">Damaged</th>
+                                    <th class="text-center">Missing Qty</th>
                                     <th class="text-center">Difference</th>
                                     <th class="text-center">Status</th>
-                                    <th class="text-center" style="width: 170px;">Action</th>
+                                    <th class="text-center" style="width: 230px;">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -391,13 +313,26 @@
                                         <td>
                                             <span class="fw-bold font-monospace text-primary d-block"><?= e($item['sku']) ?></span>
                                             <small class="text-dark fw-semibold d-block"><?= e($item['product_name']) ?></small>
+                                            <?php if (!empty($item['category_name'])): ?>
+                                                <small class="text-muted d-block"><?= e($item['category_name']) ?></small>
+                                            <?php endif; ?>
+                                            <?php if (!$isSeries && isset($item['outward_dispatched_qty']) && $item['outward_dispatched_qty'] > $expected): ?>
+                                                <small class="text-warning d-block mt-1">
+                                                    Outward quantity <?= number_format($item['outward_dispatched_qty']) ?>, but only <?= number_format(count($item['saved_tags'])) ?> QR tag(s) recorded. Inward is limited to the recorded tags.
+                                                </small>
+                                            <?php endif; ?>
+                                            <?php if ($initReceived > $expected): ?>
+                                                <small class="text-danger d-block mt-1">
+                                                    Existing shop receipt exceeds the recorded outward QR count. Correct the received quantity to reconcile stock.
+                                                </small>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="small" id="qr-tags-<?= $vid ?>" data-default-tag="<?= e($tagRange) ?>">
                                             <?php if ($isSeries && !empty($seriesQr)): ?>
-                                                <div class="mt-1">
-                                                    <span class="badge bg-primary text-white font-monospace"><i class="bi bi-box-seam me-1"></i><?= e($seriesQr) ?></span>
-                                                    <span class="badge bg-info-subtle text-info border border-info-subtle small ms-1">📦 Series Pack (<?= $expected ?> pcs)</span>
-                                                </div>
+                                                <span class="badge bg-primary text-white font-monospace"><i class="bi bi-box-seam me-1"></i><?= e($seriesQr) ?></span>
+                                                <small class="text-muted d-block mt-1">Series pack (<?= $expected ?> pcs)</small>
                                             <?php else: ?>
-                                                <small class="badge bg-dark text-white font-monospace mt-1"><i class="bi bi-qr-code me-1 text-warning"></i><?= e($tagRange) ?></small>
+                                                <span class="badge bg-dark text-white font-monospace"><i class="bi bi-qr-code me-1 text-warning"></i><?= e($tagRange) ?></span>
                                             <?php endif; ?>
                                         </td>
                                         <td>
@@ -409,23 +344,26 @@
                                         </td>
                                         <td class="text-center">
                                             <?php if (!$isFullyReceived && $canInward): ?>
-                                                <input type="number" name="items[<?= $vid ?>][received_qty]" 
-                                                       class="form-control form-control-sm text-center fw-bold text-success item-received-input" 
+                                                <input type="text" inputmode="none" readonly name="items[<?= $vid ?>][received_qty]"
+                                                       class="form-control form-control-sm text-center fw-bold text-success item-received-input bg-light"
                                                        id="input-recv-<?= $vid ?>" 
-                                                       value="<?= $initReceived ?>" min="0" max="99999" data-variant-id="<?= $vid ?>">
+                                                       value="<?= $initReceived ?>" aria-label="Received quantity (read-only)" data-variant-id="<?= $vid ?>">
                                             <?php else: ?>
                                                 <span class="fw-bold text-success fs-6"><?= number_format($initReceived) ?> pcs</span>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center">
                                             <?php if (!$isFullyReceived && $canInward): ?>
-                                                <input type="number" name="items[<?= $vid ?>][damaged_qty]" 
-                                                       class="form-control form-control-sm text-center fw-bold text-danger item-damaged-input" 
+                                                <input type="text" inputmode="none" readonly name="items[<?= $vid ?>][damaged_qty]"
+                                                       class="form-control form-control-sm text-center fw-bold text-danger item-damaged-input bg-light"
                                                        id="input-dmg-<?= $vid ?>" 
-                                                       value="<?= $initDamaged ?>" min="0" max="99999" data-variant-id="<?= $vid ?>">
+                                                       value="<?= $initDamaged ?>" aria-label="Damaged quantity (read-only)" data-variant-id="<?= $vid ?>">
                                             <?php else: ?>
                                                 <span class="<?= $initDamaged > 0 ? 'fw-bold text-danger' : 'text-muted' ?>"><?= $initDamaged ?></span>
                                             <?php endif; ?>
+                                        </td>
+                                        <td class="text-center fw-bold text-danger" id="missing-qty-<?= $vid ?>">
+                                            <?= number_format(max(0, $expected - $initReceived - $initDamaged)) ?> pcs
                                         </td>
                                         <td class="text-center">
                                             <span id="diff-badge-<?= $vid ?>" class="badge <?= $initDiff === 0 ? 'bg-success' : ($initDiff < 0 ? 'bg-danger' : 'bg-primary') ?> fs-6 font-monospace">
@@ -438,16 +376,9 @@
                                             </span>
                                         </td>
                                         <td class="text-center">
-                                            <div class="d-inline-flex gap-1">
-                                                <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold shadow-sm" onclick="openMissingProductModal(<?= $vid ?>, 'all')" title="View Complete Product Details &amp; All Individual Piece QR Codes">
-                                                    <i class="bi bi-eye me-1"></i> View
-                                                </button>
-                                                <?php if (!$isFullyReceived && $canInward): ?>
-                                                    <button type="button" class="btn btn-sm btn-outline-success py-1 px-2 fw-semibold shadow-sm btn-credit-single" onclick="creditSingleItem(<?= $vid ?>)" id="btn-credit-item-<?= $vid ?>" title="Quick Match &amp; Credit this item">
-                                                        <i class="bi bi-box-arrow-in-down me-1"></i> Credit
-                                                    </button>
-                                                <?php endif; ?>
-                                            </div>
+                                            <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold shadow-sm" onclick="openMissingProductModal(<?= $vid ?>, 'all')" title="View Complete Product Details &amp; All Individual Piece QR Codes" aria-label="View product details and QR codes">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -458,16 +389,10 @@
 
                 <?php if (!$isFullyReceived && $canInward): ?>
                     <div class="card-footer bg-light p-3">
-                        <div class="row g-3 align-items-center">
-                            <div class="col-lg-6">
-                                <label class="form-label small fw-semibold mb-1"><i class="bi bi-pencil-square me-1"></i>Inward Verification &amp; Discrepancy Notes</label>
-                                <input type="text" name="notes" id="inwardNotes" class="form-control" placeholder="e.g. Scanned via QR guns. Verified carton intact.">
-                            </div>
-                            <div class="col-lg-6 d-flex align-items-end justify-content-end gap-2 flex-wrap">
-                                <button type="button" class="btn btn-success px-4 py-2 fw-bold shadow-sm fs-6" id="btnCreditScannedOnly" onclick="creditScannedOnly();">
-                                    <i class="bi bi-box-arrow-in-down me-2"></i> Credit Scanned Qty (<span id="btnCreditScannedCount"><?= $totalRecvCount ?></span> pcs) to Inventory
-                                </button>
-                            </div>
+                        <div class="d-flex align-items-center justify-content-end">
+                            <button type="button" class="btn btn-success px-4 py-2 fw-bold shadow-sm fs-6" id="btnCreditScannedOnly" onclick="creditScannedOnly();">
+                                <i class="bi bi-box-arrow-in-down me-2"></i> Credit Scanned Qty (<span id="btnCreditScannedCount"><?= $totalRecvCount ?></span> pcs) to Inventory
+                            </button>
                         </div>
                     </div>
                 <?php elseif (!$isFullyReceived): ?>
@@ -607,20 +532,24 @@
                     <div class="col-md-7">
                         <h6 class="fw-bold text-dark mb-2"><i class="bi bi-upc-scan text-primary me-2"></i>Instant Missing Piece Reconciliation</h6>
                         <p class="text-muted small mb-3">
-                            Scan individual QR tags with a physical barcode gun, or use the quick buttons below to reconcile pending pieces.
+                            Choose the condition, then scan an individual QR tag or use the button below.
                         </p>
                         <div class="d-flex flex-column gap-2">
-                            <button type="button" class="btn btn-success fw-semibold py-2.5 shadow-xs" id="btnModalScanPlusOne">
-                                <i class="bi bi-plus-circle me-1"></i> Scan +1 Piece (<span id="modalBtnScanText">1 pc</span>)
-                            </button>
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-outline-primary fw-semibold py-2 flex-grow-1 shadow-xs" id="btnModalScanAllMissing">
-                                    <i class="bi bi-check2-all me-1"></i> Quick-Reconcile All (<span id="modalBtnScanAllText">0 pcs</span>)
-                                </button>
-                                <button type="button" class="btn btn-outline-danger fw-semibold py-2 shadow-xs" id="btnModalResetItem" title="Reset / Un-verify all scanned pieces for this item">
-                                    <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
-                                </button>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-white"><i class="bi bi-search text-primary"></i></span>
+                                <input type="text" class="form-control font-monospace" id="qrProductLookup" placeholder="Enter or scan a product QR code" aria-label="Find product by QR code" autocomplete="off">
+                                <button type="button" class="btn btn-outline-primary" id="btnQrProductLookup">Find</button>
                             </div>
+                            <small id="qrProductLookupMessage" class="text-muted" aria-live="polite">Find a product by scanning or entering its QR code.</small>
+                            <div class="btn-group btn-group-sm align-self-start" role="group" aria-label="Product condition">
+                                <input type="radio" class="btn-check" name="modalScanModeToggle" id="modalModeGood" value="good" autocomplete="off" checked onchange="setScanMode('good')">
+                                <label class="btn btn-outline-success fw-semibold" for="modalModeGood"><i class="bi bi-check-circle-fill me-1"></i>Good / Intact</label>
+                                <input type="radio" class="btn-check" name="modalScanModeToggle" id="modalModeDamage" value="damage" autocomplete="off" onchange="setScanMode('damage')">
+                                <label class="btn btn-outline-danger fw-semibold" for="modalModeDamage"><i class="bi bi-exclamation-octagon-fill me-1"></i>Damaged / Defect</label>
+                            </div>
+                            <button type="button" class="btn btn-success fw-semibold py-2.5 shadow-xs" id="btnModalScanPlusOne">
+                                <i class="bi bi-check-circle me-1" id="modalScanModeIcon"></i><span id="modalScanModeLabel">Scan +1 Good Piece</span> (<span id="modalBtnScanText">1 pc</span>)
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -689,16 +618,33 @@
 
     function setScanMode(mode) {
         currentScanMode = mode;
+        const goodMode = document.getElementById('modalModeGood');
+        const damageMode = document.getElementById('modalModeDamage');
+        if (goodMode) goodMode.checked = mode === 'good';
+        if (damageMode) damageMode.checked = mode === 'damage';
+
+        const scanButton = document.getElementById('btnModalScanPlusOne');
+        const scanButtonIcon = document.getElementById('modalScanModeIcon');
+        const scanButtonLabel = document.getElementById('modalScanModeLabel');
+        if (scanButton) {
+            scanButton.className = `btn btn-${mode === 'damage' ? 'danger' : 'success'} fw-semibold py-2.5 shadow-xs`;
+        }
+        if (scanButtonIcon) {
+            scanButtonIcon.className = `bi ${mode === 'damage' ? 'bi-slash-circle' : 'bi-check-circle'} me-1`;
+        }
+        if (scanButtonLabel) {
+            scanButtonLabel.textContent = mode === 'damage' ? 'Mark +1 Damaged Piece' : 'Scan +1 Good Piece';
+        }
+
         const liveInput = document.getElementById('liveScannerInput');
         if (liveInput) {
             if (mode === 'damage') {
-                liveInput.placeholder = "🔴 SCAN MODE: DAMAGED PIECES — Scan tag/barcode to report defect / quarantine...";
+                liveInput.placeholder = "Scan DAMAGED product QR / barcode...";
                 liveInput.classList.add('border-danger', 'bg-danger-subtle');
             } else {
-                liveInput.placeholder = "🟢 SCAN MODE: GOOD / INTACT — Scan tag/barcode to verify received pieces...";
+                liveInput.placeholder = "Scan GOOD product QR / barcode...";
                 liveInput.classList.remove('border-danger', 'bg-danger-subtle');
             }
-            liveInput.focus();
         }
     }
 
@@ -723,7 +669,6 @@
             damagedTags: Array.from(DAMAGED_TAGS),
             receivedMap: {},
             damagedMap: {},
-            notes: (document.getElementById('inwardNotes')?.value || '').trim(),
             timestamp: Date.now(),
             savedAtFormatted: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         };
@@ -844,12 +789,6 @@
             syncVariantTagsWithInput(it);
         });
 
-        // Restore notes
-        const notesInput = document.getElementById('inwardNotes');
-        if (notesInput && draft.notes) {
-            notesInput.value = draft.notes;
-        }
-
         if (hasScannedData) {
             recalculateMatrix();
 
@@ -905,9 +844,6 @@
                 if (recv) recv.value = 0;
                 if (dmg) dmg.value = 0;
             });
-            const notesInput = document.getElementById('inwardNotes');
-            if (notesInput) notesInput.value = '';
-
             recalculateMatrix();
             if (activeModalVariantId) {
                 updateModalState(activeModalVariantId);
@@ -1256,25 +1192,11 @@
         if (btnModalScan) {
             btnModalScan.addEventListener('click', function() {
                 if (activeModalVariantId) {
-                    fastScanVariant(activeModalVariantId);
-                }
-            });
-        }
-
-        const btnModalScanAll = document.getElementById('btnModalScanAllMissing');
-        if (btnModalScanAll) {
-            btnModalScanAll.addEventListener('click', function() {
-                if (activeModalVariantId) {
-                    creditSingleItem(activeModalVariantId);
-                }
-            });
-        }
-
-        const btnModalReset = document.getElementById('btnModalResetItem');
-        if (btnModalReset) {
-            btnModalReset.addEventListener('click', function() {
-                if (activeModalVariantId) {
-                    resetVariantPieces(activeModalVariantId);
+                    if (currentScanMode === 'damage') {
+                        markPieceDamage(activeModalVariantId);
+                    } else {
+                        fastScanVariant(activeModalVariantId);
+                    }
                 }
             });
         }
@@ -1282,10 +1204,30 @@
         // Auto refocus scanner input when modal closes
         const missingModal = document.getElementById('missingProductModal');
         if (missingModal) {
+            missingModal.addEventListener('show.bs.modal', function() {
+                setScanMode('good');
+            });
             missingModal.addEventListener('hidden.bs.modal', function() {
+                setScanMode('good');
                 activeModalVariantId = null;
                 const liveInput = document.getElementById('liveScannerInput');
                 if (liveInput) liveInput.focus();
+            });
+        }
+
+        const qrProductLookup = document.getElementById('qrProductLookup');
+        const btnQrProductLookup = document.getElementById('btnQrProductLookup');
+        if (qrProductLookup) {
+            qrProductLookup.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    findProductByQr(this.value);
+                }
+            });
+        }
+        if (btnQrProductLookup) {
+            btnQrProductLookup.addEventListener('click', function() {
+                findProductByQr(qrProductLookup ? qrProductLookup.value : '');
             });
         }
 
@@ -1300,6 +1242,10 @@
     function setupGlobalScannerListener() {
         window.addEventListener('keydown', function(e) {
             const activeEl = document.activeElement;
+            if (activeEl && activeEl.id === 'qrProductLookup') {
+                if (e.key === 'Enter') globalScanBuffer = '';
+                return;
+            }
             const isEditingInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
             const now = Date.now();
             const timeDiff = now - lastKeyStrokeTime;
@@ -1324,11 +1270,66 @@
         }, true);
     }
 
+    function findProductByQr(rawCode) {
+        const lookupMessage = document.getElementById('qrProductLookupMessage');
+        const code = String(rawCode || '').trim();
+        if (!code) {
+            if (lookupMessage) {
+                lookupMessage.textContent = 'Enter or scan a product QR code.';
+                lookupMessage.className = 'text-danger small';
+            }
+            return;
+        }
+
+        let tag = code;
+        if (code.startsWith('{') && code.endsWith('}')) {
+            try {
+                const payload = JSON.parse(code);
+                tag = payload.tag_code || payload.qr_code || code;
+            } catch (error) {
+                tag = code;
+            }
+        } else if (code.includes('|')) {
+            tag = code.split('|')[0].trim();
+        }
+        const normalizedTag = String(tag).trim().toUpperCase();
+
+        const matchedItem = ITEMS.find(item => {
+            const tags = [
+                item.qr_code,
+                item.series_qr_code,
+                item.series_start_code,
+                ...(Array.isArray(item.saved_tags) ? item.saved_tags : [])
+            ].filter(Boolean).map(value => String(value).trim().toUpperCase());
+
+            if (tags.includes(normalizedTag)) return true;
+            for (let sequence = item.startSeq || 1; sequence <= (item.endSeq || item.startSeq || 1); sequence++) {
+                if (getLabelCode(sequence, item).toUpperCase() === normalizedTag) return true;
+            }
+            return false;
+        });
+
+        if (!matchedItem) {
+            if (lookupMessage) {
+                lookupMessage.textContent = `No product was found for QR code "${normalizedTag}".`;
+                lookupMessage.className = 'text-danger small';
+            }
+            return;
+        }
+
+        activeModalVariantId = matchedItem.variant_id;
+        modalPieceFilter = 'all';
+        updateModalState(activeModalVariantId);
+        if (lookupMessage) {
+            lookupMessage.textContent = `Product found: ${matchedItem.product_name || matchedItem.sku} (${matchedItem.sku}).`;
+            lookupMessage.className = 'text-success small';
+        }
+    }
+
     function initCrossCheckEngine() {
         const liveInput = document.getElementById('liveScannerInput');
         const btnScan = document.getElementById('btnLiveScanSubmit');
         const btnAutoFill = document.getElementById('btnAutoFillExpected');
-        const notesInput = document.getElementById('inwardNotes');
 
         recalculateMatrix();
 
@@ -1351,12 +1352,6 @@
         if (btnAutoFill) {
             btnAutoFill.addEventListener('click', function() {
                 autoFillAllExpected();
-            });
-        }
-
-        if (notesInput) {
-            notesInput.addEventListener('input', function() {
-                saveInwardDraft();
             });
         }
 
@@ -1805,124 +1800,78 @@
             }
         }
 
-        renderMissingTable(missingItems);
+        updateCrossCheckDetails(missingItems);
     }
 
-    function renderMissingTable(missingItems) {
-        const tbody = document.getElementById('missingTableBody');
-        const emptyNotice = document.getElementById('missingEmptyNotice');
-        const missingBadge = document.getElementById('missingBadgeCount');
-        const missingTable = document.getElementById('missingTable');
+    function updateCrossCheckDetails(missingItems) {
+        const pendingByVariant = new Map(missingItems.map(item => [String(item.variant_id), item]));
 
-        if (!tbody) return;
+        ITEMS.forEach(item => {
+            const variantId = String(item.variant_id);
+            const pendingItem = pendingByVariant.get(variantId);
+            const missingCell = document.getElementById(`missing-qty-${variantId}`);
+            const qrCell = document.getElementById(`qr-tags-${variantId}`);
 
-        if (missingBadge) {
-            missingBadge.textContent = `${missingItems.length} SKU(s) pending`;
-            missingBadge.className = missingItems.length > 0 ? 'badge bg-danger rounded-pill px-3 py-2 fs-7' : 'badge bg-success rounded-pill px-3 py-2 fs-7';
-        }
+            if (missingCell) {
+                const missingQty = pendingItem ? pendingItem.missing : 0;
+                missingCell.textContent = `${missingQty} pcs`;
+                missingCell.className = missingQty > 0
+                    ? 'text-center fw-bold text-danger'
+                    : 'text-center text-muted';
+            }
 
-        if (missingItems.length === 0) {
-            tbody.innerHTML = '';
-            if (missingTable) missingTable.classList.add('d-none');
-            if (emptyNotice) emptyNotice.classList.remove('d-none');
-            return;
-        }
+            if (!qrCell) return;
 
-        if (missingTable) missingTable.classList.remove('d-none');
-        if (emptyNotice) emptyNotice.classList.add('d-none');
-
-        let html = '';
-        missingItems.forEach(item => {
-            const imgHtml = item.product_image 
-                ? `<img src="${escapeHtml(item.product_image)}" alt="" class="rounded border shadow-sm" style="width: 42px; height: 42px; object-fit: cover;">`
-                : `<div class="rounded bg-danger bg-opacity-10 text-danger d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px;"><i class="bi bi-box-seam fs-5"></i></div>`;
+            if (!pendingItem) {
+                if (item.is_series && item.series_qr_code) {
+                    qrCell.innerHTML = `
+                        <span class="badge bg-primary text-white font-monospace"><i class="bi bi-box-seam me-1"></i>${escapeHtml(item.series_qr_code)}</span>
+                        <small class="text-muted d-block mt-1">Series pack (${escapeHtml(item.dispatched_qty || item.requested_qty)} pcs)</small>
+                    `;
+                } else {
+                    qrCell.innerHTML = `<span class="badge bg-dark text-white font-monospace"><i class="bi bi-qr-code me-1 text-warning"></i>${escapeHtml(qrCell.dataset.defaultTag || '')}</span>`;
+                }
+                return;
+            }
 
             let pendingTags = [];
-            for (let p = item.startSeq; p <= item.endSeq; p++) {
-                const t = getLabelCode(p, item).toUpperCase();
-                if (!SCANNED_TAGS.has(t) && !DAMAGED_TAGS.has(t)) {
-                    pendingTags.push(t);
+            for (let sequence = pendingItem.startSeq; sequence <= pendingItem.endSeq; sequence++) {
+                const tag = getLabelCode(sequence, pendingItem).toUpperCase();
+                if (!SCANNED_TAGS.has(tag) && !DAMAGED_TAGS.has(tag)) {
+                    pendingTags.push(tag);
                 }
             }
 
             const isSeries = Boolean(
-                item.is_series ||
-                item.qr_type === 'SERIES_BATCH' ||
-                (item.category_type && String(item.category_type).toUpperCase() === 'SERIES') ||
-                parseInt(item.pack_quantity) > 1 ||
-                item.is_complementary
+                pendingItem.is_series ||
+                pendingItem.qr_type === 'SERIES_BATCH' ||
+                (pendingItem.category_type && String(pendingItem.category_type).toUpperCase() === 'SERIES') ||
+                parseInt(pendingItem.pack_quantity) > 1 ||
+                pendingItem.is_complementary
             );
-
-            const seriesQr = item.series_qr_code || 
-                (item.saved_tags && item.saved_tags[0]) || 
-                (item.selected_qr_codes && !String(item.selected_qr_codes).startsWith('[') ? item.selected_qr_codes.split(',')[0].trim() : '') || 
-                item.series_start_code || 
+            const seriesQr = pendingItem.series_qr_code ||
+                (pendingItem.saved_tags && pendingItem.saved_tags[0]) ||
+                (pendingItem.selected_qr_codes && !String(pendingItem.selected_qr_codes).startsWith('[') ? pendingItem.selected_qr_codes.split(',')[0].trim() : '') ||
+                pendingItem.series_start_code ||
                 '';
 
-            let tagColHtml = '';
             if (isSeries && seriesQr) {
-                tagColHtml = `
-                    <span class="badge bg-primary text-white font-monospace d-inline-block mb-1">
-                        <i class="bi bi-box-seam me-1"></i>${escapeHtml(seriesQr.toUpperCase())}
-                    </span>
-                    <span class="badge bg-info-subtle text-info border border-info-subtle small ms-1">📦 Series Pack (${item.expected} pcs)</span>
-                    <small class="text-muted d-block font-monospace">QR Tag: <strong class="text-primary">${escapeHtml(seriesQr.toUpperCase())}</strong></small>
+                qrCell.innerHTML = `
+                    <span class="badge bg-primary text-white font-monospace"><i class="bi bi-box-seam me-1"></i>${escapeHtml(seriesQr.toUpperCase())}</span>
+                    <small class="text-muted d-block mt-1">Series pack (${pendingItem.expected} pcs)</small>
                 `;
-            } else {
-                const nextPendingTag = pendingTags[0] || getLabelCode(item.startSeq, item);
-                let tagRangeDisplay = nextPendingTag;
-                if (pendingTags.length > 1) {
-                    tagRangeDisplay = `${pendingTags[0]} - ${pendingTags[pendingTags.length - 1]}`;
-                }
-                tagColHtml = `
-                    <span class="badge bg-dark text-white font-monospace d-block mb-1">
-                        <i class="bi bi-qr-code me-1 text-warning"></i>${escapeHtml(tagRangeDisplay)}
-                    </span>
-                    <small class="text-muted d-block font-monospace">Next: <strong class="text-danger">${escapeHtml(nextPendingTag)}</strong></small>
-                `;
+                return;
             }
 
-            const scanBtnTitle = isSeries ? `Verify Entire Series Pack (${item.expected} pcs)` : `Fast Scan (+1 pc)`;
-
-            html += `
-                <tr>
-                    <td>
-                        <div class="d-flex align-items-center gap-2">
-                            ${imgHtml}
-                            <div>
-                                <div class="fw-bold text-dark">${escapeHtml(item.product_name)}</div>
-                                <div class="d-flex align-items-center gap-1 mt-1">
-                                    <span class="badge bg-dark font-monospace text-white">${escapeHtml(item.sku)}</span>
-                                    ${item.category_name ? `<span class="badge bg-primary-subtle text-primary border border-primary-subtle">${escapeHtml(item.category_name)}</span>` : ''}
-                                    ${isSeries ? `<span class="badge bg-info-subtle text-info border border-info-subtle">Series Pack</span>` : ''}
-                                </div>
-                            </div>
-                        </div>
-                    </td>
-                    <td>
-                        ${tagColHtml}
-                    </td>
-                    <td>
-                        <span class="badge bg-light text-dark border">${escapeHtml(item.size_name)}</span>
-                        <span class="ms-1 small text-muted">${escapeHtml(item.color_name)}</span>
-                    </td>
-                    <td class="text-center fw-bold fs-6">${item.expected}</td>
-                    <td class="text-center fw-semibold text-success">${item.scanned}</td>
-                    <td class="text-end fw-bold text-danger fs-6">-${item.missing} pcs</td>
-                    <td class="text-center">
-                        <div class="d-inline-flex gap-1">
-                            <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold shadow-sm text-nowrap" onclick="openMissingProductModal(${item.variant_id}, 'mismatched')" title="View Details">
-                                <i class="bi bi-eye me-1"></i> View
-                            </button>
-                            <button type="button" class="btn btn-sm btn-danger py-1 px-2 fw-semibold shadow-sm text-nowrap" onclick="fastScanVariant(${item.variant_id})" title="${escapeHtml(scanBtnTitle)}">
-                                <i class="bi bi-upc-scan me-1"></i> Scan
-                            </button>
-                        </div>
-                    </td>
-                </tr>
+            const nextPendingTag = pendingTags[0] || getLabelCode(pendingItem.startSeq, pendingItem);
+            const pendingTagRange = pendingTags.length > 1
+                ? `${pendingTags[0]} - ${pendingTags[pendingTags.length - 1]}`
+                : nextPendingTag;
+            qrCell.innerHTML = `
+                <span class="badge bg-dark text-white font-monospace"><i class="bi bi-qr-code me-1 text-warning"></i>${escapeHtml(pendingTagRange)}</span>
+                <small class="text-muted d-block mt-1">Next: <strong class="text-danger">${escapeHtml(nextPendingTag)}</strong></small>
             `;
         });
-        tbody.innerHTML = html;
     }
 
     let modalPieceFilter = 'mismatched'; // 'mismatched' | 'all' | 'verified' | 'damaged'
@@ -2102,25 +2051,10 @@
 
         // Update modal buttons
         const btnScan = document.getElementById('btnModalScanPlusOne');
-        const btnScanAll = document.getElementById('btnModalScanAllMissing');
-        const btnReset = document.getElementById('btnModalResetItem');
         const btnText = document.getElementById('modalBtnScanText');
-        const btnAllText = document.getElementById('modalBtnScanAllText');
 
         if (btnText) btnText.textContent = `1 pc (Pending: ${missing})`;
-        if (btnAllText) btnAllText.textContent = `${missing} pcs`;
-
-        if (missing === 0) {
-            if (btnScan) btnScan.disabled = true;
-            if (btnScanAll) btnScanAll.disabled = true;
-        } else {
-            if (btnScan) btnScan.disabled = false;
-            if (btnScanAll) btnScanAll.disabled = false;
-        }
-
-        if (btnReset) {
-            btnReset.disabled = (received === 0 && damaged === 0);
-        }
+        if (btnScan) btnScan.disabled = missing === 0;
 
         // Update Filter Button Badges and Active Styles
         const filterCountMismatched = document.getElementById('filterCountMismatched');
@@ -2249,11 +2183,6 @@
                                             <button type="button" class="btn btn-sm btn-outline-danger px-3 py-1.5 fw-semibold shadow-sm d-flex align-items-center justify-content-center gap-2" onclick="markPieceDamage(${variantId}, '${escapeHtml(seriesTag)}');">
                                                 <i class="bi bi-slash-circle"></i> Mark Pack as Damaged
                                             </button>
-                                            ${(isVerified || isDamaged) ? `
-                                                <button type="button" class="btn btn-sm btn-outline-secondary px-3 py-1 shadow-sm" onclick="resetVariantPieces(${variantId});">
-                                                    <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Pack
-                                                </button>
-                                            ` : ''}
                                         ` : `
                                             <span class="badge bg-success text-white p-2"><i class="bi bi-lock-fill me-1"></i>Inventory Credited</span>
                                         `}

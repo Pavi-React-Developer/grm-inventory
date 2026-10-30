@@ -434,14 +434,18 @@ class WhatsappController {
         }
 
         $items = Database::fetchAll(
-            "SELECT ai.*, pv.sku, pv.qr_code, pv.size_id, pv.color_id, pv.selling_price, pv.mrp,
+            "SELECT ai.*, pv.sku, pv.qr_code, pv.qr_type as variant_qr_type, pv.is_complementary as variant_is_complementary,
+                    pv.size_id, pv.color_id, pv.selling_price, pv.mrp,
                     p.name as product_name, p.code as product_code, p.image_url as product_image,
+                    p.is_complementary as product_is_complementary,
                     p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
                     cat.name as category_name, subcat.name as subcategory_name, subsub.name as sub_subcategory_name,
+                    wc.category_type as warehouse_category_type,
                     s.name as size_name, c.name as color_name, c.hex_code as color_hex
              FROM allocation_items ai
              JOIN product_variants pv ON ai.variant_id = pv.id
              JOIN products p ON pv.product_id = p.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN categories cat ON p.category_id = cat.id
              LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
              LEFT JOIN sub_subcategories subsub ON p.sub_subcategory_id = subsub.id
@@ -477,6 +481,12 @@ class WhatsappController {
             $totalDamaged += $dmg;
             $totalMissing += $mis;
 
+            $warehouseCategoryType = strtoupper(trim((string)($item['warehouse_category_type'] ?? 'NORMAL')));
+            $variantQrType = strtoupper(trim((string)($item['variant_qr_type'] ?? '')));
+            $item['product_type'] = (!empty($item['product_is_complementary']) || !empty($item['variant_is_complementary']) || $warehouseCategoryType === 'COMPLEMENTARY')
+                ? 'COMPLEMENTARY'
+                : ($warehouseCategoryType === 'SERIES' || $variantQrType === 'SERIES_BATCH' ? 'SERIES' : 'NORMAL');
+
             // Generate dynamic piece QR codes identical to warehouse allocation
             $c1 = !empty($item['category_name']) ? trim($item['category_name']) : (!empty($item['category_code']) ? trim($item['category_code']) : '');
             $c2 = !empty($item['subcategory_name']) ? trim($item['subcategory_name']) : (!empty($item['subcategory_code']) ? trim($item['subcategory_code']) : '');
@@ -505,6 +515,9 @@ class WhatsappController {
             $itemPieceQRs = [];
 
             if (!empty($savedQrCodes)) {
+                if (in_array($item['product_type'], ['SERIES', 'COMPLEMENTARY'], true)) {
+                    $savedQrCodes = array_fill(0, $exp, reset($savedQrCodes));
+                }
                 $pIdx = 1;
                 foreach ($savedQrCodes as $code) {
                     $qrPayload = "{$code}|{$item['sku']}|MRP:{$fmtMrp}|Disc:{$fmtDisc}";
@@ -524,6 +537,7 @@ class WhatsappController {
                         'disc'          => $fmtDisc,
                         'selling_price' => $costVal,
                         'qr_payload'    => $qrPayload,
+                        'product_type'  => $item['product_type'],
                         'status'        => $isGood ? 'good' : ($isDmg ? 'damaged' : 'pending'),
                     ];
                     $pieceQRs[] = $pieceData;
@@ -549,6 +563,7 @@ class WhatsappController {
                         'disc'          => $fmtDisc,
                         'selling_price' => $costVal,
                         'qr_payload'    => $qrPayload,
+                        'product_type'  => $item['product_type'],
                         'status'        => $isGood ? 'good' : ($isDmg ? 'damaged' : 'pending'),
                     ];
                     $pieceQRs[] = $pieceData;
@@ -4658,4 +4673,3 @@ class WhatsappController {
         return $item;
     }
 }
-

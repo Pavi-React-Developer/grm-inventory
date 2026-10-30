@@ -2835,6 +2835,36 @@ class ShopService {
             [$allocationId]
         );
 
+        $parseQrTags = static function ($rawQrStr): array {
+            $rawQrStr = trim((string)$rawQrStr);
+            if ($rawQrStr === '') {
+                return [];
+            }
+
+            if (str_starts_with($rawQrStr, '[') && str_ends_with($rawQrStr, ']')) {
+                $jsonTags = json_decode($rawQrStr, true);
+                $tags = [];
+                if (is_array($jsonTags)) {
+                    foreach ($jsonTags as $jsonTag) {
+                        $tags[] = is_array($jsonTag)
+                            ? ($jsonTag['tag_code'] ?? ($jsonTag['qr_code'] ?? ''))
+                            : (string)$jsonTag;
+                    }
+                }
+            } else {
+                $tags = explode(',', $rawQrStr);
+            }
+
+            $uniqueTags = [];
+            foreach ($tags as $tag) {
+                $tag = strtoupper(trim((string)$tag));
+                if ($tag !== '') {
+                    $uniqueTags[$tag] = $tag;
+                }
+            }
+            return array_values($uniqueTags);
+        };
+
         // Consolidate duplicate variant lines if any
         $consolidatedItems = [];
         foreach ($rawItems as $item) {
@@ -2845,6 +2875,11 @@ class ShopService {
                 $consolidatedItems[$vid]['dispatched_qty'] += (int)$item['dispatched_qty'];
                 $consolidatedItems[$vid]['picked_qty'] = (int)($consolidatedItems[$vid]['picked_qty'] ?? 0) + (int)($item['picked_qty'] ?? 0);
                 $consolidatedItems[$vid]['packed_qty'] = (int)($consolidatedItems[$vid]['packed_qty'] ?? 0) + (int)($item['packed_qty'] ?? 0);
+                $tagLists = array_merge(
+                    $parseQrTags($consolidatedItems[$vid]['selected_qr_codes'] ?? ''),
+                    $parseQrTags($item['selected_qr_codes'] ?? '')
+                );
+                $consolidatedItems[$vid]['selected_qr_codes'] = implode(',', array_values(array_unique($tagLists)));
             } else {
                 $consolidatedItems[$vid] = $item;
             }
@@ -2860,26 +2895,23 @@ class ShopService {
             );
             $item['is_series'] = $isSeries;
 
-            $rawQrStr = trim($item['selected_qr_codes'] ?? '');
-            $parsedTags = [];
-            if (!empty($rawQrStr)) {
-                if (str_starts_with($rawQrStr, '[') && str_ends_with($rawQrStr, ']')) {
-                    $jsonTags = json_decode($rawQrStr, true);
-                    if (is_array($jsonTags)) {
-                        foreach ($jsonTags as $jt) {
-                            $parsedTags[] = is_array($jt) ? ($jt['tag_code'] ?? ($jt['qr_code'] ?? '')) : (string)$jt;
-                        }
-                    }
-                } else {
-                    $parsedTags = array_filter(array_map('trim', explode(',', $rawQrStr)));
-                }
-            }
-            $parsedTags = array_values(array_filter($parsedTags));
+            $parsedTags = $parseQrTags($item['selected_qr_codes'] ?? '');
             $item['saved_tags'] = $parsedTags;
 
             if ($isSeries) {
                 $seriesQr = !empty($parsedTags[0]) ? $parsedTags[0] : (!empty($item['series_start_code']) ? $item['series_start_code'] : (!empty($item['qr_code']) ? $item['qr_code'] : $item['sku']));
                 $item['series_qr_code'] = strtoupper($seriesQr);
+            } elseif (
+                !empty($parsedTags) &&
+                (int)($item['received_qty'] ?? 0) === 0 &&
+                (int)($item['damaged_qty'] ?? 0) === 0
+            ) {
+                // Older inward receipts may have replaced outward tags with only received tags.
+                $outwardQty = (int)$item['dispatched_qty'];
+                $quantityLimit = $outwardQty > 0 ? $outwardQty : (int)$item['requested_qty'];
+                $item['outward_dispatched_qty'] = $outwardQty;
+                $item['dispatched_qty'] = min($quantityLimit, count($parsedTags));
+                $item['saved_tags'] = array_slice($parsedTags, 0, $item['dispatched_qty']);
             }
         }
         unset($item);
@@ -2911,7 +2943,7 @@ class ShopService {
                 }
             } else {
                 if (!empty($item['saved_tags'])) {
-                    foreach ($item['saved_tags'] as $tag) {
+                    foreach (array_slice($item['saved_tags'], 0, $allocatedQty) as $tag) {
                         $pieceQRs[] = [
                             'piece_no'      => $pieceCounter++,
                             'tag_code'      => $tag,
@@ -3118,6 +3150,12 @@ class ShopService {
                 if ($receivedItems !== null && isset($receivedItems[$vid])) {
                     $recv = max(0.0, (float)($receivedItems[$vid]['received_qty'] ?? 0));
                     $dam  = max(0.0, (float)($receivedItems[$vid]['damaged_qty'] ?? 0));
+                    if ($recv > $dispatchedQty) {
+                        throw new Exception("Received quantity for {$item['sku']} exceeds the dispatched quantity.");
+                    }
+                    if ($dam > $recv) {
+                        throw new Exception("Damaged quantity for {$item['sku']} cannot exceed its received quantity.");
+                    }
                     $itemNotes = trim($receivedItems[$vid]['notes'] ?? '');
                     $scannedTagsList = !empty($receivedItems[$vid]['scanned_tags']) ? (is_array($receivedItems[$vid]['scanned_tags']) ? $receivedItems[$vid]['scanned_tags'] : array_filter(array_map('trim', explode(',', (string)$receivedItems[$vid]['scanned_tags'])))) : [];
                     $damagedTagsList = !empty($receivedItems[$vid]['damage_tags']) ? (is_array($receivedItems[$vid]['damage_tags']) ? $receivedItems[$vid]['damage_tags'] : array_filter(array_map('trim', explode(',', (string)$receivedItems[$vid]['damage_tags'])))) : [];
@@ -3138,18 +3176,12 @@ class ShopService {
                 $totalDamaged += $dam;
                 $totalMissing += $missing;
 
-                // Save/update selected QR codes in allocation_items
-                $allVariantTags = array_values(array_unique(array_merge($scannedTagsList, $damagedTagsList)));
-                $savedQrValue = !empty($allVariantTags) 
-                    ? (count($allVariantTags) === 1 ? $allVariantTags[0] : implode(',', $allVariantTags)) 
-                    : (!empty($item['selected_qr_codes']) ? $item['selected_qr_codes'] : null);
-
                 // Persist variant-level received_qty, damaged_qty, missing_qty in allocation_items
                 Database::execute(
                     "UPDATE allocation_items 
-                     SET received_qty = ?, damaged_qty = ?, missing_qty = ?, selected_qr_codes = ? 
+                     SET received_qty = ?, damaged_qty = ?, missing_qty = ?
                      WHERE allocation_id = ? AND variant_id = ?",
-                    [(int)$recv, (int)$dam, (int)$missing, $savedQrValue, $allocationId, $vid]
+                    [(int)$recv, (int)$dam, (int)$missing, $allocationId, $vid]
                 );
 
                 // Incremental deltas for AVAILABLE shop stock
@@ -4214,5 +4246,3 @@ class ShopService {
         return (bool)$newStatus;
     }
 }
-
-
