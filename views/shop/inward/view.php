@@ -38,11 +38,11 @@
             $r = (int)($it['received_qty'] ?? 0);
             $d = (int)($it['damaged_qty'] ?? 0);
         }
-        $totalRecvCount += $r;
+        $totalRecvCount += max(0, $r - $d);
         $totalDamCount += $d;
         $totalMissCount += max(0, $exp - $r);
     }
-    $totalMatchPct = $totalExpected > 0 ? min(100, round(($totalRecvCount / $totalExpected) * 100)) : 100;
+    $totalMatchPct = $totalExpected > 0 ? min(100, round((($totalRecvCount + $totalDamCount) / $totalExpected) * 100)) : 100;
 ?>
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
@@ -186,7 +186,7 @@
                         <?php if ($isFullyReceived): ?>
                             <span class="badge bg-success"><i class="bi bi-check2-all me-1"></i>RECEIVED &amp; STOCKED (100%)</span>
                         <?php elseif ($isPartiallyReceived): ?>
-                            <span class="badge bg-warning text-dark"><i class="bi bi-pie-chart me-1"></i>PARTIAL INWARD (<?= number_format($totalRecvCount) ?> / <?= number_format($totalExpected) ?> pcs)</span>
+                            <span class="badge bg-warning text-dark"><i class="bi bi-pie-chart me-1"></i>PARTIAL INWARD (<?= number_format($totalRecvCount) ?> good + <?= number_format($totalDamCount) ?> damaged / <?= number_format($totalExpected) ?> pcs)</span>
                         <?php else: ?>
                             <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>DISPATCHED (Awaiting Inward)</span>
                         <?php endif; ?>
@@ -227,22 +227,26 @@
         <form method="POST" action="<?= url('shop/inward/verify/' . $allocation['id']) ?>" id="inwardForm">
             <?= CSRF::input() ?>
             <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h6 class="card-title mb-0 fw-bold">
+                        <i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Inward Verification &amp; Outward Cross-Check
+                    </h6>
+                </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0" id="matrixTable">
+                        <table class="table table-hover table-compact align-middle mb-0" id="matrixTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th>#</th>
-                                    <th>SKU &amp; Product</th>
-                                    <th>QR Code / Tag</th>
-                                    <th>Size &amp; Color</th>
-                                    <th class="text-end">Outward Qty</th>
-                                    <th class="text-center" style="width: 140px;">Inward Recv</th>
-                                    <th class="text-center" style="width: 110px;">Damaged</th>
+                                    <th style="width: 45px;">S.NO</th>
+                                    <th style="min-width: 210px;">Product &amp; SKU</th>
+                                    <th style="min-width: 155px;">QR Range &amp; Next Tag</th>
+                                    <th style="min-width: 120px;">Size &amp; Color</th>
+                                    <th class="text-end" style="width: 95px;">Outward Exp</th>
+                                    <th class="text-center" style="min-width: 160px;">Good / Damaged</th>
                                     <th class="text-center">Missing Qty</th>
                                     <th class="text-center">Difference</th>
                                     <th class="text-center">Status</th>
-                                    <th class="text-center" style="width: 230px;">Action</th>
+                                    <th class="text-center" style="width: 90px;">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -255,10 +259,10 @@
                                             $initReceived = $expected;
                                             $initDamaged = 0;
                                         } else {
-                                            $initReceived = (int)($item['received_qty'] ?? 0);
                                             $initDamaged = (int)($item['damaged_qty'] ?? 0);
+                                            $initReceived = max(0, (int)($item['received_qty'] ?? 0) - $initDamaged);
                                         }
-                                        $initDiff = $initReceived - $expected;
+                                        $initDiff = $initReceived + $initDamaged - $expected;
 
                                         $itemStartSeq = $globalSeqCounter;
                                         $itemEndSeq = $globalSeqCounter + max(1, $expected) - 1;
@@ -321,7 +325,7 @@
                                                     Outward quantity <?= number_format($item['outward_dispatched_qty']) ?>, but only <?= number_format(count($item['saved_tags'])) ?> QR tag(s) recorded. Inward is limited to the recorded tags.
                                                 </small>
                                             <?php endif; ?>
-                                            <?php if ($initReceived > $expected): ?>
+                                            <?php if ((int)($item['received_qty'] ?? 0) > $expected): ?>
                                                 <small class="text-danger d-block mt-1">
                                                     Existing shop receipt exceeds the recorded outward QR count. Correct the received quantity to reconcile stock.
                                                 </small>
@@ -333,6 +337,7 @@
                                                 <small class="text-muted d-block mt-1">Series pack (<?= $expected ?> pcs)</small>
                                             <?php else: ?>
                                                 <span class="badge bg-dark text-white font-monospace"><i class="bi bi-qr-code me-1 text-warning"></i><?= e($tagRange) ?></span>
+                                                <small class="text-muted d-block mt-1">Next: <strong class="text-danger"><?= e($tagStart) ?></strong></small>
                                             <?php endif; ?>
                                         </td>
                                         <td>
@@ -344,22 +349,29 @@
                                         </td>
                                         <td class="text-center">
                                             <?php if (!$isFullyReceived && $canInward): ?>
-                                                <input type="text" inputmode="none" readonly name="items[<?= $vid ?>][received_qty]"
-                                                       class="form-control form-control-sm text-center fw-bold text-success item-received-input bg-light"
-                                                       id="input-recv-<?= $vid ?>" 
-                                                       value="<?= $initReceived ?>" aria-label="Received quantity (read-only)" data-variant-id="<?= $vid ?>">
+                                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                                    <div>
+                                                        <small class="text-success fw-semibold d-block">Good</small>
+                                                        <input type="text" inputmode="none" readonly
+                                                               class="form-control form-control-sm text-center fw-bold text-success item-received-input bg-light"
+                                                               style="width: 62px;"
+                                                               id="input-recv-<?= $vid ?>"
+                                                               value="<?= $initReceived ?>" aria-label="Good received quantity (read-only)" data-variant-id="<?= $vid ?>">
+                                                    </div>
+                                                    <div>
+                                                        <small class="text-danger fw-semibold d-block">Damaged</small>
+                                                        <input type="text" inputmode="none" readonly name="items[<?= $vid ?>][damaged_qty]"
+                                                               class="form-control form-control-sm text-center fw-bold text-danger item-damaged-input bg-light"
+                                                               style="width: 62px;"
+                                                               id="input-dmg-<?= $vid ?>"
+                                                               value="<?= $initDamaged ?>" aria-label="Damaged quantity (read-only)" data-variant-id="<?= $vid ?>">
+                                                    </div>
+                                                </div>
                                             <?php else: ?>
-                                                <span class="fw-bold text-success fs-6"><?= number_format($initReceived) ?> pcs</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td class="text-center">
-                                            <?php if (!$isFullyReceived && $canInward): ?>
-                                                <input type="text" inputmode="none" readonly name="items[<?= $vid ?>][damaged_qty]"
-                                                       class="form-control form-control-sm text-center fw-bold text-danger item-damaged-input bg-light"
-                                                       id="input-dmg-<?= $vid ?>" 
-                                                       value="<?= $initDamaged ?>" aria-label="Damaged quantity (read-only)" data-variant-id="<?= $vid ?>">
-                                            <?php else: ?>
-                                                <span class="<?= $initDamaged > 0 ? 'fw-bold text-danger' : 'text-muted' ?>"><?= $initDamaged ?></span>
+                                                <span class="fw-bold text-success"><?= number_format($initReceived) ?></span>
+                                                <span class="text-muted mx-1">/</span>
+                                                <span class="<?= $initDamaged > 0 ? 'fw-bold text-danger' : 'text-muted' ?>"><?= number_format($initDamaged) ?></span>
+                                                <small class="text-muted d-block">good / damaged</small>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center fw-bold text-danger" id="missing-qty-<?= $vid ?>">
@@ -391,7 +403,7 @@
                     <div class="card-footer bg-light p-3">
                         <div class="d-flex align-items-center justify-content-end">
                             <button type="button" class="btn btn-success px-4 py-2 fw-bold shadow-sm fs-6" id="btnCreditScannedOnly" onclick="creditScannedOnly();">
-                                <i class="bi bi-box-arrow-in-down me-2"></i> Credit Scanned Qty (<span id="btnCreditScannedCount"><?= $totalRecvCount ?></span> pcs) to Inventory
+                                <i class="bi bi-box-arrow-in-down me-2"></i> Process Scanned Qty (<span id="btnCreditScannedCount"><?= $totalRecvCount + $totalDamCount ?></span> pcs)
                             </button>
                         </div>
                     </div>
@@ -915,7 +927,8 @@
         }
 
         const dmgQty = parseInt(it.damaged_qty) || 0;
-        const recvQty = parseInt(it.received_qty) || (IS_FULLY_RECEIVED ? qty : 0);
+        const receivedTotal = parseInt(it.received_qty) || (IS_FULLY_RECEIVED ? qty : 0);
+        const recvQty = Math.max(0, receivedTotal - dmgQty);
 
         if (isSeries && it.series_qr_code) {
             const sTag = it.series_qr_code;
@@ -929,7 +942,7 @@
                 const clean = String(tag).toUpperCase();
                 if (idx >= (savedTags.length - dmgQty)) {
                     DAMAGED_TAGS.add(clean);
-                } else {
+                } else if (idx < recvQty) {
                     SCANNED_TAGS.add(clean);
                 }
             });
@@ -942,7 +955,7 @@
                 const dTag = getLabelCode(it.startSeq + s, it).toUpperCase();
                 DAMAGED_TAGS.add(dTag);
             }
-            const goodCount = Math.max(0, recvQty - dmgQty);
+            const goodCount = recvQty;
             for (let g = 0; g < goodCount; g++) {
                 const gTag = getLabelCode(it.startSeq + dmgQty + g, it).toUpperCase();
                 SCANNED_TAGS.add(gTag);
@@ -956,8 +969,9 @@
         const recvInput = document.getElementById(`input-recv-${vid}`);
         const dmgInput = document.getElementById(`input-dmg-${vid}`);
         const expected = parseInt(item.dispatched_qty > 0 ? item.dispatched_qty : item.requested_qty) || 0;
-        const currentRecvQty = recvInput ? (parseInt(recvInput.value) || 0) : (IS_FULLY_RECEIVED ? expected : (parseInt(item.received_qty) || 0));
         const currentDmgQty = dmgInput ? (parseInt(dmgInput.value) || 0) : (parseInt(item.damaged_qty) || 0);
+        const persistedTotal = parseInt(item.received_qty) || (IS_FULLY_RECEIVED ? expected : 0);
+        const currentRecvQty = recvInput ? (parseInt(recvInput.value) || 0) : Math.max(0, persistedTotal - currentDmgQty);
         const validRecvQty = Math.max(0, Math.min(expected, currentRecvQty));
         const validDmgQty = Math.max(0, Math.min(expected - validRecvQty, currentDmgQty));
 
@@ -1703,8 +1717,9 @@
             const recvInput = document.getElementById(`input-recv-${vid}`);
             const dmgInput = document.getElementById(`input-dmg-${vid}`);
 
-            const received = recvInput ? (parseInt(recvInput.value) || 0) : (IS_FULLY_RECEIVED ? expected : (parseInt(item.received_qty) || 0));
             const damaged = dmgInput ? (parseInt(dmgInput.value) || 0) : (parseInt(item.damaged_qty) || 0);
+            const persistedTotal = parseInt(item.received_qty) || (IS_FULLY_RECEIVED ? expected : 0);
+            const received = recvInput ? (parseInt(recvInput.value) || 0) : Math.max(0, persistedTotal - damaged);
 
             totalScanned += received;
             totalDamaged += damaged;
@@ -1789,7 +1804,7 @@
         }
         if (statMissing) statMissing.innerHTML = `${overallMissing} <small class="fs-6 text-muted">pcs</small>`;
         if (statProgressPct) statProgressPct.textContent = `${pct}%`;
-        if (btnScannedCount) btnScannedCount.textContent = totalScanned;
+        if (btnScannedCount) btnScannedCount.textContent = totalScanned + totalDamaged;
 
         if (statProgressBar) {
             statProgressBar.style.width = `${pct}%`;
@@ -1978,8 +1993,9 @@
         const expected = parseInt(item.dispatched_qty > 0 ? item.dispatched_qty : item.requested_qty) || 0;
         const recvInput = document.getElementById(`input-recv-${variantId}`);
         const dmgInput = document.getElementById(`input-dmg-${variantId}`);
-        const received = recvInput ? (parseInt(recvInput.value) || 0) : (IS_FULLY_RECEIVED ? expected : (parseInt(item.received_qty) || 0));
         const damaged = dmgInput ? (parseInt(dmgInput.value) || 0) : (parseInt(item.damaged_qty) || 0);
+        const persistedTotal = parseInt(item.received_qty) || (IS_FULLY_RECEIVED ? expected : 0);
+        const received = recvInput ? (parseInt(recvInput.value) || 0) : Math.max(0, persistedTotal - damaged);
         const missing = Math.max(0, expected - received - damaged);
 
         // Fill Metadata safely
@@ -2776,25 +2792,30 @@
     }
 
     function creditScannedOnly() {
-        let totalScanned = 0;
+        let totalGood = 0;
+        let totalDamaged = 0;
         let missingCount = 0;
         ITEMS.forEach(item => {
             const vid = item.variant_id;
             const recvInput = document.getElementById(`input-recv-${vid}`);
+            const dmgInput = document.getElementById(`input-dmg-${vid}`);
             const received = recvInput ? (parseInt(recvInput.value) || 0) : 0;
+            const damaged = dmgInput ? (parseInt(dmgInput.value) || 0) : 0;
             const expected = parseInt(item.dispatched_qty > 0 ? item.dispatched_qty : item.requested_qty) || 0;
-            totalScanned += received;
-            if (received < expected) missingCount += (expected - received);
+            totalGood += received;
+            totalDamaged += damaged;
+            if (received + damaged < expected) missingCount += (expected - received - damaged);
         });
 
-        if (totalScanned === 0) {
+        const totalAccounted = totalGood + totalDamaged;
+        if (totalAccounted === 0) {
             alert("⚠️ No items have been scanned or verified yet! Please scan or enter received quantities before crediting.");
             return;
         }
 
-        let confirmMsg = `Confirm crediting ${totalScanned} pcs of verified scanned inventory to shop stock?`;
+        let confirmMsg = `Confirm crediting ${totalGood} good pcs and quarantining ${totalDamaged} damaged pcs?`;
         if (missingCount > 0) {
-            confirmMsg = `⚠️ Note: There are ${missingCount} pending missing pieces.\n\nDo you want to proceed and credit only the ${totalScanned} verified units to shop inventory? Shortages will be recorded in the discrepancy ledger.`;
+            confirmMsg = `⚠️ Note: There are ${missingCount} missing pieces.\n\nDo you want to credit ${totalGood} good pcs and quarantine ${totalDamaged} damaged pcs? Shortages will be recorded in the discrepancy ledger.`;
         }
 
         if (confirm(confirmMsg)) {
@@ -2859,6 +2880,15 @@
                         form.appendChild(hiddenDamaged);
                     }
                     hiddenDamaged.value = variantDamaged.join(',');
+
+                    let hiddenReceived = form.querySelector(`input[name="items[${vid}][received_qty]"]`);
+                    if (!hiddenReceived) {
+                        hiddenReceived = document.createElement('input');
+                        hiddenReceived.type = 'hidden';
+                        hiddenReceived.name = `items[${vid}][received_qty]`;
+                        form.appendChild(hiddenReceived);
+                    }
+                    hiddenReceived.value = String(recVal + dmgVal);
                 });
 
                 form.submit();

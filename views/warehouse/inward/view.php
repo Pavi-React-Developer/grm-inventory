@@ -1041,6 +1041,22 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         return count;
     }
 
+    function getNextPendingDispatchPiece(item) {
+        const dispatchTags = item.dispatchTags || [];
+        for (let index = 0; index < dispatchTags.length; index++) {
+            const tag = dispatchTags[index];
+            if (
+                !SCANNED_TAGS.has(tag) &&
+                !DAMAGED_TAGS.has(tag) &&
+                !PERSISTED_INWARD_TAGS.has(tag) &&
+                !PERSISTED_DAMAGED_TAGS.has(tag)
+            ) {
+                return { tag, index };
+            }
+        }
+        return null;
+    }
+
     // Web Audio API Synthesizer for instant audible feedback
     let audioCtx = null;
     function getAudioContext() {
@@ -2427,14 +2443,10 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
         const scanned = getVariantVerifiedTagCount(item);
         const damaged = getVariantDamagedTagCount(item);
         const missing = Math.max(0, expected - (scanned + damaged));
-        const exactQr = getExactProductQR(item);
 
-        // Find the next unverified sequential piece tag for this specific variant
-        const currentTagIndex = (item.dispatchTags || []).findIndex(tag => !SCANNED_TAGS.has(tag) && !DAMAGED_TAGS.has(tag));
-        const currentTagCode = (item.dispatchTags || [])[currentTagIndex >= 0 ? currentTagIndex : 0] || '';
-        const pieceQrPayload = currentTagCode;
-        const activeQrPayload = pieceQrPayload;
-        const pieceNum = currentTagIndex >= 0 ? currentTagIndex + 1 : (item.dispatchTags || []).length;
+        const nextPiece = getNextPendingDispatchPiece(item);
+        const currentTagCode = nextPiece ? nextPiece.tag : '';
+        const pieceNum = nextPiece ? nextPiece.index + 1 : 0;
 
         // Update modal info elements
         const modalImg = document.getElementById('modalProductImgContainer');
@@ -2464,17 +2476,19 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
 
         const tagNumBadge = document.getElementById('modalPieceTagNumBadge');
         if (tagNumBadge) {
-            tagNumBadge.textContent = missing > 0 ? `Piece #${pieceNum}` : 'Completed';
+            tagNumBadge.textContent = nextPiece ? `Piece #${pieceNum}` : 'Completed';
         }
 
         const nextTagEl = document.getElementById('modalNextPieceTagText');
         if (nextTagEl) {
-            nextTagEl.textContent = missing > 0 ? `${currentTagCode} (Piece #${pieceNum})` : `${currentTagCode} (Completed)`;
+            nextTagEl.textContent = nextPiece ? `${currentTagCode} (Piece #${pieceNum})` : 'All pieces processed';
         }
 
         const typeLabelEl = document.getElementById('modalQrTypeLabel');
         if (typeLabelEl) {
-            typeLabelEl.innerHTML = `<div class="font-monospace fw-bold text-primary fs-5 mt-2" style="letter-spacing: 0.5px;">${escapeHtml(currentTagCode)}</div>`;
+            typeLabelEl.innerHTML = nextPiece
+                ? `<div class="font-monospace fw-bold text-primary fs-5 mt-2" style="letter-spacing: 0.5px;">${escapeHtml(currentTagCode)}</div>`
+                : '<div class="fw-semibold text-success mt-2">All pieces processed</div>';
         }
 
         const scanTargetSku = document.getElementById('modalScanTargetSku');
@@ -2484,24 +2498,21 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
 
         // Render QR Code on Canvas (Matching clean format of First QR Type)
         const qrContainer = document.getElementById('modalQrCanvas');
-        if (qrContainer && typeof QRCode !== 'undefined') {
+        if (qrContainer) {
             qrContainer.innerHTML = '';
-            try {
-                // Delay render slightly to allow DOM to flush, fixes blank QR bug
-                setTimeout(() => {
-                    if (!qrContainer) return;
-                    qrContainer.innerHTML = '';
+            if (nextPiece && typeof QRCode !== 'undefined') {
+                try {
                     new QRCode(qrContainer, {
-                        text: String(currentTagCode || 'Empty'),
+                        text: String(currentTagCode),
                         width: 150,
                         height: 150,
                         colorDark: "#0f172a",
                         colorLight: "#ffffff",
                         correctLevel: QRCode.CorrectLevel.M
                     });
-                }, 50);
-            } catch(e) {
-                console.warn("Modal QR render note:", e);
+                } catch(e) {
+                    console.warn("Modal QR render note:", e);
+                }
             }
         }
 
@@ -2512,7 +2523,7 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
 
         const creditedCount = (BATCH_STATUS === 'RECEIVED') ? (parseInt(item.received_qty) || 0) : 0;
 
-        if (missing === 0) {
+        if (missing === 0 || !nextPiece) {
             if (btnProcess) btnProcess.disabled = true;
             if (btnScanAll) btnScanAll.disabled = true;
         } else {

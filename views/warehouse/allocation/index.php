@@ -53,14 +53,13 @@
                     <th>Warehouse</th>
                     <th>Destination Channel</th>
                     <th>Requested Qty</th>
-                    <th>Requested By</th>
                     <th>Status</th>
                     <th class="pe-4 text-end">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($allocations)): ?>
-                    <tr><td colspan="7" class="text-center text-muted py-4"><i class="bi bi-inbox me-2"></i>No allocation requisitions found.</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-inbox me-2"></i>No allocation requisitions found.</td></tr>
                 <?php else: foreach ($allocations as $alc): ?>
                     <tr>
                         <td class="ps-4 fw-bold text-primary font-monospace">
@@ -83,7 +82,6 @@
                             <?php endif; ?>
                         </td>
                         <td><span class="badge bg-secondary-subtle text-dark font-monospace fs-6 px-2.5 py-1"><?= number_format($alc['total_requested_qty']) ?> pcs</span></td>
-                        <td><small class="text-muted fw-medium"><i class="bi bi-person me-1"></i><?= htmlspecialchars($alc['requested_by_name'] ?? 'System') ?></small></td>
                         <td>
                             <?php
                             $badgeClass = match($alc['status']) {

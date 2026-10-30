@@ -3,7 +3,6 @@
 $currentTab = $_GET['tab'] ?? 'all';
 $summary = $summary ?? [];
 $recentReturns = $recentReturns ?? [];
-$catalogVariants = $catalogVariants ?? [];
 ?>
 <div class="container-fluid py-4">
     <!-- Header -->
@@ -158,7 +157,7 @@ $catalogVariants = $catalogVariants ?? [];
                         </span>
                         <input type="text" id="poSearchInput" class="form-control border-start-0 ps-0 fw-semibold" 
                                placeholder="Type PO #, Invoice #, or Customer Phone..." 
-                               onkeydown="if(event.key === 'Enter') executeLookup()" autofocus>
+                               oninput="scheduleInvoiceCount()" onkeydown="if(event.key === 'Enter') executeLookup()" autofocus>
                         <button class="btn btn-primary px-4 fw-bold" type="button" id="btnLookup" onclick="executeLookup()">
                             <span id="lookupSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
                             <span>Lookup Order</span>
@@ -166,6 +165,10 @@ $catalogVariants = $catalogVariants ?? [];
                     </div>
                     <div id="lookupErrorContainer" class="mt-2 text-danger small fw-bold d-none">
                         <i class="bi bi-exclamation-triangle-fill me-1"></i> <span id="lookupErrorMessage"></span>
+                    </div>
+                    <div id="phoneInvoiceResults" class="mt-2 d-none" role="status" aria-live="polite">
+                        <div id="phoneInvoiceCount" class="text-primary small fw-semibold mb-2"></div>
+                        <div id="phoneInvoiceList" class="list-group small" style="max-height: 260px; overflow-y: auto;"></div>
                     </div>
                 </div>
                 <div class="col-lg-5">
@@ -414,7 +417,7 @@ $catalogVariants = $catalogVariants ?? [];
                     <div class="row g-3" id="actionTypeCards">
 
                         <!-- Card 1: Direct Return -->
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6">
                             <div class="action-type-card card border-2 h-100 p-3 selected-action shadow-sm"
                                  id="card_RETURN" onclick="selectActionCard('RETURN')"
                                  style="border-radius:12px; cursor:pointer;">
@@ -435,7 +438,7 @@ $catalogVariants = $catalogVariants ?? [];
                         </div>
 
                         <!-- Card 2: Exchange Same Product -->
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6">
                             <div class="action-type-card card border-2 h-100 p-3 shadow-sm"
                                  id="card_EXCHANGE_SAME" onclick="selectActionCard('EXCHANGE_SAME')"
                                  style="border-radius:12px; cursor:pointer;">
@@ -444,7 +447,7 @@ $catalogVariants = $catalogVariants ?? [];
                                           style="width:32px;height:32px;background:#f0fdf4;">
                                         <i class="bi bi-arrow-left-right text-success" style="font-size:15px;"></i>
                                     </span>
-                                    <strong class="text-dark" style="font-size:13.5px;">Exchange: Same Product</strong>
+                                    <strong class="text-dark" style="font-size:13.5px;">Exchange</strong>
                                     <span class="ms-auto badge" style="background:#dcfce7;color:#166534;font-size:10px; white-space:nowrap;">
                                         <i class="bi bi-arrow-repeat"></i>
                                     </span>
@@ -455,38 +458,16 @@ $catalogVariants = $catalogVariants ?? [];
                             </div>
                         </div>
 
-                        <!-- Card 3: Exchange New Product -->
-                        <div class="col-12 col-md-4">
-                            <div class="action-type-card card border-2 h-100 p-3 shadow-sm"
-                                 id="card_EXCHANGE_DIFFERENT" onclick="selectActionCard('EXCHANGE_DIFFERENT')"
-                                 style="border-radius:12px; cursor:pointer;">
-                                <div class="d-flex align-items-center gap-2 mb-2">
-                                    <span class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                                          style="width:32px;height:32px;background:#fff7ed;">
-                                        <i class="bi bi-box-seam text-warning" style="font-size:15px;"></i>
-                                    </span>
-                                    <strong class="text-dark" style="font-size:13.5px;">Exchange: New Product</strong>
-                                    <span class="ms-auto badge" style="background:#fef9c3;color:#854d0e;font-size:10px; white-space:nowrap;">
-                                        <i class="bi bi-shop"></i>
-                                    </span>
-                                </div>
-                                <p class="text-muted mb-0" style="font-size:11.5px; line-height:1.4;">
-                                    Select any different product from inventory or transfer credit to POS.
-                                </p>
-                            </div>
-                        </div>
-
                     </div><!-- /row -->
                 </div>
 
                 <!-- Hidden legacy select for JS compatibility -->
                 <select id="actionTypeSelect" class="d-none" onchange="switchActionMode(this.value)">
                     <option value="RETURN">Direct Return</option>
-                    <option value="EXCHANGE_SAME">Exchange Same</option>
-                    <option value="EXCHANGE_DIFFERENT">Exchange Different</option>
+                    <option value="EXCHANGE_SAME">Exchange</option>
                 </select>
 
-                <!-- Dynamic Replacement QR Scanner Box (Shown in EXCHANGE_SAME and EXCHANGE_DIFFERENT) -->
+                <!-- Dynamic Replacement QR Scanner Box (Shown for Exchange) -->
                 <div id="exchangeScannerBox" class="rounded-3 mb-3 p-3 text-white d-none" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1px solid #334155;">
                     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                         <div class="d-flex align-items-center gap-2">
@@ -542,67 +523,6 @@ $catalogVariants = $catalogVariants ?? [];
                                 <!-- Populated by JS -->
                             </tbody>
                         </table>
-                    </div>
-                </div>
-
-                <!-- Different Product Catalog Selector (EXCHANGE_DIFFERENT only) -->
-                <div id="differentProductSection" class="card border-0 shadow-sm mb-4 d-none" style="border-radius:12px; overflow:hidden;">
-                    <div class="card-header bg-white py-2 px-3 border-bottom d-flex justify-content-between align-items-center">
-                        <span class="fw-bold text-dark" style="font-size:13px;">
-                            <span class="badge bg-success text-white rounded-circle px-2 py-1 me-1">2</span>
-                            Pick Alternate Products for Exchange
-                        </span>
-                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1" style="font-size:11px;">
-                            Live Warehouse Stock Available
-                        </span>
-                    </div>
-                    <div class="card-body p-3">
-                        <div class="row g-2 mb-3 align-items-center">
-                            <div class="col-md-5">
-                                <select id="catalogVariantSelect" class="form-select form-select-sm" onchange="enableAddCatalogBtn()">
-                                    <option value="">-- Choose Alternate Garment Style &amp; Size --</option>
-                                    <?php foreach ($catalogVariants as $cv): ?>
-                                    <option value="<?= $cv['id'] ?>"
-                                            data-name="<?= e($cv['product_name']) ?>"
-                                            data-sku="<?= e($cv['sku']) ?>"
-                                            data-qr="<?= e($cv['qr_code'] ?? '') ?>"
-                                            data-code="<?= e($cv['product_code'] ?? $cv['code'] ?? '') ?>"
-                                            data-size="<?= e($cv['size_name']) ?>"
-                                            data-color="<?= e($cv['color_name']) ?>"
-                                            data-price="<?= $cv['selling_price'] ?>"
-                                            data-stock="<?= $cv['available_stock'] ?>">
-                                        <?= e($cv['product_name']) ?> (<?= e($cv['size_name']) ?> / <?= e($cv['color_name']) ?>) — SKU: <?= e($cv['sku']) ?> | Price: ₹<?= number_format($cv['selling_price'], 2) ?> | Avail: <?= (int)$cv['available_stock'] ?> pcs
-                                    </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <button type="button" class="btn btn-sm btn-outline-success w-100 fw-bold shadow-sm" id="btnAddCatalogItem" onclick="addDifferentExchangeItem()" disabled>
-                                    <i class="bi bi-plus-circle me-1"></i> Add Manual
-                                </button>
-                            </div>
-                        </div>
-                        <div class="table-responsive border rounded-3">
-                            <table class="table table-sm align-middle mb-0" id="differentExchangeItemsTable" style="font-size:13px;">
-                                <thead class="table-light text-muted" style="font-size:11px; text-transform:uppercase;">
-                                    <tr>
-                                        <th class="ps-3">New Replacement Item</th>
-                                        <th>Size / Color</th>
-                                        <th style="width:100px;">Qty</th>
-                                        <th>Unit Rate</th>
-                                        <th>Line Total</th>
-                                        <th style="width:40px;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="differentExchangeItemsTbody">
-                                    <tr id="emptyDifferentRow">
-                                        <td colspan="6" class="text-center py-3 text-muted small">
-                                            No alternate items added yet. Select from the dropdown above or scan a piece QR tag.
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
                     </div>
                 </div>
 
@@ -750,11 +670,6 @@ $catalogVariants = $catalogVariants ?? [];
     background: #f0fdf4 !important;
     box-shadow: 0 0 0 3px rgba(22,163,74,.18) !important;
 }
-#card_EXCHANGE_DIFFERENT.selected-action {
-    border-color: #d97706 !important;
-    background: #fffbeb !important;
-    box-shadow: 0 0 0 3px rgba(217,119,6,.18) !important;
-}
 /* Table row selected highlight */
 #returnItemsTable tbody tr.row-selected { background: #f0f7ff !important; }
 #returnItemsTable tbody tr { transition: background .12s; }
@@ -784,7 +699,122 @@ $catalogVariants = $catalogVariants ?? [];
 <!-- ========================================================================= -->
 <script>
 let currentPurchaseData = null;
-let differentExchangeItems = [];
+let invoiceCountTimer = null;
+let invoiceCountRequestId = 0;
+
+function isPhoneSearch(query) {
+    const digits = query.replace(/\D/g, '');
+    return /^[+\d\s()-]+$/.test(query) && digits.length >= 10 && digits.length <= 15;
+}
+
+function renderPhoneInvoices(result) {
+    const results = document.getElementById('phoneInvoiceResults');
+    const message = document.getElementById('phoneInvoiceCount');
+    const list = document.getElementById('phoneInvoiceList');
+    if (!results || !message || !list) return;
+
+    const invoices = Array.isArray(result.invoices) ? result.invoices : [];
+    message.textContent = `This customer has ${Number(result.invoice_count) || 0} invoice${Number(result.invoice_count) === 1 ? '' : 's'} on this phone number. Select a bill to continue.`;
+    list.replaceChildren();
+
+    if (invoices.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'list-group-item text-muted';
+        empty.textContent = 'No direct purchase bills found for this phone number.';
+        list.appendChild(empty);
+    } else {
+        invoices.forEach(invoice => {
+            const row = document.createElement('div');
+            row.className = 'list-group-item d-flex flex-wrap align-items-center justify-content-between gap-2';
+
+            const details = document.createElement('div');
+            details.className = 'd-flex flex-wrap align-items-center gap-2';
+
+            const number = document.createElement('strong');
+            number.className = 'font-monospace text-primary';
+            number.textContent = invoice.po_number || `PO #${invoice.id}`;
+            details.appendChild(number);
+
+            const date = document.createElement('span');
+            date.className = 'text-muted';
+            date.textContent = invoice.order_date || '';
+            details.appendChild(date);
+
+            const total = document.createElement('span');
+            total.className = 'fw-semibold text-success';
+            total.textContent = `₹${Number(invoice.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+            details.appendChild(total);
+
+            const qty = document.createElement('span');
+            qty.className = 'badge bg-light text-dark border';
+            qty.textContent = `${Number(invoice.total_qty) || 0} pcs · ${Number(invoice.item_count) || 0} line(s)`;
+            details.appendChild(qty);
+
+            const payment = document.createElement('span');
+            payment.className = `badge ${invoice.payment_status === 'PAID' ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning-emphasis'}`;
+            payment.textContent = invoice.payment_status || 'PENDING';
+            details.appendChild(payment);
+            row.appendChild(details);
+
+            if (invoice.return_number) {
+                const processed = document.createElement('span');
+                processed.className = 'badge bg-secondary-subtle text-secondary';
+                processed.textContent = `Already processed: ${invoice.return_number}`;
+                row.appendChild(processed);
+            } else {
+                const select = document.createElement('button');
+                select.type = 'button';
+                select.className = 'btn btn-sm btn-outline-primary';
+                select.textContent = 'Select Bill';
+                select.addEventListener('click', () => executeLookup(invoice.po_number || String(invoice.id)));
+                row.appendChild(select);
+            }
+
+            list.appendChild(row);
+        });
+    }
+
+    results.classList.remove('d-none');
+}
+
+function scheduleInvoiceCount() {
+    clearTimeout(invoiceCountTimer);
+    const results = document.getElementById('phoneInvoiceResults');
+    const message = document.getElementById('phoneInvoiceCount');
+    const list = document.getElementById('phoneInvoiceList');
+    const query = document.getElementById('poSearchInput').value.trim();
+    const requestId = ++invoiceCountRequestId;
+
+    if (!isPhoneSearch(query)) {
+        results.classList.add('d-none');
+        return;
+    }
+
+    const phone = query.replace(/\D/g, '');
+    message.textContent = 'Checking invoice history...';
+    list.replaceChildren();
+    results.classList.remove('d-none');
+    invoiceCountTimer = setTimeout(async () => {
+        try {
+            const response = await fetch('<?= url("warehouse/purchases/returns/lookup") ?>?query=' + encodeURIComponent(phone) + '&count_only=1');
+            const result = await response.json();
+            if (requestId !== invoiceCountRequestId) return;
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || 'Could not load invoice history.');
+            }
+            if (result.invoice_count === null) {
+                results.classList.add('d-none');
+                return;
+            }
+            renderPhoneInvoices(result);
+        } catch (error) {
+            if (requestId !== invoiceCountRequestId) return;
+            message.textContent = 'Could not load invoice history.';
+            list.replaceChildren();
+            results.classList.remove('d-none');
+        }
+    }, 350);
+}
 
 function focusSearch() {
     const input = document.getElementById('poSearchInput');
@@ -798,8 +828,9 @@ function filterTab(tab) {
     window.location.href = url.toString();
 }
 
-async function executeLookup() {
-    const query = document.getElementById('poSearchInput').value.trim();
+async function executeLookup(selectedInvoice = null) {
+    const input = document.getElementById('poSearchInput');
+    const query = selectedInvoice || input.value.trim();
     const errorContainer = document.getElementById('lookupErrorContainer');
     const errorMessage = document.getElementById('lookupErrorMessage');
     
@@ -808,6 +839,11 @@ async function executeLookup() {
     if (!query) {
         if (errorMessage) errorMessage.innerText = 'Please enter a PO Number, Invoice Number, or Customer Phone.';
         if (errorContainer) errorContainer.classList.remove('d-none');
+        return;
+    }
+
+    if (!selectedInvoice && isPhoneSearch(query)) {
+        scheduleInvoiceCount();
         return;
     }
 
@@ -827,7 +863,9 @@ async function executeLookup() {
         }
 
         currentPurchaseData = result.data;
-        differentExchangeItems = [];
+        if (isPhoneSearch(query) && input.value.trim() === query) {
+            scheduleInvoiceCount();
+        }
         openReturnModal(result.data);
     } catch (e) {
         if (errorMessage) errorMessage.innerText = 'Lookup error: ' + e.message;
@@ -1120,7 +1158,6 @@ function toggleSelectAll(master) {
 function switchActionMode(mode) {
     const sameCells = document.querySelectorAll('.same-product-cell');
     const sameHeader = document.getElementById('sameExchangeHeader');
-    const diffSection = document.getElementById('differentProductSection');
     const lastColHdr = document.getElementById('lastColHeader');
     const scannerBox = document.getElementById('exchangeScannerBox');
     const scanInput = document.getElementById('modalExchangeScanInput');
@@ -1128,21 +1165,12 @@ function switchActionMode(mode) {
     if (mode === 'EXCHANGE_SAME') {
         if (sameHeader) sameHeader.classList.remove('d-none');
         sameCells.forEach(c => c.classList.remove('d-none'));
-        if (diffSection) diffSection.classList.add('d-none');
-        if (lastColHdr) lastColHdr.textContent = 'Item Credit';
-        if (scannerBox) scannerBox.classList.remove('d-none');
-        if (scanInput) setTimeout(() => scanInput.focus(), 150);
-    } else if (mode === 'EXCHANGE_DIFFERENT') {
-        if (sameHeader) sameHeader.classList.add('d-none');
-        sameCells.forEach(c => c.classList.add('d-none'));
-        if (diffSection) diffSection.classList.remove('d-none');
         if (lastColHdr) lastColHdr.textContent = 'Item Credit';
         if (scannerBox) scannerBox.classList.remove('d-none');
         if (scanInput) setTimeout(() => scanInput.focus(), 150);
     } else { // RETURN / DIRECT REFUND
         if (sameHeader) sameHeader.classList.add('d-none');
         sameCells.forEach(c => c.classList.add('d-none'));
-        if (diffSection) diffSection.classList.add('d-none');
         if (lastColHdr) lastColHdr.textContent = 'Item Credit';
         if (scannerBox) scannerBox.classList.add('d-none');
     }
@@ -1150,11 +1178,6 @@ function switchActionMode(mode) {
     clearModalScanFeedback();
     toggleSplitPaymentUI();
     recalculateTotals();
-}
-
-function enableAddCatalogBtn() {
-    const sel = document.getElementById('catalogVariantSelect');
-    document.getElementById('btnAddCatalogItem').disabled = !sel.value;
 }
 
 function showModalScanFeedback(message, type = 'danger') {
@@ -1245,12 +1268,8 @@ function onModalScanExchangeItem(code) {
 
                         showModalScanFeedback(`✓ Replacement Scanned & Assigned: ${scannedVar.product_name} (${scannedVar.size_name || ''} / ${scannedVar.color_name || ''}) — Scanned QR: ${scannedTag}`, 'success');
                     } else {
-                        showModalScanFeedback(`Scanned item '${scannedVar.product_name}' (${scannedTag}) is not a variant of the products on this invoice. Switch to 'Exchange: New Product' tab to exchange across different styles!`, 'warning');
+                        showModalScanFeedback(`Scanned item '${scannedVar.product_name}' (${scannedTag}) is not a size or color variant of a product on this invoice.`, 'warning');
                     }
-                } else if (mode === 'EXCHANGE_DIFFERENT') {
-                    // Add to differentExchangeItems
-                    addDifferentExchangeItemByVariant(scannedVar, scannedTag);
-                    showModalScanFeedback(`✓ Added Replacement: ${scannedVar.product_name} (${scannedVar.size_name || ''} / ${scannedVar.color_name || ''}) — Scanned QR: ${scannedTag}`, 'success');
                 } else {
                     showModalScanFeedback(`Direct Return mode is active. Switch to 'Exchange' action at the top to scan replacement items.`, 'warning');
                 }
@@ -1261,187 +1280,6 @@ function onModalScanExchangeItem(code) {
         .catch(err => {
             showModalScanFeedback('Scan Lookup Error: ' + err.message, 'danger');
         });
-}
-
-function addDifferentExchangeItemByVariant(v, scannedTag) {
-    const varId = parseInt(v.id);
-    const name = v.product_name;
-    const sku = v.sku;
-    const code = v.product_code || v.code || '';
-    const defaultQr = v.qr_code || sku || '';
-    const activeTag = scannedTag ? scannedTag.trim() : defaultQr;
-    const size = v.size_name;
-    const color = v.color_name;
-    const price = parseFloat(v.selling_price || v.mrp || 0);
-    const stock = parseInt(v.available_stock || 0);
-
-    const existing = differentExchangeItems.find(i => i.variant_id === varId);
-    if (existing) {
-        if (existing.quantity >= stock && stock > 0) {
-            showModalScanFeedback(`Cannot add more! Only ${stock} pcs available in warehouse stock.`, 'warning');
-            return;
-        }
-        existing.quantity += 1;
-        if (!existing.scanned_tags) existing.scanned_tags = [];
-        if (activeTag && !existing.scanned_tags.includes(activeTag)) {
-            existing.scanned_tags.push(activeTag);
-        }
-        existing.qr_code = existing.scanned_tags.join(', ');
-    } else {
-        differentExchangeItems.push({
-            variant_id: varId,
-            product_name: name,
-            product_code: code,
-            sku: sku,
-            qr_code: activeTag,
-            scanned_tags: activeTag ? [activeTag] : [],
-            size_name: size,
-            color_name: color,
-            unit_price: price,
-            quantity: 1,
-            max_stock: stock
-        });
-    }
-
-    renderDifferentExchangeTable();
-    recalculateTotals();
-}
-
-function addDifferentExchangeItem(scannedTag = null) {
-    const sel = document.getElementById('catalogVariantSelect');
-    const val = sel.value;
-    if (!val) return;
-
-    const opt = sel.options[sel.selectedIndex];
-    const varId = parseInt(val);
-    const name = opt.getAttribute('data-name');
-    const sku = opt.getAttribute('data-sku');
-    const code = opt.getAttribute('data-code') || '';
-    const defaultQr = opt.getAttribute('data-qr') || sku || '';
-    const activeTag = scannedTag ? scannedTag.trim() : defaultQr;
-    const size = opt.getAttribute('data-size');
-    const color = opt.getAttribute('data-color');
-    const price = parseFloat(opt.getAttribute('data-price') || 0);
-    const stock = parseInt(opt.getAttribute('data-stock') || 0);
-
-    // Check if already added
-    const existing = differentExchangeItems.find(i => i.variant_id === varId);
-    if (existing) {
-        if (existing.quantity >= stock) {
-            showModalScanFeedback(`Cannot add more! Only ${stock} pcs available in warehouse stock.`, 'warning');
-            return;
-        }
-
-        if (scannedTag && existing.scanned_tags && existing.scanned_tags.includes(activeTag)) {
-            showModalScanFeedback(`Piece Tag '${activeTag}' is already added! If exchanging multiple pieces, please scan the next physical piece tag.`, 'warning');
-            return;
-        }
-
-        existing.quantity += 1;
-        if (!existing.scanned_tags) existing.scanned_tags = [];
-        if (activeTag && !existing.scanned_tags.includes(activeTag)) {
-            existing.scanned_tags.push(activeTag);
-        }
-        existing.qr_code = existing.scanned_tags.join(', ');
-        showModalScanFeedback(`Added Piece Tag '${activeTag}' (Total: ${existing.quantity} pcs)`, 'success');
-    } else {
-        if (stock < 1) {
-            showModalScanFeedback(`This item is out of stock in the warehouse.`, 'danger');
-            return;
-        }
-        differentExchangeItems.push({
-            variant_id: varId,
-            product_name: name,
-            product_code: code,
-            sku: sku,
-            qr_code: activeTag,
-            scanned_tags: activeTag ? [activeTag] : [],
-            size_name: size,
-            color_name: color,
-            unit_price: price,
-            quantity: 1,
-            max_stock: stock
-        });
-        showModalScanFeedback(`Added: ${name} (${activeTag})`, 'success');
-    }
-
-    renderDifferentExchangeTable();
-    recalculateTotals();
-}
-
-function removeDifferentItem(idx) {
-    clearScanFeedback();
-    differentExchangeItems.splice(idx, 1);
-    renderDifferentExchangeTable();
-    recalculateTotals();
-}
-
-function updateDifferentQty(idx, qty) {
-    let q = parseInt(qty) || 1;
-    const item = differentExchangeItems[idx];
-    if (q < 1) q = 1;
-    if (item.max_stock && q > item.max_stock) {
-        showScanFeedback(`Cannot set quantity greater than available stock (${item.max_stock} pcs).`, 'warning');
-        q = item.max_stock;
-    }
-    item.quantity = q;
-    renderDifferentExchangeTable();
-    recalculateTotals();
-}
-
-function renderDifferentExchangeTable() {
-    const tbody = document.getElementById('differentExchangeItemsTbody');
-    tbody.innerHTML = '';
-
-    if (differentExchangeItems.length === 0) {
-        tbody.innerHTML = '<tr id="emptyDifferentRow"><td colspan="6" class="text-center py-3 text-muted small">No alternate items added yet. Select from the dropdown above.</td></tr>';
-        return;
-    }
-
-    differentExchangeItems.forEach((item, idx) => {
-        const lineTotal = item.unit_price * item.quantity;
-        const tr = document.createElement('tr');
-        
-        let qrDisplay = '';
-        if (item.scanned_tags && item.scanned_tags.length > 0) {
-            const chunks = [];
-            for (let i = 0; i < item.scanned_tags.length; i += 3) {
-                chunks.push(item.scanned_tags.slice(i, i + 3));
-            }
-            const linesHtml = chunks.map(chunk => `
-                <div class="d-flex flex-wrap gap-1 mb-1">
-                    ${chunk.map(t => `<span class="badge bg-primary-subtle text-primary border font-monospace" style="font-size: 11px;"><i class="bi bi-qr-code me-1"></i>${t}</span>`).join('')}
-                </div>
-            `).join('');
-            qrDisplay = `<div class="mt-1.5">${linesHtml}</div>`;
-        } else {
-            const fallbackTag = item.qr_code || item.sku || 'N/A';
-            qrDisplay = `<div class="mt-1"><span class="badge bg-primary-subtle text-primary border font-monospace" style="font-size: 11px;"><i class="bi bi-qr-code me-1"></i>${fallbackTag}</span></div>`;
-        }
-
-        tr.innerHTML = `
-            <td class="ps-3">
-                <div class="fw-bold text-dark">${item.product_name}</div>
-                <small class="text-muted font-monospace">${item.sku}</small>
-                ${qrDisplay}
-            </td>
-            <td>
-                <span class="badge bg-light text-dark border">${item.size_name} / ${item.color_name}</span>
-            </td>
-            <td>
-                <input type="text" class="form-control form-control-sm fw-bold text-center bg-light border" value="${item.quantity}" readonly tabindex="-1" style="cursor: default;">
-                ${item.max_stock ? `<div class="text-muted text-center mt-1" style="font-size: 10px;">Stock: ${item.max_stock} pcs</div>` : ''}
-            </td>
-            <td>₹${item.unit_price.toFixed(2)}</td>
-            <td class="fw-bold text-success">₹${lineTotal.toFixed(2)}</td>
-            <td>
-                <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="removeDifferentItem(${idx})">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
 }
 
 function recalculateTotals() {
@@ -1477,12 +1315,6 @@ function recalculateTotals() {
             }
         }
     });
-
-    if (mode === 'EXCHANGE_DIFFERENT') {
-        differentExchangeItems.forEach(d => {
-            totalNew += (d.unit_price * d.quantity);
-        });
-    }
 
     document.getElementById('pillTotalRefund').innerText = '₹' + totalRefund.toFixed(2);
     document.getElementById('pillTotalNew').innerText = '₹' + totalNew.toFixed(2);
@@ -1640,11 +1472,6 @@ async function submitReturnProcess() {
         }
     }
 
-    if (mode === 'EXCHANGE_DIFFERENT' && differentExchangeItems.length === 0) {
-        alert('Please add at least one alternate replacement product for different-product exchange.');
-        return;
-    }
-
     const refundMode = document.getElementById('refundModeSelect').value;
     const cashAmt = parseFloat(document.getElementById('splitCashInput').value) || 0;
     const upiAmt = parseFloat(document.getElementById('splitUpiInput').value) || 0;
@@ -1689,7 +1516,6 @@ async function submitReturnProcess() {
         reason: document.getElementById('returnReasonSelect').value,
         notes: document.getElementById('returnNotesInput').value.trim(),
         items: items,
-        new_items: differentExchangeItems,
         is_ajax: 1,
         _csrf_token: '<?= CSRF::token() ?>'
     };

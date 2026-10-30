@@ -988,7 +988,7 @@ class WarehouseController {
             $costRate = $purchasePrice > 0 ? $purchasePrice : ($productionCost > 0 ? $productionCost : $item['display_selling_price']);
             $qty = (float)($item['quantity'] ?? 0);
             $itemSellingPrice = $item['display_selling_price'] > 0 ? $item['display_selling_price'] : ($rawMrp > 0 ? $rawMrp : $costRate);
-            $valuation = $isComp ? ($qty * $itemSellingPrice) : ($qty * $costRate);
+            $valuation = ($isComp || !$isProd) ? ($qty * $itemSellingPrice) : ($qty * $costRate);
             $item['cost_rate'] = $costRate;
             $item['valuation'] = $valuation;
 
@@ -1481,6 +1481,11 @@ class WarehouseController {
                     }
                 }
             }
+        }
+
+        foreach (StockAdjustment::getRemovedQrCodes($variantId, $selectedWarehouseId) as $removedTag) {
+            $usedTags[$removedTag] = true;
+            unset($restockedTags[$removedTag]);
         }
 
         // Build piece-by-piece QR code records for available stock (skipping allocated/dispatched/sold/damaged tags)
@@ -2514,30 +2519,6 @@ class WarehouseController {
             Response::back();
         }
 
-        foreach ($items as $item) {
-            $itemTags = array_filter(array_map('trim', explode(',', (string)($item['tag_code'] ?? ''))));
-            foreach ($itemTags as $tag) {
-                $outwardTag = $this->findDispatchedWhatsappTag($tag, $warehouseId);
-                if ($outwardTag && (
-                    empty($outwardTag['is_pack_product'])
-                    || (float)$outwardTag['available_qty'] <= 0
-                    || (int)$outwardTag['variant_id'] !== (int)($item['variant_id'] ?? 0)
-                )) {
-                    $reason = (int)$outwardTag['variant_id'] !== (int)($item['variant_id'] ?? 0)
-                        ? 'This QR tag belongs to a different product.'
-                        : (empty($outwardTag['is_pack_product'])
-                            ? 'Normal individual-product QR tags cannot be damaged again after dispatch.'
-                            : 'No available pack stock remains in this warehouse.');
-                    Session::flash(
-                        'error',
-                        "QR tag '{$tag}' was already dispatched to WhatsApp in Outward #{$outwardTag['outward_number']} ({$outwardTag['channel_name']}). {$reason}"
-                    );
-                    Response::redirect(url('warehouse/damage/create'));
-                    return;
-                }
-            }
-        }
-
         // Handle Photo upload
         $photoUrl = null;
         if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
@@ -2610,6 +2591,43 @@ class WarehouseController {
                             $tagsArray[] = $tPrefix . str_pad((string)($startNum + $qi), 2, '0', STR_PAD_LEFT);
                         }
                         $tagCode = implode(', ', $tagsArray);
+                    }
+                }
+                foreach (array_filter(array_map('trim', explode(',', $tagCode))) as $tag) {
+                    $allocatedTag = $this->findAllocatedWarehouseTag($tag);
+                    if ($allocatedTag) {
+                        $reason = (int)$allocatedTag['variant_id'] !== $variantId
+                            ? 'This QR tag belongs to a different product. '
+                            : '';
+                        throw new RuntimeException(
+                            "{$reason}QR tag '{$tag}' is allocated in Pass #{$allocatedTag['allocation_number']} ({$allocatedTag['status']}) and is not available in warehouse stock."
+                        );
+                    }
+
+                    $soldTag = $this->findDirectPurchaseSoldTag($tag);
+                    if ($soldTag) {
+                        $reason = (int)$soldTag['variant_id'] !== $variantId
+                            ? 'This QR tag belongs to a different product. '
+                            : '';
+                        throw new RuntimeException(
+                            "{$reason}QR tag '{$tag}' was already sold in Direct Purchase #{$soldTag['po_number']} ({$soldTag['status']}) and cannot be damaged from warehouse stock."
+                        );
+                    }
+
+                    $outwardTag = $this->findDispatchedWhatsappTag($tag, $warehouseId);
+                    if ($outwardTag && (
+                        empty($outwardTag['is_pack_product'])
+                        || (float)$outwardTag['available_qty'] <= 0
+                        || (int)$outwardTag['variant_id'] !== $variantId
+                    )) {
+                        $reason = (int)$outwardTag['variant_id'] !== $variantId
+                            ? 'This QR tag belongs to a different product.'
+                            : (empty($outwardTag['is_pack_product'])
+                                ? 'Normal individual-product QR tags cannot be damaged again after dispatch.'
+                                : 'No available pack stock remains in this warehouse.');
+                        throw new RuntimeException(
+                            "QR tag '{$tag}' was already dispatched to WhatsApp in Outward #{$outwardTag['outward_number']} ({$outwardTag['channel_name']}). {$reason}"
+                        );
                     }
                 }
                 $damageReason = trim($it['damage_reason'] ?? 'Defect / Damage');
@@ -3162,7 +3180,15 @@ class WarehouseController {
              LEFT JOIN categories cat ON p.category_id = cat.id
              LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
              LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
-             WHERE pv.sku LIKE ? OR p.name LIKE ? OR p.code LIKE ? OR pv.qr_code LIKE ? OR col.name LIKE ? OR s.name LIKE ?
+             WHERE (pv.sku LIKE ? OR p.name LIKE ? OR p.code LIKE ? OR pv.qr_code LIKE ? OR col.name LIKE ? OR s.name LIKE ?)
+               AND EXISTS (
+                    SELECT 1
+                    FROM stock_balances available_sb
+                    WHERE available_sb.variant_id = pv.id
+                      AND available_sb.location_type = 'WAREHOUSE'
+                      AND available_sb.stock_state = 'AVAILABLE'
+                      AND available_sb.quantity > 0 " . ($warehouseId > 0 ? "AND available_sb.location_id = {$warehouseId}" : "") . "
+               )
              ORDER BY available_stock DESC, pv.id ASC
              LIMIT 10",
             [$searchTerms, $searchTerms, $searchTerms, $searchTerms, $searchTerms, $searchTerms]
@@ -3215,7 +3241,33 @@ class WarehouseController {
         }
         $stock = Database::fetchOne($stockSql, $stockParams);
 
+        if ((float)($stock['available_qty'] ?? 0) <= 0) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'This product has no available stock in the selected warehouse and cannot be added to damage.'
+            ]);
+            exit;
+        }
+
         if (!empty($extractedTag)) {
+            $allocatedTag = $this->findAllocatedWarehouseTag($extractedTag);
+            if ($allocatedTag) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => ((int)$allocatedTag['variant_id'] !== (int)$variant['id'] ? 'This QR tag belongs to a different product. ' : '') . "QR tag '" . htmlspecialchars($extractedTag, ENT_QUOTES, 'UTF-8') . "' is allocated in Pass #" . htmlspecialchars($allocatedTag['allocation_number'], ENT_QUOTES, 'UTF-8') . " (" . htmlspecialchars($allocatedTag['status'], ENT_QUOTES, 'UTF-8') . ") and is not available in warehouse stock."
+                ]);
+                exit;
+            }
+
+            $soldTag = $this->findDirectPurchaseSoldTag($extractedTag);
+            if ($soldTag) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => ((int)$soldTag['variant_id'] !== (int)$variant['id'] ? 'This QR tag belongs to a different product. ' : '') . "QR tag '" . htmlspecialchars($extractedTag, ENT_QUOTES, 'UTF-8') . "' was already sold in Direct Purchase #" . htmlspecialchars($soldTag['po_number'], ENT_QUOTES, 'UTF-8') . " (" . htmlspecialchars($soldTag['status'], ENT_QUOTES, 'UTF-8') . ") and cannot be damaged from warehouse stock."
+                ]);
+                exit;
+            }
+
             $outwardTag = $this->findDispatchedWhatsappTag($extractedTag, $warehouseId);
             if ($outwardTag && (
                 empty($outwardTag['is_pack_product'])
@@ -3278,6 +3330,61 @@ class WarehouseController {
             'matches' => $formattedMatches
         ]);
         exit;
+    }
+
+    private function findAllocatedWarehouseTag(string $tagCode): ?array {
+        if ($tagCode === '') {
+            return null;
+        }
+
+        return Database::fetchOne(
+            "SELECT wa.allocation_number, wa.status, ai.variant_id
+             FROM allocation_items ai
+             JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
+             WHERE FIND_IN_SET(UPPER(?), UPPER(REPLACE(COALESCE(ai.selected_qr_codes, ''), ' ', ''))) > 0
+               AND wa.status IN ('REQUESTED', 'APPROVED', 'PICKED', 'PACKED', 'DISPATCHED', 'DELIVERED', 'RECEIVED')
+             LIMIT 1",
+            [trim($tagCode)]
+        );
+    }
+
+    private function findDirectPurchaseSoldTag(string $tagCode): ?array {
+        if ($tagCode === '') {
+            return null;
+        }
+
+        $soldTag = Database::fetchOne(
+            "SELECT pi.variant_id, po.po_number, po.status
+             FROM purchase_items pi
+             JOIN purchase_orders po ON pi.purchase_order_id = po.id
+             WHERE (
+                    FIND_IN_SET(UPPER(?), UPPER(REPLACE(COALESCE(pi.batch_lot_no, ''), ' ', ''))) > 0
+                    OR UPPER(TRIM(COALESCE(pi.batch_lot_no, ''))) = UPPER(?)
+                    OR pi.notes LIKE ?
+               )
+               AND po.status NOT IN ('CANCELLED', 'VOID')
+             ORDER BY po.id DESC, pi.id DESC
+             LIMIT 1",
+            [trim($tagCode), trim($tagCode), '%' . $tagCode . '%']
+        );
+        if (!$soldTag) {
+            return null;
+        }
+
+        $restock = Database::fetchOne(
+            "SELECT r.return_number
+             FROM return_items ri
+             JOIN `returns` r ON ri.return_id = r.id
+             WHERE ri.variant_id = ?
+               AND ri.reason LIKE ?
+               AND ri.item_condition = 'GOOD'
+               AND ri.destination = 'AVAILABLE'
+               AND r.status NOT IN ('CANCELLED', 'REJECTED')
+             ORDER BY r.id DESC
+             LIMIT 1",
+            [(int)$soldTag['variant_id'], '%' . $tagCode . '%']
+        );
+        return $restock ? null : $soldTag;
     }
 
     private function findDispatchedWhatsappTag(string $tagCode, int $warehouseId = 0): ?array {
@@ -4061,7 +4168,12 @@ class WarehouseController {
                     }
                     $discountPct = max(0.0, min(100.0, $discountPct));
                     
-                    $gst = (float)($_POST['gst_percentage'][$idx] ?? 5.0);
+                    $gstValue = $_POST['gst_percentage'][$idx] ?? 5.0;
+                    if ($vId && $qty > 0 && (!is_numeric($gstValue) || (float)$gstValue < 0 || (float)$gstValue > 100)) {
+                        Response::redirect(url('warehouse/purchases/create'), 'error', 'GST percentage must be between 0 and 100.');
+                        return;
+                    }
+                    $gst = (float)$gstValue;
                     $scannedQr = !empty($_POST['scanned_qr_codes'][$idx]) ? trim($_POST['scanned_qr_codes'][$idx]) : null;
                     if ($vId && $qty > 0) {
                         $items[] = [
@@ -4228,8 +4340,12 @@ class WarehouseController {
         $po = PurchaseOrder::find($poId);
         if (!$po) {
             Response::redirect(url('warehouse/purchases'), 'error', 'Purchase order not found.');
+            return;
         }
 
+        $productsLocked = empty($po['seller_id'])
+            && empty($po['warehouse_supplier_id'])
+            && PurchaseOrder::hasPriorEdit($poId);
         $scopedWarehouseId = function_exists('currentWarehouseId') ? currentWarehouseId() : null;
         $items = PurchaseOrder::getItems($poId);
         $customers = Database::fetchAll("SELECT * FROM customers WHERE is_active = 1 ORDER BY name ASC");
@@ -4298,6 +4414,7 @@ class WarehouseController {
             'activeMenu'   => 'purchases',
             'po'           => $po,
             'items'        => $items,
+            'productsLocked' => $productsLocked,
             'customers'    => $customers,
             'warehouses'   => $warehouses,
             'variants'     => $variants,
@@ -4317,10 +4434,18 @@ class WarehouseController {
         }
         $poId = (int)$id;
         try {
+            $po = PurchaseOrder::find($poId);
+            if (!$po) {
+                Response::redirect(url('warehouse/purchases'), 'error', 'Purchase order not found.');
+                return;
+            }
+            $productsLocked = empty($po['seller_id'])
+                && empty($po['warehouse_supplier_id'])
+                && PurchaseOrder::hasPriorEdit($poId);
             $userId = Session::userId() ?? 1;
-            $items = [];
+            $items = $productsLocked ? PurchaseOrder::getItems($poId) : [];
 
-            if (!empty($_POST['variant_id']) && is_array($_POST['variant_id'])) {
+            if (!$productsLocked && !empty($_POST['variant_id']) && is_array($_POST['variant_id'])) {
                 foreach ($_POST['variant_id'] as $idx => $vId) {
                     $qty = (int)($_POST['quantity'][$idx] ?? 1);
                     $price = (float)($_POST['unit_price'][$idx] ?? 0.0);
@@ -4335,7 +4460,12 @@ class WarehouseController {
                     }
                     $discountPct = max(0.0, min(100.0, $discountPct));
                     
-                    $gst = (float)($_POST['gst_percentage'][$idx] ?? 5.0);
+                    $gstValue = $_POST['gst_percentage'][$idx] ?? 5.0;
+                    if ($vId && $qty > 0 && (!is_numeric($gstValue) || (float)$gstValue < 0 || (float)$gstValue > 100)) {
+                        Response::redirect(url('warehouse/purchases/edit/' . $poId), 'error', 'GST percentage must be between 0 and 100.');
+                        return;
+                    }
+                    $gst = (float)$gstValue;
                     $scannedQr = !empty($_POST['scanned_qr_codes'][$idx]) ? trim($_POST['scanned_qr_codes'][$idx]) : null;
                     if ($vId && $qty > 0) {
                         $items[] = [
@@ -4379,6 +4509,7 @@ class WarehouseController {
 
             if (empty($items)) {
                 Response::redirect(url('warehouse/purchases/edit/' . $poId), 'error', 'Please add at least one product item to the purchase order.');
+                return;
             }
 
             $customerId = !empty($_POST['customer_id']) ? (int)$_POST['customer_id'] : null;
@@ -4509,7 +4640,11 @@ class WarehouseController {
     }
 
     public function ajaxScanPurchaseQr(): void {
-        if (!hasPermission('purchases', 'receive') && !hasPermission('purchases', 'view')) {
+        $isAdjustmentScan = ($_REQUEST['purpose'] ?? '') === 'stock_adjustment';
+        $hasScanPermission = $isAdjustmentScan
+            ? hasPermission('stock', 'adjust')
+            : (hasPermission('purchases', 'receive') || hasPermission('purchases', 'view'));
+        if (!$hasScanPermission) {
             Response::jsonError('Access denied.', [], 403);
             return;
         }
@@ -4872,6 +5007,17 @@ class WarehouseController {
             exit;
         }
 
+        if ($isAdjustmentScan === false) {
+            $adjustmentUsage = StockAdjustment::findQrCodeUsage($extractedTag);
+            if ($adjustmentUsage) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => "QR code '{$extractedTag}' is already reserved or removed by stock adjustment #{$adjustmentUsage['adjustment_number']} ({$adjustmentUsage['status']})."
+                ]);
+                exit;
+            }
+        }
+
         $warehouseId = (int)($_REQUEST['warehouse_id'] ?? 0);
         if ($warehouseId > 0) {
             $avail = Database::fetchOne(
@@ -4889,7 +5035,7 @@ class WarehouseController {
         $availableStock = (int)($avail['qty'] ?? 0);
 
         // 1. Warehouse Available Stock Check
-        if ($availableStock <= 0) {
+        if ($availableStock <= 0 && !$isAdjustmentScan) {
             $whLabel = 'Warehouse';
             if ($warehouseId > 0) {
                 $whRow = Database::fetchOne("SELECT name, code FROM warehouses WHERE id = ?", [$warehouseId]);
@@ -4910,7 +5056,7 @@ class WarehouseController {
 
         // 2. Active Allocation Check (Exclude pieces in active dispatch / gate pass)
         // Series products with available warehouse stock (> 0) can continue to be billed
-        if (!$isSeries) {
+        if (!$isSeries && !$isAdjustmentScan) {
             $isAllocated = Database::fetchOne(
                 "SELECT wa.allocation_number, wa.status
                  FROM allocation_items ai
@@ -4931,24 +5077,26 @@ class WarehouseController {
         }
 
         // 3. Damaged / Defect Pool Check
-        $isDamaged = Database::fetchOne(
-            "SELECT d.damage_number, d.status 
-             FROM warehouse_damages d 
-             WHERE d.variant_id = ? AND (d.tag_code = ? OR d.damage_number = ?)
-             LIMIT 1",
-            [$variant['id'], $extractedTag, $extractedTag]
-        );
-        if ($isDamaged) {
-            echo json_encode([
-                'success' => false,
-                'message' => "🚫 Piece Marked Damaged: Tag '{$extractedTag}' is marked as Defective (Ref: #{$isDamaged['damage_number']}) and cannot be sold!"
-            ]);
-            exit;
+        if (!$isAdjustmentScan) {
+            $isDamaged = Database::fetchOne(
+                "SELECT d.damage_number, d.status
+                 FROM warehouse_damages d
+                 WHERE d.variant_id = ? AND (d.tag_code = ? OR d.damage_number = ?)
+                 LIMIT 1",
+                [$variant['id'], $extractedTag, $extractedTag]
+            );
+            if ($isDamaged) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => "🚫 Piece Marked Damaged: Tag '{$extractedTag}' is marked as Defective (Ref: #{$isDamaged['damage_number']}) and cannot be sold!"
+                ]);
+                exit;
+            }
         }
 
         // 4. Already Purchased / Sold Check
         // For Series products with available warehouse stock (> 0), the QR remains available for remaining quantity!
-        if (!$isSeries) {
+        if (!$isSeries && !$isAdjustmentScan) {
             $isPurchased = Database::fetchOne(
                 "SELECT po.po_number, po.status
                  FROM purchase_items pi
@@ -4987,8 +5135,26 @@ class WarehouseController {
             }
         }
 
+        $adjustmentScanError = null;
+        if ($isAdjustmentScan) {
+            try {
+                $isPack = $isComp || $isSeries;
+                $qrQuantity = $isPack ? max(1, (int)($variant['pack_quantity'] ?? 1)) : 1;
+                WarehouseService::validateAdjustmentQrCodes(
+                    (int)$variant['id'],
+                    $warehouseId,
+                    [$extractedTag],
+                    $qrQuantity
+                );
+            } catch (Throwable $e) {
+                $adjustmentScanError = $e->getMessage();
+            }
+        }
+
         echo json_encode([
             'success'       => true,
+            'eligible'      => !$isAdjustmentScan || $adjustmentScanError === null,
+            'message'       => $adjustmentScanError,
             'tag_code'      => $extractedTag,
             'extracted_tag' => $extractedTag,
             'variant'       => [
@@ -5296,25 +5462,6 @@ class WarehouseController {
         $summary = WarehouseService::getPurchaseReturnsSummary($warehouseId);
         $recentReturns = WarehouseService::getPurchaseReturnsList($_GET, $warehouseId);
 
-        // Fetch all active warehouse products and variants for Different Product exchange catalog picker
-        $catalogVariants = Database::fetchAll(
-            "SELECT pv.id, pv.sku, COALESCE(NULLIF(pv.qr_code, ''), CONCAT('QR-', pv.sku)) as qr_code, pv.selling_price, pv.mrp,
-                    p.name as product_name, p.code as product_code,
-                    sz.name as size_name, cl.name as color_name,
-                    COALESCE((SELECT SUM(quantity) FROM stock_balances sb 
-                              WHERE sb.variant_id = pv.id 
-                                AND sb.location_type = 'WAREHOUSE' 
-                                AND sb.location_id = ? 
-                                AND sb.stock_state = 'AVAILABLE'), 0) as available_stock
-             FROM product_variants pv
-             JOIN products p ON pv.product_id = p.id
-             LEFT JOIN sizes sz ON pv.size_id = sz.id
-             LEFT JOIN colors cl ON pv.color_id = cl.id
-             WHERE pv.is_active = 1 AND p.is_active = 1
-             ORDER BY p.name ASC, sz.sort_order ASC, sz.name ASC",
-            [$warehouseId]
-        );
-
         $warehouses = function_exists('getScopedWarehouses') ? getScopedWarehouses() : Warehouse::getAllActive();
 
         Response::view('warehouse.purchases.returns', [
@@ -5328,7 +5475,6 @@ class WarehouseController {
             ],
             'summary'          => $summary,
             'recentReturns'    => $recentReturns,
-            'catalogVariants'  => $catalogVariants,
             'warehouses'       => $warehouses,
             'warehouseId'      => $warehouseId,
             'filters'          => $_GET,
@@ -5352,6 +5498,49 @@ class WarehouseController {
         }
 
         try {
+            if (!empty($_GET['count_only'])) {
+                $phone = preg_replace('/\D+/', '', $query);
+                if (!preg_match('/^[+\d\s()-]+$/', $query) || strlen($phone) < 10 || strlen($phone) > 15) {
+                    Response::json(['success' => true, 'invoice_count' => null]);
+                    return;
+                }
+
+                $count = Database::fetchOne(
+                    "SELECT COUNT(*) AS invoice_count
+                     FROM purchase_orders po
+                     JOIN customers c ON c.id = po.customer_id
+                     WHERE c.phone = ?
+                       AND po.seller_id IS NULL
+                       AND po.warehouse_supplier_id IS NULL",
+                    [$phone]
+                );
+                $invoices = Database::fetchAll(
+                    "SELECT po.id, po.po_number, po.order_date, po.total_amount,
+                            po.payment_status, po.payment_method,
+                            (SELECT COUNT(*) FROM purchase_items pi WHERE pi.purchase_order_id = po.id) AS item_count,
+                            (SELECT COALESCE(SUM(pi.quantity), 0) FROM purchase_items pi WHERE pi.purchase_order_id = po.id) AS total_qty,
+                            (SELECT r.return_number FROM returns r WHERE r.purchase_order_id = po.id ORDER BY r.id DESC LIMIT 1) AS return_number
+                     FROM purchase_orders po
+                     JOIN customers c ON c.id = po.customer_id
+                     WHERE c.phone = ?
+                       AND po.seller_id IS NULL
+                       AND po.warehouse_supplier_id IS NULL
+                     ORDER BY po.order_date DESC, po.id DESC",
+                    [$phone]
+                );
+                Response::json([
+                    'success' => true,
+                    'invoice_count' => (int)($count['invoice_count'] ?? 0),
+                    'invoices' => $invoices,
+                ]);
+                return;
+            }
+
+            $phoneDigits = preg_replace('/\D+/', '', $query);
+            if (preg_match('/^[+\d\s()-]+$/', $query) && strlen($phoneDigits) >= 10 && strlen($phoneDigits) <= 15) {
+                $query = $phoneDigits;
+            }
+
             $data = WarehouseService::lookupPurchaseForReturn($query, $warehouseId);
             if (!$data) {
                 Response::json(['success' => false, 'message' => "No Direct Customer Purchase Order found matching '{$query}'."], 404);
@@ -5633,15 +5822,22 @@ class WarehouseController {
         try {
             $userId = Session::userId() ?? 1;
             $scopedWarehouseId = function_exists('currentWarehouseId') ? currentWarehouseId() : null;
-            $whId = $scopedWarehouseId !== null ? $scopedWarehouseId : (int)$_POST['warehouse_id'];
+            $whId = $scopedWarehouseId !== null ? $scopedWarehouseId : (int)($_POST['warehouse_id'] ?? 0);
+            $adjustmentType = strtoupper(trim($_POST['adjustment_type'] ?? ''));
+            $qrCodesRaw = $_POST['qr_codes'] ?? '[]';
+            $qrCodes = is_array($qrCodesRaw) ? $qrCodesRaw : json_decode((string)$qrCodesRaw, true);
+            if (!is_array($qrCodes)) {
+                throw new InvalidArgumentException('Scanned QR code list is invalid.');
+            }
 
             $data = [
                 'warehouse_id'    => $whId,
                 'variant_id'      => (int)$_POST['variant_id'],
-                'adjustment_type' => $_POST['adjustment_type'],
-                'quantity'        => (float)$_POST['quantity'],
+                'adjustment_type' => $adjustmentType,
+                'quantity'        => (int)$_POST['quantity'],
                 'reason'          => trim($_POST['reason'] ?? ''),
                 'notes'           => trim($_POST['notes'] ?? ''),
+                'qr_codes'        => $qrCodes,
             ];
 
             WarehouseService::createAdjustment($data, $userId);
@@ -5811,6 +6007,33 @@ class WarehouseController {
         $variantIds = $_POST['variant_ids'] ?? [];
         $requestedQty = $_POST['requested_qty'] ?? [];
         $selectedQrCodes = $_POST['selected_qr_codes'] ?? [];
+
+        $sourceWarehouse = Database::fetchOne(
+            "SELECT id FROM warehouses WHERE id = ? AND is_active = 1",
+            [$warehouseId]
+        );
+        if (!$sourceWarehouse) {
+            Session::flash('error', 'Please select a valid active source warehouse.');
+            Response::redirect(url('warehouse/allocation/create'));
+            return;
+        }
+
+        if ($destWhId !== null) {
+            $destinationWarehouse = Database::fetchOne(
+                "SELECT id FROM warehouses WHERE id = ? AND is_active = 1",
+                [$destWhId]
+            );
+            if (!$destinationWarehouse) {
+                Session::flash('error', 'Please select a valid active destination warehouse.');
+                Response::redirect(url('warehouse/allocation/create'));
+                return;
+            }
+            if ($destWhId === $warehouseId) {
+                Session::flash('error', 'Source and destination warehouses must be different.');
+                Response::redirect(url('warehouse/allocation/create'));
+                return;
+            }
+        }
 
         if (!$warehouseId || empty($variantIds) || (!$shopId && !$channelId && !$destWhId && empty($destinationRaw))) {
             Session::flash('error', 'Please select source warehouse, destination (Source Shop, Destination Channel, or Destination Warehouse), and at least one item variant.');
@@ -6032,7 +6255,7 @@ class WarehouseController {
             $reservedStock  = (float)($res['qty'] ?? 0);
             $totalStock     = $availableStock + $reservedStock;
 
-            $qrPieces = $this->generateVariantQrPieces($variant, (int)$availableStock);
+            $qrPieces = $this->generateVariantQrPieces($variant, (int)$availableStock, $warehouseId > 0 ? $warehouseId : null);
 
             Response::json([
                 'success'              => true,
@@ -6131,19 +6354,24 @@ class WarehouseController {
         ]);
     }
 
-    private function generateVariantQrPieces(array $variant, int $count): array {
+    private function generateVariantQrPieces(array $variant, int $count, ?int $warehouseId = null): array {
         if ($count <= 0) return [];
 
         $sku = $variant['sku'] ?? 'SKU';
         $pName = $variant['product_name'] ?? '';
         $isSeries = (($variant['qr_type'] ?? '') === 'SERIES_BATCH');
         $isComp = (!empty($variant['is_complementary']) || !empty($variant['prod_is_comp']));
+        $removedQrCodes = StockAdjustment::getRemovedQrCodes((int)($variant['id'] ?? 0), $warehouseId);
+        $removedQrCodeSet = array_fill_keys($removedQrCodes, true);
 
         if ($isSeries || $isComp) {
             $packQty = !empty($variant['pack_quantity']) ? (int)$variant['pack_quantity'] : $count;
             if ($packQty <= 0) $packQty = max(1, $count);
             $startCode = !empty($variant['series_start_code']) ? $variant['series_start_code'] : ($sku . '-001');
             $endCode = !empty($variant['series_end_code']) ? $variant['series_end_code'] : ($sku . '-' . sprintf('%03d', $packQty));
+            if (isset($removedQrCodeSet[strtoupper(trim($startCode))])) {
+                return [];
+            }
             $tagCode = "{$startCode} - {$endCode}";
 
             return [[
@@ -6185,8 +6413,8 @@ class WarehouseController {
         $m = date('n');
         $y = date('y');
 
-        // Fetch all already allocated piece QR codes across the entire system
-        $alreadyAllocatedCodes = [];
+        // Fetch QR codes that are already allocated or removed from stock.
+        $unavailableQrCodes = [];
         $activeAllocRows = Database::fetchAll(
             "SELECT ai.selected_qr_codes
              FROM allocation_items ai
@@ -6199,13 +6427,18 @@ class WarehouseController {
                 $codes = array_map('trim', explode(',', $row['selected_qr_codes']));
                 foreach ($codes as $c) {
                     if (!empty($c)) {
-                        $alreadyAllocatedCodes[$c] = true;
+                        $unavailableQrCodes[strtoupper($c)] = true;
                     }
                 }
             }
         }
 
+        foreach ($removedQrCodes as $removedCode) {
+            $unavailableQrCodes[$removedCode] = true;
+        }
+
         $pieces = [];
+        $seenProductionCodes = [];
 
         // Check if there are real production inward QR codes for this variant
         $variantId = (int)($variant['id'] ?? 0);
@@ -6214,9 +6447,11 @@ class WarehouseController {
                 "SELECT pbi.received_qr_codes, pbi.quantity, pbi.received_qty, pb.id as batch_id
                  FROM production_batch_items pbi
                  JOIN production_batches pb ON pb.id = pbi.production_batch_id
+                 LEFT JOIN production_outwards po ON po.production_batch_id = pb.id
                  WHERE pbi.variant_id = ? AND pb.status IN ('RECEIVED', 'DISPATCHED')
+                   AND (? IS NULL OR COALESCE(po.warehouse_id, pb.destination_warehouse_id) = ?)
                  ORDER BY pb.id ASC",
-                [$variantId]
+                [$variantId, $warehouseId, $warehouseId]
             );
 
             foreach ($batchPieceRows as $bpr) {
@@ -6225,7 +6460,8 @@ class WarehouseController {
                     foreach (explode(',', $bpr['received_qr_codes']) as $t) {
                         if (count($pieces) >= $count) break;
                         $code = strtoupper(trim($t));
-                        if ($code !== '' && !isset($alreadyAllocatedCodes[$code])) {
+                        if ($code !== '' && !isset($unavailableQrCodes[$code]) && !isset($seenProductionCodes[$code])) {
+                            $seenProductionCodes[$code] = true;
                             $pieces[] = [
                                 'piece_no'      => count($pieces) + 1,
                                 'qr_code'       => $code,
@@ -6247,12 +6483,12 @@ class WarehouseController {
         while (count($pieces) < $count && $i <= 500) {
             $code = $prefix . sprintf("%02d", (int)$m) . $y . sprintf("%02d", $i);
             
-            // EXCLUDE ALREADY ALLOCATED QR CODES
+            // Exclude QR codes that are already allocated or removed from stock.
             $alreadyAdded = false;
             foreach ($pieces as $pc) {
                 if ($pc['qr_code'] === $code) { $alreadyAdded = true; break; }
             }
-            if (!$alreadyAdded && !isset($alreadyAllocatedCodes[$code])) {
+            if (!$alreadyAdded && !isset($unavailableQrCodes[strtoupper($code)])) {
                 $pieces[] = [
                     'piece_no'      => count($pieces) + 1,
                     'qr_code'       => $code,
@@ -6925,6 +7161,16 @@ class WarehouseController {
             exit;
         }
 
+        $adjustmentUsage = StockAdjustment::findQrCodeUsage($extractedTag);
+        if ($adjustmentUsage) {
+            echo json_encode([
+                'success' => false,
+                'is_adjusted' => true,
+                'message' => "QR code '{$extractedTag}' is already reserved or removed by stock adjustment #{$adjustmentUsage['adjustment_number']} ({$adjustmentUsage['status']})."
+            ]);
+            exit;
+        }
+
         // Normalize metadata from every QR lookup strategy through the same variant query.
         $variant = Database::fetchOne(
             $baseVariantSql . " WHERE pv.id = ? LIMIT 1",
@@ -6986,7 +7232,7 @@ class WarehouseController {
         }
 
         // Fetch/generate piece QR items for this variant
-        $qrPieces = $this->generateVariantQrPieces($variant, (int)$availableStock);
+        $qrPieces = $this->generateVariantQrPieces($variant, (int)$availableStock, $warehouseId > 0 ? $warehouseId : null);
 
         // Ensure scanned tag is present in piece list if valid format
         $tagExistsInPieces = false;
@@ -8330,11 +8576,8 @@ class WarehouseController {
                 $isSeries = strtoupper($tpv['qr_type'] ?? '') === 'SERIES_BATCH'
                     || strtoupper($tpv['qr_type'] ?? '') === 'SERIES'
                     || strtoupper($tpv['warehouse_category_type'] ?? '') === 'SERIES';
-                $isPackProduct = $isComplementary || $isSeries;
                 $packQuantity = (int)($tpv['pack_quantity'] ?? 0);
-                $totalQty = $isPackProduct && $packQuantity > 1
-                    ? max($packQuantity, $inwardedQty)
-                    : ($poQty > 0 ? $poQty : max((int)($tpv['quantity'] ?? 0), $packQuantity, $inwardedQty));
+                $totalQty = max($poQty, (int)($tpv['quantity'] ?? 0), $packQuantity, $inwardedQty);
                 if ($totalQty <= 0) $totalQty = max(1, $inwardedQty);
                 $remainingQty = max(0, $totalQty - $inwardedQty);
 
@@ -11173,7 +11416,16 @@ class WarehouseController {
         $brands = Database::fetchAll("SELECT id, name FROM brands WHERE is_active = 1 ORDER BY name ASC");
 
         $existingSuppliers = Database::fetchAll(
-            "SELECT s.id, s.name, s.company, s.brand_id, b.name as brand_name, s.phone, s.email, s.gst_number, s.address, s.city, s.state, s.payment_terms, s.material_type, s.seller_type
+            "SELECT s.id, s.name, s.company, s.brand_id, b.name as brand_name, s.phone, s.email, s.gst_number, s.address, s.city, s.state, s.payment_terms, s.material_type, s.seller_type,
+                    COALESCE((
+                        SELECT po.payment_screenshot_url
+                        FROM purchase_orders po
+                        WHERE (po.warehouse_supplier_id = s.id OR po.seller_id = s.id)
+                          AND po.payment_screenshot_url IS NOT NULL
+                          AND po.payment_screenshot_url != ''
+                        ORDER BY po.id DESC
+                        LIMIT 1
+                    ), s.document_url) AS document_url
              FROM warehouse_suppliers s
              LEFT JOIN brands b ON s.brand_id = b.id
              WHERE s.is_active = 1
@@ -13593,9 +13845,41 @@ class WarehouseController {
             return;
         }
 
+        $isEditMode = !empty($_POST['edit_supplier_mode']) && $_POST['edit_supplier_mode'] === '1';
+        $existingSupplier = ($existingSupplierId > 0 && $isEditMode)
+            ? Database::fetchOne(
+                "SELECT COALESCE((
+                    SELECT po.payment_screenshot_url
+                    FROM purchase_orders po
+                    WHERE (po.warehouse_supplier_id = warehouse_suppliers.id OR po.seller_id = warehouse_suppliers.id)
+                      AND po.payment_screenshot_url IS NOT NULL
+                      AND po.payment_screenshot_url != ''
+                    ORDER BY po.id DESC
+                    LIMIT 1
+                ), document_url) AS document_url
+                 FROM warehouse_suppliers
+                 WHERE id = ?",
+                [$existingSupplierId]
+            )
+            : null;
         $billFile = $_FILES['bill_image'] ?? null;
         $uploadError = is_array($billFile) ? (int)($billFile['error'] ?? UPLOAD_ERR_NO_FILE) : UPLOAD_ERR_NO_FILE;
-        if ($uploadError !== UPLOAD_ERR_OK) {
+        $hasNewBillUpload = $uploadError === UPLOAD_ERR_OK;
+        if (!$hasNewBillUpload && $uploadError !== UPLOAD_ERR_NO_FILE) {
+            $message = 'The supplier bill or invoice could not be uploaded. Please try again.';
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => $message], 400);
+                return;
+            }
+            Session::flash('error', $message);
+            Response::redirect(url('warehouse/sellers/create'));
+            return;
+        }
+        $billUrl = (!$hasNewBillUpload && !empty($existingSupplier['document_url']))
+            ? $existingSupplier['document_url']
+            : null;
+
+        if (!$hasNewBillUpload && empty($billUrl)) {
             $message = $uploadError === UPLOAD_ERR_NO_FILE
                 ? 'Supplier bill or invoice is required.'
                 : 'The supplier bill or invoice could not be uploaded. Please try again.';
@@ -13608,7 +13892,7 @@ class WarehouseController {
             return;
         }
 
-        if ((int)($billFile['size'] ?? 0) > 10 * 1024 * 1024) {
+        if ($hasNewBillUpload && (int)($billFile['size'] ?? 0) > 10 * 1024 * 1024) {
             $message = 'The bill or invoice file must be 10MB or smaller.';
             if ($isAjax) {
                 Response::json(['success' => false, 'message' => $message], 400);
@@ -13619,30 +13903,33 @@ class WarehouseController {
             return;
         }
 
-        $mimeType = mime_content_type($billFile['tmp_name']);
-        if (!in_array($mimeType, ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'], true)) {
-            $message = 'Upload the supplier bill as a JPG, PNG, WEBP, GIF, or PDF file.';
-            if ($isAjax) {
-                Response::json(['success' => false, 'message' => $message], 400);
+        if ($hasNewBillUpload) {
+            $mimeType = mime_content_type($billFile['tmp_name']);
+            if (!in_array($mimeType, ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'], true)) {
+                $message = 'Upload the supplier bill as a JPG, PNG, WEBP, GIF, or PDF file.';
+                if ($isAjax) {
+                    Response::json(['success' => false, 'message' => $message], 400);
+                    return;
+                }
+                Session::flash('error', $message);
+                Response::redirect(url('warehouse/sellers/create'));
                 return;
             }
-            Session::flash('error', $message);
-            Response::redirect(url('warehouse/sellers/create'));
-            return;
-        }
 
-        require_once BASE_PATH . '/app/Services/CloudinaryService.php';
-        $billUrl = CloudinaryService::upload($billFile, 'grm_inventory/bills', 'image');
-        if (!$billUrl) {
-            $message = 'Failed to save the supplier bill or invoice. Please retry the upload.';
-            if ($isAjax) {
-                Response::json(['success' => false, 'message' => $message], 500);
+            require_once BASE_PATH . '/app/Services/CloudinaryService.php';
+            $billUrl = CloudinaryService::upload($billFile, 'grm_inventory/bills', 'image');
+            if (!$billUrl) {
+                $message = 'Failed to save the supplier bill or invoice. Please retry the upload.';
+                if ($isAjax) {
+                    Response::json(['success' => false, 'message' => $message], 500);
+                    return;
+                }
+                Session::flash('error', $message);
+                Response::redirect(url('warehouse/sellers/create'));
                 return;
             }
-            Session::flash('error', $message);
-            Response::redirect(url('warehouse/sellers/create'));
-            return;
         }
+        require_once BASE_PATH . '/app/Services/CloudinaryService.php';
         $billPublicId = CloudinaryService::extractPublicId($billUrl) ?? ('bill_' . time());
 
         // Resolve or newly create Brand
@@ -13696,9 +13983,9 @@ class WarehouseController {
                     // Update supplier credentials with any edits provided on the form
                     Database::execute(
                         "UPDATE warehouse_suppliers 
-                         SET name = ?, company = ?, brand_id = ?, phone = ?, email = ?, gst_number = ?, address = ?, city = ?, state = ?, payment_terms = ?, material_type = ?, seller_type = ?, notes = COALESCE(?, notes), updated_at = NOW()
+                         SET name = ?, company = ?, brand_id = ?, phone = ?, email = ?, gst_number = ?, address = ?, city = ?, state = ?, payment_terms = ?, material_type = ?, seller_type = ?, document_url = COALESCE(?, document_url), notes = COALESCE(?, notes), updated_at = NOW()
                          WHERE id = ?",
-                        [$name, $company ?: null, $brandId, $phone ?: null, $email ?: null, $gstNumber ?: null, $address ?: null, $city ?: null, $state ?: null, $paymentTerms ?: null, $materialType ?: null, $sellerType, $notes ?: null, $sellerId]
+                        [$name, $company ?: null, $brandId, $phone ?: null, $email ?: null, $gstNumber ?: null, $address ?: null, $city ?: null, $state ?: null, $paymentTerms ?: null, $materialType ?: null, $sellerType, $hasNewBillUpload ? $billUrl : null, $notes ?: null, $sellerId]
                     );
                     AuditService::log('WAREHOUSE', 'USE_EXISTING_SELLER_PHASE1', 'warehouse_suppliers', $sellerId, null, [
                         'name' => $name,

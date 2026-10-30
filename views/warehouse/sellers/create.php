@@ -66,6 +66,7 @@ $isEditMode = (!empty($_GET['mode']) && $_GET['mode'] === 'edit');
 <form method="POST" action="<?= url('warehouse/sellers/store-phase1') ?>" enctype="multipart/form-data" id="supplierPhase1Form" onsubmit="handlePhase1Submit(event)">
     <?= CSRF::field() ?>
     <input type="hidden" name="existing_supplier_id" id="existingSupplierId" value="<?= (int)($selectedSellerId ?? 0) ?>">
+    <input type="hidden" name="edit_supplier_mode" value="<?= $isEditMode ? '1' : '0' ?>">
 
     <div class="row g-4 mb-4">
         <!-- ===================================================================== -->
@@ -285,15 +286,25 @@ $isEditMode = (!empty($_GET['mode']) && $_GET['mode'] === 'edit');
                         <!-- Bill Document / Invoice Photo Upload -->
                         <div class="col-12">
                             <label class="form-label small fw-semibold d-flex justify-content-between align-items-center">
-                                <span><i class="bi bi-camera me-1 text-primary"></i>Upload Bill / Invoice <span class="text-danger">*</span></span>
+                                <span><i class="bi bi-camera me-1 text-primary"></i>Upload Bill / Invoice <span class="text-danger" id="billRequiredMarker">*</span></span>
                                 <span class="badge bg-light text-muted border">Image or PDF (Max 10MB)</span>
                             </label>
                             <div class="border border-2 border-dashed rounded-3 p-3 text-center bg-light" id="billDropzone">
                                 <input type="file" name="bill_image" id="billImageInput" class="d-none" accept="image/*,.pdf" onchange="handleBillImageSelect(event)">
+                                <div id="existingBillDocument" class="d-none mb-2 text-start">
+                                    <div class="d-flex align-items-center gap-3 p-2 bg-white rounded border">
+                                        <div id="existingBillPreview"></div>
+                                        <div class="min-w-0">
+                                            <div class="fw-semibold small text-dark">Existing uploaded bill / invoice</div>
+                                            <a id="existingBillLink" href="#" target="_blank" rel="noopener noreferrer" class="small text-truncate d-inline-block" style="max-width: 260px;">View existing bill</a>
+                                            <div class="text-muted fs-8">Upload a new file below only if you want to replace it.</div>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div id="billUploadPlaceholder" role="button" onclick="document.getElementById('billImageInput').click();" class="py-2 cursor-pointer">
                                     <i class="bi bi-cloud-arrow-up fs-2 text-primary d-block mb-1"></i>
-                                    <div class="fw-semibold small text-dark">Click to Upload Required Bill / Invoice</div>
-                                    <div class="text-muted fs-8">Required to continue. Supports JPG, PNG, WEBP, or PDF invoices (max 10MB).</div>
+                                    <div class="fw-semibold small text-dark">Click to Upload Bill / Invoice</div>
+                                    <div class="text-muted fs-8" id="billUploadHelp">Required to continue. Supports JPG, PNG, WEBP, or PDF invoices (max 10MB).</div>
                                 </div>
                                 <div id="billImagePreviewBox" class="d-none mt-2 position-relative">
                                     <img id="billPreviewImg" src="" alt="Bill Screenshot" class="img-fluid rounded border shadow-sm" style="max-height: 120px; object-fit: contain;">

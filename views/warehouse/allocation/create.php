@@ -604,6 +604,31 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearScanBtn = document.getElementById('clearScanInputBtn');
     const autoFocusSwitch = document.getElementById('autoFocusSwitch');
     const totalScannedBadge = document.getElementById('totalScannedCount');
+    const destinationWarehouseSelect = document.getElementById('destination_warehouse_select');
+
+    function updateDestinationWarehouseOptions() {
+        if (!warehouseSelect || !destinationWarehouseSelect) return;
+
+        const sourceWarehouseId = warehouseSelect.value;
+        let removedSelectedSource = false;
+        Array.from(destinationWarehouseSelect.options).forEach(option => {
+            if (!option.value) return;
+            const isSourceWarehouse = option.value === sourceWarehouseId;
+            option.hidden = isSourceWarehouse;
+            option.disabled = isSourceWarehouse;
+            if (isSourceWarehouse && destinationWarehouseSelect.value === option.value) {
+                destinationWarehouseSelect.value = '';
+                removedSelectedSource = true;
+            }
+        });
+
+        if (removedSelectedSource) {
+            document.querySelectorAll('.dest-select').forEach(select => {
+                select.disabled = false;
+            });
+            showScanAlert('warning', 'The destination warehouse must be different from the source warehouse. Please choose another destination.');
+        }
+    }
 
     function updateGlobalScannedCounter() {
         if (totalScannedBadge) {
@@ -1395,6 +1420,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (warehouseSelect) {
         warehouseSelect.addEventListener('change', function() {
+            updateDestinationWarehouseOptions();
             refreshVariantStockForWarehouse(this.value);
         });
         if (warehouseSelect.value) {
@@ -1752,6 +1778,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Mutually exclusive destination selects
     const destSelects = document.querySelectorAll('.dest-select');
+    updateDestinationWarehouseOptions();
     destSelects.forEach(select => {
         select.addEventListener('change', function() {
             if (this.value !== '') {
@@ -1774,6 +1801,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const allocationForm = document.getElementById('allocationForm');
     if (allocationForm) {
         allocationForm.addEventListener('submit', function(event) {
+            if (destinationWarehouseSelect && destinationWarehouseSelect.value !== ''
+                && destinationWarehouseSelect.value === warehouseSelect?.value) {
+                event.preventDefault();
+                showScanAlert('warning', 'The destination warehouse must be different from the source warehouse.');
+                destinationWarehouseSelect.focus();
+                return;
+            }
+
             const hasDestination = Array.from(destSelects).some(select => select.value !== '');
             if (hasDestination) return;
 

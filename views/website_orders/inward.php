@@ -182,16 +182,16 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                 <div class="card-body p-3">
                     <div class="d-flex align-items-center justify-content-between">
                         <div style="min-width: 0;">
-                            <span class="text-muted small fw-bold text-uppercase d-block text-truncate metric-card-title" style="font-size: 0.75rem;">Total Inward Valuation</span>
+                            <span class="text-muted small fw-bold text-uppercase d-block text-truncate metric-card-title" style="font-size: 0.75rem;">Total Inward Dispatches</span>
                             <h4 class="mb-0 fw-bold text-primary mt-1 metric-card-value">
-                                ₹<?= number_format($totalValuation ?? 0, 2) ?>
+                                <?= number_format(count($allocations ?? [])) ?> <small class="fs-6 text-muted fw-normal">Allocations</small>
                             </h4>
                             <small class="text-muted mt-1 d-block text-truncate">
-                                <i class="bi bi-boxes me-1"></i><?= number_format(($totalPendingMissingQty ?? 0) + ($totalReceivedQty ?? 0)) ?> total allocated pcs
+                                <i class="bi bi-boxes me-1"></i><?= number_format($totalDispatchedQty ?? 0) ?> total dispatched pcs
                             </small>
                         </div>
                         <div class="rounded-circle bg-primary bg-opacity-10 p-2 p-xl-3 text-primary flex-shrink-0 ms-2">
-                            <i class="bi bi-currency-rupee fs-4"></i>
+                            <i class="bi bi-box-seam fs-4"></i>
                         </div>
                     </div>
                 </div>
@@ -326,21 +326,32 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
             <!-- Filters Card -->
             <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body p-3">
-                    <form method="GET" action="<?= url('warehouse/website-orders/inward') ?>" class="row g-2 align-items-end">
+                    <form method="GET" action="<?= url('warehouse/website-orders/inward') ?>" class="row g-2 align-items-end" id="inwardFilterForm">
                         <div class="col-12 col-sm-6 col-lg-3">
                             <label class="form-label small fw-semibold text-muted mb-1">Search Filter</label>
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text bg-white"><i class="bi bi-search text-secondary"></i></span>
-                                <input type="text" name="search" class="form-control form-control-sm" placeholder="Search allocation #, notes..." value="<?= htmlspecialchars($search ?? '') ?>">
+                                <input type="text" name="search" id="inwardSearchInput" class="form-control form-control-sm" placeholder="Search allocation, outward, product, SKU..." value="<?= htmlspecialchars($search ?? '') ?>" autocomplete="off">
                             </div>
                         </div>
-                        <div class="col-12 col-sm-6 col-lg-3">
+                        <div class="col-12 col-sm-6 col-lg-2">
                             <label class="form-label small fw-semibold text-muted mb-1">Inward Status</label>
-                            <select name="status" class="form-select form-select-sm">
+                            <select name="status" id="inwardStatusSelect" class="form-select form-select-sm">
                                 <option value="">All Statuses</option>
-                                <option value="DISPATCHED" <?= ($status ?? '') === 'DISPATCHED' ? 'selected' : '' ?>>DISPATCHED (In-Transit)</option>
-                                <option value="COMPLETED" <?= ($status ?? '') === 'COMPLETED' ? 'selected' : '' ?>>COMPLETED (Received)</option>
-                                <option value="PENDING" <?= ($status ?? '') === 'PENDING' ? 'selected' : '' ?>>PENDING</option>
+                                <option value="DISPATCHED" <?= ($status ?? '') === 'DISPATCHED' ? 'selected' : '' ?>>Dispatched</option>
+                                <option value="PARTIAL_RECEIVED" <?= ($status ?? '') === 'PARTIAL_RECEIVED' ? 'selected' : '' ?>>Partial</option>
+                                <option value="RECEIVED" <?= ($status ?? '') === 'RECEIVED' ? 'selected' : '' ?>>Received</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Source Warehouse</label>
+                            <select name="warehouse_id" id="inwardWarehouseSelect" class="form-select form-select-sm">
+                                <option value="">All Warehouses</option>
+                                <?php foreach (($warehouses ?? []) as $warehouse): ?>
+                                    <option value="<?= (int)$warehouse['id'] ?>" <?= (string)($warehouseId ?? '') === (string)$warehouse['id'] ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($warehouse['name']) ?><?= !empty($warehouse['code']) ? ' (' . htmlspecialchars($warehouse['code']) . ')' : '' ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="col-12 col-sm-6 col-lg-2">
@@ -351,7 +362,7 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                             <label class="form-label small fw-semibold text-muted mb-1">To Date</label>
                             <input type="date" name="date_to" class="form-control form-control-sm" value="<?= htmlspecialchars($dateTo ?? '') ?>">
                         </div>
-                        <div class="col-12 col-lg-2 d-flex gap-2">
+                        <div class="col-12 col-lg-1 d-flex gap-2">
                             <button type="submit" class="btn btn-primary btn-sm w-100 fw-semibold">
                                 <i class="bi bi-funnel me-1"></i> Filter
                             </button>
@@ -367,7 +378,7 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
             <div class="card border-0 shadow-sm rounded-3">
                 <div class="card-header bg-white py-3 border-0 d-flex align-items-center justify-content-between">
                     <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-table me-2 text-primary"></i>Website Inward Dispatches Ledger</h6>
-                    <span class="text-muted small">Showing <?= count($batches ?? []) ?> dispatches</span>
+                    <span class="badge bg-light text-dark border font-monospace fs-8" id="inwardTableCountBadge">Showing <?= count($batches ?? []) ?> Dispatches</span>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0" style="min-width: 850px;">
@@ -382,7 +393,7 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                                 <th class="text-end pe-3">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="inwardTableBody">
                             <?php if (empty($batches)): ?>
                                 <tr>
                                     <td colspan="7" class="text-center py-5 text-muted">
@@ -395,15 +406,18 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                                     <?php 
                                         $bTot = (int)($b['total_quantity'] ?? $b['quantity'] ?? 0);
                                         $bRec = (int)($b['received_qty'] ?? 0);
+                                        $bDam = (int)($b['damaged_qty'] ?? 0);
                                         $bState = $b['status_state'] ?? (in_array(strtoupper($b['status'] ?? ''), ['COMPLETED', 'RECEIVED', 'DELIVERED']) ? 'RECEIVED' : ($bRec > 0 ? 'PARTIAL' : 'IN_TRANSIT'));
                                         $bIsCredited = ($bState === 'RECEIVED');
-                                        $bMis = max(0, $bTot - $bRec);
+                                        $bMis = (int)($b['missing_qty'] ?? max(0, $bTot - $bRec - $bDam));
                                         $bItems = $b['items'] ?? [];
                                         $bNum = $b['allocation_number'] ?? ('ALC-' . str_pad($b['id'], 5, '0', STR_PAD_LEFT));
                                         $bOutward = $b['outward_number'] ?? ('OUT-' . str_pad($b['id'], 5, '0', STR_PAD_LEFT));
+                                        $skuSearchTerms = implode(' ', array_map(function($item) { return ($item['sku'] ?? '') . ' ' . ($item['size_name'] ?? '') . ' ' . ($item['color_name'] ?? '') . ' ' . ($item['product_name'] ?? ''); }, $bItems));
+                                        $searchHaystack = strtolower(htmlspecialchars($bNum . ' ' . $bOutward . ' ' . ($b['vehicle_number'] ?? '') . ' ' . ($b['driver_name'] ?? '') . ' ' . ($b['warehouse_name'] ?? '') . ' ' . $skuSearchTerms, ENT_QUOTES, 'UTF-8'));
                                         $bTitle = ($bItems[0]['product_name'] ?? null) ? $bItems[0]['product_name'] : 'Assorted Garments & Merchandise';
                                     ?>
-                                    <tr id="row-batch-<?= $b['id'] ?>">
+                                    <tr id="row-batch-<?= $b['id'] ?>" class="inward-alloc-row" data-search="<?= $searchHaystack ?>" data-status="<?= $bIsCredited ? 'RECEIVED' : ($bState === 'PARTIAL' ? 'PARTIAL_RECEIVED' : 'DISPATCHED') ?>" data-warehouse-id="<?= (int)($b['warehouse_id'] ?? 0) ?>">
                                         <td class="ps-3">
                                             <div class="d-flex align-items-center gap-2">
                                                 <button type="button" class="btn btn-sm btn-light border p-1 rounded text-primary border-primary" onclick="openCrossCheckModal(<?= $b['id'] ?>)" title="Show / Scan QR Code">
@@ -428,6 +442,11 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                                         <td>
                                             <span class="fw-bold text-dark fs-6"><?= number_format($bTot) ?> pcs</span>
                                             <br><span class="badge bg-light text-dark border"><i class="bi bi-box-seam me-1"></i><?= (int)($b['total_boxes'] ?? 1) ?> Cartons</span>
+                                            <small class="d-block mt-1 text-nowrap">
+                                                <span class="text-success">Good <?= number_format($bRec) ?></span>
+                                                <span class="text-danger ms-1">Damaged <?= number_format($bDam) ?></span>
+                                                <span class="text-warning text-dark ms-1">Missing <?= number_format($bMis) ?></span>
+                                            </small>
                                         </td>
                                         <td>
                                             <small class="text-muted d-block"><?= !empty($b['dispatch_date']) ? date('d M Y, h:i A', strtotime($b['dispatch_date'])) : (!empty($b['created_at']) ? date('d M Y, h:i A', strtotime($b['created_at'])) : date('d M Y, h:i A')) ?></small>
@@ -480,6 +499,19 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
         <!-- TAB 2: ALLOCATION CARDS VIEW -->
         <!-- --------------------------------------------------------------------- -->
         <div class="tab-pane fade" id="tab-cards-view" role="tabpanel">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div class="input-group input-group-sm" style="max-width: 280px;">
+                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                        <input type="search" id="batchCardSearch" class="form-control" placeholder="Search variant / SKU...">
+                    </div>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Allocation card status filter">
+                        <button type="button" class="btn btn-outline-secondary active btn-batch-filter" data-filter="all">All (<?= count($batches ?? []) ?>)</button>
+                        <button type="button" class="btn btn-outline-danger btn-batch-filter" data-filter="missing">Missing (<?= (int)($pendingBatchesCount ?? 0) ?>)</button>
+                        <button type="button" class="btn btn-outline-success btn-batch-filter" data-filter="stocked">Received (<?= (int)($receivedBatchesCount ?? 0) ?>)</button>
+                    </div>
+                </div>
+            </div>
             <div class="row g-3">
                 <?php if (empty($batches)): ?>
                     <div class="col-12 text-center py-5 text-muted bg-white rounded shadow-sm">
@@ -491,11 +523,17 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                         <?php 
                             $bTot = (int)($b['total_quantity'] ?? $b['quantity'] ?? 0);
                             $bRec = (int)($b['received_qty'] ?? 0);
+                            $bDam = (int)($b['damaged_qty'] ?? 0);
                             $bState = $b['status_state'] ?? (in_array(strtoupper($b['status'] ?? ''), ['COMPLETED', 'RECEIVED', 'DELIVERED']) ? 'RECEIVED' : ($bRec > 0 ? 'PARTIAL' : 'IN_TRANSIT'));
                             $bIsCredited = ($bState === 'RECEIVED');
-                            $bMis = max(0, $bTot - $bRec);
+                            $bMis = (int)($b['missing_qty'] ?? max(0, $bTot - $bRec - $bDam));
+                            $bItems = $b['items'] ?? [];
+                            $bNum = $b['allocation_number'] ?? ('ALC-' . str_pad($b['id'], 5, '0', STR_PAD_LEFT));
+                            $bOutward = $b['outward_number'] ?? ('OUT-' . str_pad($b['id'], 5, '0', STR_PAD_LEFT));
+                            $skuSearchTerms = implode(' ', array_map(function($item) { return ($item['sku'] ?? '') . ' ' . ($item['size_name'] ?? '') . ' ' . ($item['color_name'] ?? '') . ' ' . ($item['product_name'] ?? ''); }, $bItems));
+                            $searchHaystack = strtolower(htmlspecialchars($bNum . ' ' . $bOutward . ' ' . ($b['vehicle_number'] ?? '') . ' ' . ($b['driver_name'] ?? '') . ' ' . ($b['warehouse_name'] ?? '') . ' ' . $skuSearchTerms, ENT_QUOTES, 'UTF-8'));
                         ?>
-                        <div class="col-12 col-md-6 col-xl-4">
+                        <div class="col-12 col-md-6 col-xl-4 batch-card-item" data-search="<?= $searchHaystack ?>" data-status="<?= $bIsCredited ? 'stocked' : 'missing' ?>" data-inward-status="<?= $bIsCredited ? 'RECEIVED' : ($bState === 'PARTIAL' ? 'PARTIAL_RECEIVED' : 'DISPATCHED') ?>" data-warehouse-id="<?= (int)($b['warehouse_id'] ?? 0) ?>">
                             <div class="card border-0 shadow-sm rounded-3 h-100 batch-card-hover border-top border-4 <?= $bIsCredited ? 'border-success' : 'border-primary' ?>">
                                 <div class="card-header bg-white py-3 border-0 d-flex align-items-center justify-content-between">
                                     <div>
@@ -519,10 +557,21 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                                     <!-- Variant list breakdown -->
                                     <div class="variant-scroll-box mb-3 border rounded p-2 bg-light">
                                         <?php if (!empty($b['items'])): ?>
-                                            <?php foreach ($b['items'] as $it): ?>
+                                            <?php foreach ($bItems as $it): ?>
                                                 <div class="d-flex align-items-center justify-content-between border-bottom pb-1 mb-1 fs-8">
                                                     <span class="text-dark fw-semibold text-truncate max-w-180"><?= htmlspecialchars($it['product_name'] ?? 'Item') ?> (<?= htmlspecialchars($it['size_name'] ?? '') ?>/<?= htmlspecialchars($it['color_name'] ?? '') ?>)</span>
-                                                    <span class="badge bg-primary bg-opacity-10 text-primary fw-bold"><?= number_format($it['dispatched_qty'] > 0 ? $it['dispatched_qty'] : $it['requested_qty']) ?> pcs</span>
+                                                    <?php
+                                                        $itemExpected = (int)($it['dispatched_qty'] > 0 ? $it['dispatched_qty'] : ($it['requested_qty'] ?? 1));
+                                                        $itemGood = (int)($it['received_qty'] ?? 0);
+                                                        $itemDamaged = (int)($it['damaged_qty'] ?? 0);
+                                                        $itemMissing = max(0, $itemExpected - $itemGood - $itemDamaged);
+                                                    ?>
+                                                    <span class="font-monospace flex-shrink-0">
+                                                        <span class="badge bg-success-subtle text-success border border-success-subtle" title="Good"><?= $itemGood ?></span>
+                                                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle" title="Damaged"><?= $itemDamaged ?></span>
+                                                        <span class="badge bg-warning-subtle text-dark border border-warning-subtle" title="Missing"><?= $itemMissing ?></span>
+                                                        <span class="badge bg-light text-dark border" title="Expected">/ <?= $itemExpected ?></span>
+                                                    </span>
                                                 </div>
                                             <?php endforeach; ?>
                                         <?php else: ?>
@@ -556,6 +605,9 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                         </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
+            </div>
+            <div id="noBatchCardsMatch" class="text-center py-4 d-none text-muted">
+                <i class="bi bi-search fs-3 d-block mb-1"></i> No matching allocation cards found for the selected filter or search term.
             </div>
         </div>
 
@@ -1231,6 +1283,84 @@ function highlightSavedDrafts() {
 
 document.addEventListener('DOMContentLoaded', function() {
     highlightSavedDrafts();
+
+    const inwardSearchInput = document.getElementById('inwardSearchInput');
+    const batchSearchInput = document.getElementById('batchCardSearch');
+    const warehouseSelect = document.getElementById('inwardWarehouseSelect');
+    const statusSelect = document.getElementById('inwardStatusSelect');
+    const inwardRows = Array.from(document.querySelectorAll('.inward-alloc-row'));
+    const batchCards = Array.from(document.querySelectorAll('.batch-card-item'));
+    const countBadge = document.getElementById('inwardTableCountBadge');
+    const tableBody = document.getElementById('inwardTableBody');
+    const noBatchCardsMatch = document.getElementById('noBatchCardsMatch');
+    let batchFilter = 'all';
+
+    function applyInwardListingFilters() {
+        const tableQuery = (inwardSearchInput ? inwardSearchInput.value : '').trim().toLowerCase();
+        const cardQuery = (batchSearchInput ? batchSearchInput.value : '').trim().toLowerCase();
+        const warehouseId = warehouseSelect ? warehouseSelect.value : '';
+        const status = statusSelect ? statusSelect.value : '';
+        let visibleRows = 0;
+        let visibleCards = 0;
+
+        inwardRows.forEach(row => {
+            const matches = (!tableQuery || (row.dataset.search || '').includes(tableQuery))
+                && (!warehouseId || row.dataset.warehouseId === warehouseId)
+                && (!status || row.dataset.status === status);
+            row.classList.toggle('d-none', !matches);
+            visibleRows += matches ? 1 : 0;
+        });
+
+        batchCards.forEach(card => {
+            const cardStatus = card.dataset.inwardStatus || '';
+            const matchesFilter = batchFilter === 'all' || card.dataset.status === batchFilter;
+            const matches = matchesFilter
+                && (!tableQuery || (card.dataset.search || '').includes(tableQuery))
+                && (!cardQuery || (card.dataset.search || '').includes(cardQuery))
+                && (!warehouseId || card.dataset.warehouseId === warehouseId)
+                && (!status || cardStatus === status);
+            card.classList.toggle('d-none', !matches);
+            visibleCards += matches ? 1 : 0;
+        });
+
+        if (countBadge) {
+            countBadge.textContent = `Showing ${visibleRows} Dispatches`;
+        }
+        let noMatchRow = document.getElementById('noInwardMatchRow');
+        if (inwardRows.length > 0 && visibleRows === 0 && tableBody) {
+            if (!noMatchRow) {
+                noMatchRow = document.createElement('tr');
+                noMatchRow.id = 'noInwardMatchRow';
+                const cell = document.createElement('td');
+                cell.colSpan = 7;
+                cell.className = 'text-center py-4 text-muted';
+                cell.textContent = 'No inward allocations match the selected search or filters.';
+                noMatchRow.appendChild(cell);
+                tableBody.appendChild(noMatchRow);
+            }
+        } else if (noMatchRow) {
+            noMatchRow.remove();
+        }
+        if (noBatchCardsMatch) {
+            noBatchCardsMatch.classList.toggle('d-none', batchCards.length === 0 || visibleCards > 0);
+        }
+    }
+
+    document.querySelectorAll('.btn-batch-filter').forEach(button => {
+        button.addEventListener('click', function() {
+            document.querySelectorAll('.btn-batch-filter').forEach(filterButton => filterButton.classList.remove('active'));
+            this.classList.add('active');
+            batchFilter = this.dataset.filter || 'all';
+            applyInwardListingFilters();
+        });
+    });
+    [inwardSearchInput, batchSearchInput].forEach(input => {
+        if (input) input.addEventListener('input', applyInwardListingFilters);
+    });
+    [warehouseSelect, statusSelect].forEach(select => {
+        if (select) select.addEventListener('change', applyInwardListingFilters);
+    });
+    applyInwardListingFilters();
 
     const qrInput = document.getElementById('qrInput');
     const btnSubmit = document.getElementById('btnScanSubmit');

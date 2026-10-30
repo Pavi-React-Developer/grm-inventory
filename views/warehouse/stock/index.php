@@ -390,7 +390,8 @@ if (!function_exists('renderCategoryTypeBadge')) {
                                                data-product-name="<?= e($item['product_name'] ?? '') ?>" 
                                                data-selling-price="<?= (float)($item['display_selling_price'] ?? $item['selling_price'] ?? 0) ?>" 
                                                data-mrp="<?= (float)($item['display_mrp'] ?? $item['mrp'] ?? 0) ?>" 
-                                               data-cost-price="<?= (float)($item['production_cost'] ?? ($item['purchase_price'] ?? 0)) ?>" 
+                                               data-cost-price="<?= (float)($item['cost_rate'] ?? ($item['production_cost'] ?? ($item['purchase_price'] ?? 0))) ?>"
+                                               data-valuation-basis="cost"
                                                data-quantity="<?= (float)($item['quantity'] ?? 0) ?>" 
                                                onchange="updatePriceSelectionState()">
                                     </td>
@@ -488,7 +489,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
                     <i class="bi bi-boxes me-1"></i> <?= number_format($tpAvailableQty ?? 0) ?> pcs Available
                 </span>
                 <span class="badge bg-light text-dark border px-3 py-2 fs-6">
-                    Est. Valuation: ₹<?= number_format($tpValuation ?? 0, 2) ?>
+                    Est. Valuation: <span id="thirdPartyValuationTotal" data-total="<?= (float)($tpValuation ?? 0) ?>">₹<?= number_format($tpValuation ?? 0, 2) ?></span>
                 </span>
             </div>
         </div>
@@ -534,6 +535,8 @@ if (!function_exists('renderCategoryTypeBadge')) {
                                                data-selling-price="<?= (float)($item['display_selling_price'] ?? $item['selling_price'] ?? 0) ?>" 
                                                data-mrp="<?= (float)($item['display_mrp'] ?? $item['mrp'] ?? 0) ?>" 
                                                data-cost-price="<?= (float)($item['purchase_price'] > 0 ? $item['purchase_price'] : ($item['production_cost'] ?? 0)) ?>" 
+                                               data-valuation-basis="discount"
+                                               data-stock-state="<?= e($item['stock_state']) ?>"
                                                data-quantity="<?= (float)($item['quantity'] ?? 0) ?>" 
                                                onchange="updatePriceSelectionState()">
                                     </td>
@@ -687,6 +690,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
                                                data-selling-price="<?= (float)($item['display_selling_price'] ?? $item['selling_price'] ?? 0) ?>" 
                                                data-mrp="<?= (float)($item['display_mrp'] ?? $item['mrp'] ?? 0) ?>" 
                                                data-cost-price="<?= (float)($item['purchase_price'] > 0 ? $item['purchase_price'] : ($item['production_cost'] ?? 0)) ?>" 
+                                               data-valuation-basis="discount"
                                                data-quantity="<?= (float)($item['quantity'] ?? 0) ?>" 
                                                onchange="updatePriceSelectionState()">
                                     </td>
@@ -1260,12 +1264,31 @@ function handlePriceSubmit(e) {
                 // Update checkbox data attributes so subsequent edits have fresh data
                 const chk = document.querySelector(`.price-item-checkbox[value="${vId}"]`);
                 if (chk) {
-                    chk.dataset.sellingPrice = item.new_selling_price;
+                    const oldDisplayDiscountPrice = parseFloat(chk.dataset.sellingPrice) || 0;
+                    const newSellingPrice = parseFloat(item.new_selling_price) || 0;
+                    const newMrp = parseFloat(item.new_mrp) || 0;
+                    const displayDiscountPrice = newMrp > 0 && newSellingPrice > 0
+                        ? Math.min(newMrp, newSellingPrice)
+                        : (newSellingPrice > 0 ? newSellingPrice : newMrp);
+                    chk.dataset.sellingPrice = displayDiscountPrice;
                     chk.dataset.mrp = item.new_mrp;
                     const qty = parseFloat(chk.dataset.quantity) || 0;
                     if (valCell && qty > 0) {
-                        const newVal = qty * item.new_selling_price;
+                        const valuationPrice = chk.dataset.valuationBasis === 'cost'
+                            ? (parseFloat(chk.dataset.costPrice) || 0)
+                            : displayDiscountPrice;
+                        const newVal = qty * valuationPrice;
                         valCell.innerText = '₹' + newVal.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    }
+                    const valuationSummary = document.getElementById('thirdPartyValuationTotal');
+                    if (valuationSummary && qty > 0 && chk.dataset.valuationBasis === 'discount' && chk.dataset.stockState === 'AVAILABLE') {
+                        const updatedTotal = (parseFloat(valuationSummary.dataset.total) || 0)
+                            + (qty * (displayDiscountPrice - oldDisplayDiscountPrice));
+                        valuationSummary.dataset.total = updatedTotal;
+                        valuationSummary.textContent = '₹' + updatedTotal.toLocaleString('en-IN', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        });
                     }
                 }
                 

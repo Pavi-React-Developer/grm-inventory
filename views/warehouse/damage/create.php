@@ -121,7 +121,6 @@
                         <th class="text-start py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 140px;">Piece Tag</th>
                         <th class="text-start py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 250px;">Product &amp; Style Codes</th>
                         <th class="text-center py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 120px;">Available Stock</th>
-                        <th class="text-start py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 170px;">Origin Area</th>
                         <th class="text-start py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 190px;">Damage Reason</th>
                         <th class="text-center py-3 text-uppercase fs-7 fw-bold text-muted" style="width: 100px;">Qty (pcs)</th>
                         <th class="text-center py-3 text-uppercase fs-7 fw-bold text-muted" style="width: 130px;">Unit Price (₹)</th>
@@ -131,7 +130,7 @@
                 </thead>
                 <tbody id="queueTableBody">
                     <tr id="emptyQueueRow">
-                        <td colspan="10" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <div class="bg-light d-inline-flex p-4 rounded-circle mb-3 shadow-xs">
                                 <i class="bi bi-upc-scan fs-1 text-danger"></i>
                             </div>
@@ -497,16 +496,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span class="badge bg-success-subtle text-success border border-success-subtle px-2.5 py-1 fw-bold">
                         <i class="bi bi-boxes me-1"></i>${item.available_stock} pcs
                     </span>
-                </td>
-                <td class="text-start">
-                    <select class="form-select form-select-sm" style="min-width: 175px;" onchange="updateItemField(${index}, 'source_type', this.value)">
-                        <option value="STORAGE_HANDLING" ${item.source_type === 'STORAGE_HANDLING' ? 'selected' : ''}>🏢 Warehouse Storage</option>
-                        <option value="PACKING_QC" ${item.source_type === 'PACKING_QC' ? 'selected' : ''}>📦 Packaging & QC</option>
-                        <option value="CUSTOMER_RETURN" ${item.source_type === 'CUSTOMER_RETURN' ? 'selected' : ''}>🔄 Customer Return</option>
-                        <option value="FACTORY_INWARD" ${item.source_type === 'FACTORY_INWARD' ? 'selected' : ''}>🏭 Factory Inward</option>
-                        <option value="INWARD_TRANSIT" ${item.source_type === 'INWARD_TRANSIT' ? 'selected' : ''}>🚚 Transit Impact</option>
-                        <option value="OTHER" ${item.source_type === 'OTHER' ? 'selected' : ''}>❓ Other Event</option>
-                    </select>
                 </td>
                 <td class="text-start">
                     <select class="form-select form-select-sm" style="min-width: 185px;" onchange="updateItemField(${index}, 'damage_reason', this.value)">

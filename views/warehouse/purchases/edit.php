@@ -207,18 +207,13 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
                         <?php endif; ?>
                     </div>
 
-                    <div class="row g-2 mb-2.5">
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">Purchase Date</label>
-                            <input type="date" name="order_date" class="form-control form-control-sm" value="<?= e($po['order_date']) ?>" required>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">Delivery Date</label>
-                            <input type="date" name="expected_date" class="form-control form-control-sm" value="<?= e($po['expected_date'] ?? '') ?>">
-                        </div>
+                    <div class="mb-2.5">
+                        <label class="form-label small fw-semibold mb-1 text-secondary">Purchase Date</label>
+                        <input type="date" name="order_date" class="form-control form-control-sm" value="<?= e($po['order_date']) ?>" required>
+                        <input type="hidden" name="expected_date" value="<?= e($po['expected_date'] ?? '') ?>">
                     </div>
 
-                    <!-- Payment Mode & Payment Status -->
+                    <!-- Payment mode; payment status is preserved automatically -->
                     <div class="row g-2 mb-2.5">
                         <div class="col-6">
                             <label class="form-label small fw-semibold mb-1 text-secondary">Payment Mode</label>
@@ -231,14 +226,7 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
                                 <option value="CREDIT" <?= ($po['payment_method'] ?? '') === 'CREDIT' ? 'selected' : '' ?>>On Account / Credit</option>
                             </select>
                         </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">Payment Status</label>
-                            <select name="payment_status" id="paymentStatusSelect" class="form-select form-select-sm">
-                                <option value="PAID" <?= ($po['payment_status'] ?? '') === 'PAID' ? 'selected' : '' ?>>PAID</option>
-                                <option value="PARTIAL" <?= ($po['payment_status'] ?? '') === 'PARTIAL' ? 'selected' : '' ?>>PARTIAL</option>
-                                <option value="PENDING" <?= in_array($po['payment_status'] ?? '', ['PENDING', 'UNPAID']) ? 'selected' : '' ?>>PENDING</option>
-                            </select>
-                        </div>
+                        <input type="hidden" name="payment_status" value="<?= e($po['payment_status'] ?? 'PAID') ?>">
                     </div>
 
                     <!-- ============================================================= -->
@@ -273,25 +261,8 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
                         </div>
                     </div>
 
-                    <div class="row g-2 mb-2.5">
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">GST Regime</label>
-                            <select name="gst_type" class="form-select form-select-sm" id="gstTypeSelect" onchange="calculateTotals()">
-                                <option value="CGST_SGST" <?= ($po['igst_amount'] == 0) ? 'selected' : '' ?>>Intra-State (CGST + SGST)</option>
-                                <option value="IGST" <?= ($po['igst_amount'] > 0) ? 'selected' : '' ?>>Inter-State (IGST)</option>
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">Order Status</label>
-                            <select name="status" class="form-select form-select-sm">
-                                <option value="COMPLETED" <?= in_array($po['status'], ['COMPLETED', 'RECEIVED']) ? 'selected' : '' ?>>COMPLETED</option>
-                                <option value="CONFIRMED" <?= $po['status'] === 'CONFIRMED' ? 'selected' : '' ?>>CONFIRMED</option>
-                                <option value="DISPATCHED" <?= $po['status'] === 'DISPATCHED' ? 'selected' : '' ?>>DISPATCHED</option>
-                                <option value="DRAFT" <?= $po['status'] === 'DRAFT' ? 'selected' : '' ?>>DRAFT</option>
-                                <option value="CANCELLED" <?= $po['status'] === 'CANCELLED' ? 'selected' : '' ?>>CANCELLED</option>
-                            </select>
-                        </div>
-                    </div>
+                    <input type="hidden" name="gst_type" id="gstTypeSelect" value="<?= ($po['igst_amount'] > 0) ? 'IGST' : 'CGST_SGST' ?>">
+                    <input type="hidden" name="status" value="<?= e($po['status'] ?? 'COMPLETED') ?>">
 
                     <div class="mb-0">
                         <label class="form-label small fw-semibold mb-1 text-secondary">Notes / Terms / Reference</label>
@@ -348,12 +319,23 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
                         </h6>
                         <span class="badge bg-secondary-subtle text-secondary px-2 py-0.5" id="itemCountBadge"><?= count($items) ?> item(s)</span>
                     </div>
-                    <button type="button" class="btn btn-xs btn-primary fw-semibold px-2.5 py-1" onclick="addItemRow()">
-                        <i class="bi bi-plus-circle me-1"></i> Add Product Item
-                    </button>
+                    <?php if ($productsLocked): ?>
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1">Products locked after first edit</span>
+                    <?php else: ?>
+                        <button type="button" class="btn btn-xs btn-primary fw-semibold px-2.5 py-1" onclick="addItemRow()">
+                            <i class="bi bi-plus-circle me-1"></i> Add Product Item
+                        </button>
+                    <?php endif; ?>
                 </div>
 
                 <div class="card-body p-3">
+                    <?php if ($productsLocked): ?>
+                        <div class="alert alert-warning py-2 small" role="status">
+                            <i class="bi bi-lock-fill me-1"></i>
+                            Products on this invoice can no longer be changed. You can still update the customer and payment details.
+                        </div>
+                    <?php endif; ?>
+                    <fieldset class="border-0 p-0 m-0 w-100" <?= $productsLocked ? 'disabled' : '' ?>>
                     <!-- ========================================================================= -->
                     <!-- HIGH-SPEED SMART SCANNER & PRODUCT SEARCH BAR -->
                     <!-- ========================================================================= -->
@@ -401,7 +383,7 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
                                     <th class="ps-3 text-center" style="width: 38px;">#</th>
                                     <th>Item Details</th>
                                     <th class="text-end" style="width: 100px;">Base Price</th>
-                                    <th class="text-end" style="width: 90px;">GST</th>
+                                    <th class="text-end" style="width: 120px;">GST</th>
                                     <th class="text-end" style="width: 105px;">Discount</th>
                                     <th class="text-end" style="width: 130px;">Billed Price</th>
                                     <th class="text-center" style="width: 40px;"></th>
@@ -522,9 +504,11 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
                                         <span class="base-price-display">₹<?= number_format($lineTaxable, 2) ?></span>
                                     </td>
                                     <td class="text-end gst-cell">
-                                        <span class="badge bg-info-subtle text-info-emphasis font-monospace gst-badge-display" style="font-size: 10px;"><?= $gstRate ?>%</span>
-                                        <div class="text-muted font-monospace mt-0.5 gst-val-display" style="font-size: 10px;">+₹<?= number_format($lineTax, 2) ?></div>
-                                        <input type="hidden" name="gst_percentage[]" class="gst-input" value="<?= $gstRate ?>">
+                                        <div class="input-group input-group-sm gst-rate-control">
+                                            <input type="number" name="gst_percentage[]" class="form-control form-control-sm text-end fw-bold font-monospace gst-input" value="<?= $gstRate ?>" min="0" max="100" step="0.01" required oninput="calculateTotals()" aria-label="GST percentage" title="Enter GST percentage (0 to 100)" <?= $isComp ? 'readonly' : '' ?>>
+                                            <span class="input-group-text px-1">%</span>
+                                        </div>
+                                        <div class="text-muted font-monospace mt-0.5 gst-val-display" style="font-size: 10px; white-space: nowrap;">+₹<?= number_format($lineTax, 2) ?></div>
                                     </td>
                                     <td class="text-end discount-cell item-discount-cell">
                                         <?php if ($lineDisc > 0): ?>
@@ -554,6 +538,7 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
                             </tbody>
                         </table>
                     </div>
+                    </fieldset>
 
                     <!-- Cart Summary & Payment Footer (Shop POS Exact Flow) -->
                     <div class="p-3 border-top bg-light-subtle rounded-bottom-3 pos-billing-footer mt-3">
@@ -674,6 +659,19 @@ $displayNotes = trim(preg_replace('/\[Split Payment:.*?\]\r?\n?/', '', $po['note
 }
 .qr-render-target canvas {
     display: none !important;
+}
+.gst-cell {
+    min-width: 120px;
+}
+.gst-rate-control {
+    width: 108px;
+    min-width: 108px;
+    margin-left: auto;
+    margin-right: auto;
+}
+.gst-rate-control .gst-input {
+    flex: 1 1 auto;
+    min-width: 72px;
 }
 </style>
 
@@ -1307,7 +1305,10 @@ function onVariantChange(selectEl, customTags = null) {
                 priceInput.title = 'Given Billing Price (Inclusive of GST)';
             }
         }
-        if (gstInput) gstInput.value = gstRate;
+        if (gstInput) {
+            gstInput.value = gstRate;
+            gstInput.readOnly = isComp;
+        }
 
         if (nameText) nameText.textContent = name;
         if (skuBadge) skuBadge.textContent = sku;
@@ -1375,6 +1376,10 @@ function onVariantChange(selectEl, customTags = null) {
             priceInput.readOnly = false;
         }
         if (mrpInput) mrpInput.value = '0.00';
+        if (gstInput) {
+            gstInput.value = '5';
+            gstInput.readOnly = false;
+        }
         if (selectBox) selectBox.classList.remove('d-none');
         if (infoDisplay) infoDisplay.classList.add('d-none');
         if (scannedTagBox) scannedTagBox.classList.add('d-none');
@@ -1398,7 +1403,6 @@ function onRowPriceChange(priceEl) {
     const discAmtHidden = row.querySelector('.disc-amt-hidden');
     const baseDisp = row.querySelector('.base-price-display');
     const gstValDisp = row.querySelector('.gst-val-display');
-    const gstBadgeDisp = row.querySelector('.gst-badge-display');
     const gstInput = row.querySelector('.gst-input');
     const qtyInput = row.querySelector('.qty-input');
     
@@ -1437,8 +1441,6 @@ function onRowPriceChange(priceEl) {
     
     if (baseDisp) baseDisp.textContent = '₹' + lineTaxable.toFixed(2);
     if (gstValDisp) gstValDisp.textContent = '+₹' + lineGst.toFixed(2);
-    if (gstBadgeDisp) gstBadgeDisp.textContent = isComp ? '0%' : (gstRate + '%');
-    
     if (discBadge) {
         if (lineDisc > 0) {
             discBadge.className = 'badge bg-danger-subtle text-danger fw-bold font-monospace disc-badge-display';
@@ -1577,9 +1579,11 @@ function addItemRow(selectedVariantId = null, initialQr = null) {
             <span class="base-price-display">₹${initTaxable.toFixed(2)}</span>
         </td>
         <td class="text-end gst-cell">
-            <span class="badge bg-info-subtle text-info-emphasis font-monospace gst-badge-display" style="font-size: 10px;">${initGst}%</span>
-            <div class="text-muted font-monospace mt-0.5 gst-val-display" style="font-size: 10px;">+₹${initTax.toFixed(2)}</div>
-            <input type="hidden" name="gst_percentage[]" class="gst-input" value="${initGst}">
+            <div class="input-group input-group-sm gst-rate-control">
+                <input type="number" name="gst_percentage[]" class="form-control form-control-sm text-end fw-bold font-monospace gst-input" value="${initGst}" min="0" max="100" step="0.01" required oninput="calculateTotals()" aria-label="GST percentage" title="Enter GST percentage (0 to 100)" ${isMatchedComp ? 'readonly' : ''}>
+                <span class="input-group-text px-1">%</span>
+            </div>
+            <div class="text-muted font-monospace mt-0.5 gst-val-display" style="font-size: 10px; white-space: nowrap;">+₹${initTax.toFixed(2)}</div>
         </td>
         <td class="text-end discount-cell item-discount-cell">
             ${initDisc > 0 
@@ -2016,7 +2020,6 @@ function calculateTotals() {
         const discAmtHidden = row.querySelector('.disc-amt-hidden');
         const baseDisp = row.querySelector('.base-price-display');
         const gstValDisp = row.querySelector('.gst-val-display');
-        const gstBadgeDisp = row.querySelector('.gst-badge-display');
         const discBadge = row.querySelector('.disc-badge-display');
         const discPctDisp = row.querySelector('.disc-pct-display');
 
@@ -2049,8 +2052,6 @@ function calculateTotals() {
 
         if (baseDisp) baseDisp.textContent = '₹' + lineTaxable.toFixed(2);
         if (gstValDisp) gstValDisp.textContent = '+₹' + lineTax.toFixed(2);
-        if (gstBadgeDisp) gstBadgeDisp.textContent = gstRate + '%';
-
         if (discBadge) {
             if (lineDisc > 0) {
                 discBadge.className = 'badge bg-danger-subtle text-danger fw-bold font-monospace disc-badge-display';

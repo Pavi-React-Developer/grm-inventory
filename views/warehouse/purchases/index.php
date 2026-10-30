@@ -108,7 +108,7 @@
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <label class="form-label small fw-semibold"><i class="bi bi-building text-secondary me-1"></i>Warehouse</label>
                 <select id="warehouseFilterSelect" name="warehouse_id" class="form-select form-select-sm" onchange="autoTriggerFilter()" <?= ((function_exists('currentWarehouseId') && currentWarehouseId() !== null) || count($warehouses) <= 1) ? 'disabled' : '' ?>>
                     <?php if (!function_exists('currentWarehouseId') || currentWarehouseId() === null && count($warehouses) > 1): ?>
@@ -125,17 +125,6 @@
                 <?php endif; ?>
             </div>
             <div class="col-md-2">
-                <label class="form-label small fw-semibold"><i class="bi bi-check-circle text-secondary me-1"></i>Payment Status</label>
-                <select id="statusFilterSelect" name="status" class="form-select form-select-sm" onchange="autoTriggerFilter()">
-                    <option value="">All Statuses</option>
-                    <option value="COMPLETED" <?= ($status ?? '') === 'COMPLETED' ? 'selected' : '' ?>>COMPLETED</option>
-                    <option value="CONFIRMED" <?= ($status ?? '') === 'CONFIRMED' ? 'selected' : '' ?>>CONFIRMED</option>
-                    <option value="DISPATCHED" <?= ($status ?? '') === 'DISPATCHED' ? 'selected' : '' ?>>DISPATCHED</option>
-                    <option value="DRAFT" <?= ($status ?? '') === 'DRAFT' ? 'selected' : '' ?>>DRAFT</option>
-                    <option value="CANCELLED" <?= ($status ?? '') === 'CANCELLED' ? 'selected' : '' ?>>CANCELLED</option>
-                </select>
-            </div>
-            <div class="col-md-1">
                 <button type="button" onclick="resetPurchaseFilters()"
                    class="btn btn-sm btn-outline-secondary w-100"
                    title="Clear all active filters" 
@@ -243,9 +232,6 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                                            title="Click to view full customer profile & purchased items">
                                                             <span class="text-decoration-underline-hover"><?= e($cust['customer_name']) ?></span>
                                                         </a>
-                                                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill font-monospace" style="font-size: 0.7rem;">
-                                                            <i class="bi bi-repeat me-0.5"></i><?= $cust['total_orders'] ?> Orders
-                                                        </span>
                                                     </div>
                                                     <div class="text-muted small mt-0.5" style="font-size: 0.78rem;">
                                                         <?php if (!empty($cust['customer_phone'])): ?>
@@ -265,7 +251,6 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                         <!-- Last Purchase Date -->
                                         <td>
                                             <div class="fw-semibold text-dark" style="font-size: 0.84rem;"><?= date('d M Y', strtotime($cust['latest_order_date'])) ?></div>
-                                            <small class="text-muted"><?= $cust['total_orders'] ?> purchase order(s)</small>
                                         </td>
 
                                         <!-- Total Units & SKUs -->
@@ -462,7 +447,6 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                     <th>Purchased Items</th>
                                     <th>Grand Total</th>
                                     <th>Payment</th>
-                                    <th>Fulfillment</th>
                                     <th class="text-end pe-3">Actions</th>
                                 </tr>
                             </thead>
@@ -502,25 +486,6 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                                     <?php endif; ?>
                                                 </div>
 
-                                                <div>
-                                                    <?php if (!empty($po['customer_id']) && ($po['customer_total_orders'] ?? 1) > 1): ?>
-                                                        <button type="button" 
-                                                                onclick="openCustomerProfileModal(<?= (int)$po['customer_id'] ?>, '<?= e(addslashes($po['display_customer_name'])) ?>')" 
-                                                                class="btn btn-xs btn-outline-primary py-0 px-1.5 rounded-pill fw-semibold font-monospace" 
-                                                                style="font-size: 0.72rem; white-space: nowrap;" 
-                                                                title="Regular Buyer: <?= (int)$po['customer_total_orders'] ?> Orders. Click to see all bought products.">
-                                                            <i class="bi bi-repeat me-0.5"></i><?= (int)$po['customer_total_orders'] ?> Orders
-                                                        </button>
-                                                    <?php elseif (!empty($po['customer_id'])): ?>
-                                                        <button type="button" 
-                                                                onclick="openCustomerProfileModal(<?= (int)$po['customer_id'] ?>, '<?= e(addslashes($po['display_customer_name'])) ?>')" 
-                                                                class="btn btn-xs btn-light border py-0 px-1.5 rounded-circle text-muted" 
-                                                                style="font-size: 0.75rem;" 
-                                                                title="View Customer Profile & Purchase History">
-                                                            <i class="bi bi-person-vcard"></i>
-                                                        </button>
-                                                    <?php endif; ?>
-                                                </div>
                                             </div>
                                         </td>
                                         <td><span class="badge bg-secondary"><?= e($po['warehouse_name']) ?></span></td>
@@ -542,11 +507,6 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                                 <?= e($po['payment_status'] ?? 'PAID') ?>
                                             </span>
                                             <small class="text-muted d-block font-monospace"><?= e($po['payment_method'] ?? 'CASH') ?></small>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-<?= in_array($po['status'], ['COMPLETED', 'RECEIVED']) ? 'success' : ($po['status'] === 'DISPATCHED' ? 'info text-white' : ($po['status'] === 'CONFIRMED' ? 'warning text-dark' : 'secondary')) ?>">
-                                                <?= e($po['status']) ?>
-                                            </span>
                                         </td>
                                         <td class="text-end pe-3">
                                             <div class="btn-group btn-group-sm">

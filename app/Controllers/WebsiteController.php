@@ -271,20 +271,40 @@ class WebsiteController {
         $status = trim($_GET['status'] ?? '');
         $dateFrom = trim($_GET['date_from'] ?? '');
         $dateTo = trim($_GET['date_to'] ?? '');
+        $warehouseId = trim($_GET['warehouse_id'] ?? '');
 
         $where = [$allocWhereSql];
         $where[] = "wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED')";
         $params = $allocWhereParams;
 
         if (!empty($search)) {
-            $where[] = "(wa.allocation_number LIKE ? OR sc.name LIKE ? OR ao.outward_number LIKE ?)";
+            $where[] = "(wa.allocation_number LIKE ? OR sc.name LIKE ? OR ao.outward_number LIKE ?
+                         OR ao.vehicle_number LIKE ? OR ao.driver_name LIKE ? OR wa.notes LIKE ?
+                         OR w.name LIKE ?
+                         OR EXISTS (
+                             SELECT 1
+                             FROM allocation_items search_ai
+                             JOIN product_variants search_pv ON search_ai.variant_id = search_pv.id
+                             JOIN products search_p ON search_pv.product_id = search_p.id
+                             WHERE search_ai.allocation_id = wa.id
+                               AND (search_pv.sku LIKE ? OR search_p.name LIKE ?)
+                         ))";
             $sWild = "%{$search}%";
-            $params[] = $sWild;
-            $params[] = $sWild;
-            $params[] = $sWild;
+            $params = array_merge($params, array_fill(0, 9, $sWild));
         }
 
-        if (!empty($status)) {
+        if ($warehouseId !== '') {
+            $where[] = "wa.warehouse_id = ?";
+            $params[] = (int)$warehouseId;
+        }
+
+        if ($status === 'RECEIVED') {
+            $where[] = "wa.status IN ('RECEIVED', 'COMPLETED', 'DELIVERED')";
+        } elseif ($status === 'PARTIAL_RECEIVED') {
+            $where[] = "wa.status IN ('PARTIAL_RECEIVED', 'IN_PROGRESS')";
+        } elseif ($status === 'DISPATCHED') {
+            $where[] = "wa.status IN ('DISPATCHED', 'APPROVED')";
+        } elseif (!empty($status)) {
             $where[] = "wa.status = ?";
             $params[] = $status;
         }
@@ -306,11 +326,11 @@ class WebsiteController {
                     COALESCE(sc.name, 'Website Channel') as channel_name,
                     COALESCE(w.name, 'Main Warehouse') as warehouse_name,
                     w.code as warehouse_code,
-                    (SELECT COALESCE(SUM(GREATEST(dispatched_qty, requested_qty)), 0) FROM allocation_items WHERE allocation_id = wa.id) as total_quantity,
+                    (SELECT COALESCE(SUM(CASE WHEN dispatched_qty > 0 THEN dispatched_qty ELSE requested_qty END), 0) FROM allocation_items WHERE allocation_id = wa.id) as total_quantity,
                     (SELECT COALESCE(SUM(received_qty), 0) FROM allocation_items WHERE allocation_id = wa.id) as total_received_quantity,
                     (SELECT COALESCE(SUM(damaged_qty), 0) FROM allocation_items WHERE allocation_id = wa.id) as total_damaged_quantity,
                     (SELECT COUNT(DISTINCT variant_id) FROM allocation_items WHERE allocation_id = wa.id) as distinct_items_count,
-                    (SELECT COALESCE(SUM(GREATEST(ai.dispatched_qty, ai.requested_qty) * COALESCE(NULLIF(pv.selling_price, 0), NULLIF(pv.mrp, 0), 250)), 0)
+                    (SELECT COALESCE(SUM((CASE WHEN ai.dispatched_qty > 0 THEN ai.dispatched_qty ELSE ai.requested_qty END) * COALESCE(NULLIF(pv.selling_price, 0), NULLIF(pv.mrp, 0), 250)), 0)
                      FROM allocation_items ai
                      JOIN product_variants pv ON ai.variant_id = pv.id
                      WHERE ai.allocation_id = wa.id) as total_value,
@@ -324,21 +344,74 @@ class WebsiteController {
             $params
         );
 
+        $allocIds = array_column($allocations, 'id');
+        $allocItemsMap = [];
+        if (!empty($allocIds)) {
+            $placeholders = implode(',', array_fill(0, count($allocIds), '?'));
+            $rawItems = Database::fetchAll(
+                "SELECT ai.*, pv.sku, pv.qr_code, pv.size_id, pv.color_id, pv.selling_price, pv.mrp,
+                        s.name as size_name, c.name as color_name, c.hex_code as color_hex,
+                        p.name as product_name, p.image_url as product_image, cat.name as category_name
+                 FROM allocation_items ai
+                 JOIN product_variants pv ON ai.variant_id = pv.id
+                 JOIN products p ON pv.product_id = p.id
+                 LEFT JOIN categories cat ON p.category_id = cat.id
+                 LEFT JOIN sizes s ON pv.size_id = s.id
+                 LEFT JOIN colors c ON pv.color_id = c.id
+                 WHERE ai.allocation_id IN ($placeholders)
+                 ORDER BY ai.id ASC",
+                $allocIds
+            );
+            foreach ($rawItems as $row) {
+                $allocItemsMap[$row['allocation_id']][] = $row;
+            }
+        }
+
         $pendingBatchesCount = 0;
         $receivedBatchesCount = 0;
-        $totalInwardPcs = 0;
+        $totalReceivedQty = 0;
+        $totalPendingMissingQty = 0;
+        $totalDispatchedQty = 0;
         $totalValuation = 0.0;
 
-        foreach ($allocations as $a) {
+        foreach ($allocations as &$a) {
+            $a['items'] = $allocItemsMap[$a['id']] ?? [];
+            $a['total_variants'] = count($a['items']);
+            $quantity = (int)($a['total_quantity'] ?? 0);
+            $goodQty = (int)($a['total_received_quantity'] ?? 0);
+            $damagedQty = (int)($a['total_damaged_quantity'] ?? 0);
             $st = strtoupper($a['status'] ?? '');
-            if (in_array($st, ['DISPATCHED', 'IN_PROGRESS', 'PARTIAL_RECEIVED', 'PENDING', 'APPROVED', 'REQUESTED'])) {
+            if ($quantity > 0 && $goodQty === 0 && $damagedQty === 0 && in_array($st, ['COMPLETED', 'RECEIVED', 'DELIVERED'], true)) {
+                foreach ($a['items'] as &$item) {
+                    $item['received_qty'] = (int)($item['dispatched_qty'] > 0 ? $item['dispatched_qty'] : ($item['requested_qty'] ?? 0));
+                    $goodQty += (int)$item['received_qty'];
+                }
+                unset($item);
+            }
+            $receivedQty = $goodQty + $damagedQty;
+            $a['quantity'] = $quantity;
+            $a['received_qty'] = $goodQty;
+            $a['good_received_quantity'] = $goodQty;
+            $a['damaged_qty'] = $damagedQty;
+            $a['total_received_quantity'] = $receivedQty;
+            $a['missing_qty'] = max(0, $quantity - $receivedQty);
+            $a['status_state'] = $quantity > 0 && $a['missing_qty'] === 0
+                ? 'RECEIVED'
+                : (($receivedQty > 0 || in_array($st, ['IN_PROGRESS', 'PARTIAL_RECEIVED'], true)) ? 'PARTIAL' : 'IN_TRANSIT');
+
+            $totalDispatchedQty += $quantity;
+            $totalReceivedQty += $goodQty;
+            if ($a['missing_qty'] > 0) {
                 $pendingBatchesCount++;
-            } else {
+                $totalPendingMissingQty += $a['missing_qty'];
+            } elseif ($quantity > 0) {
                 $receivedBatchesCount++;
             }
-            $totalInwardPcs += (int)($a['total_received_quantity'] > 0 ? $a['total_received_quantity'] : $a['total_quantity']);
             $totalValuation += (float)($a['total_value'] ?? 0);
         }
+        unset($a);
+
+        $warehouses = function_exists('getScopedWarehouses') ? getScopedWarehouses() : Database::fetchAll("SELECT * FROM warehouses WHERE is_active = 1 ORDER BY name ASC");
 
         Response::view('website_orders.inward', [
             'pageTitle'              => 'Website Inward & GRN Verification',
@@ -351,9 +424,13 @@ class WebsiteController {
             'channel'                => $chan,
             'allocations'            => $allocations,
             'batches'                => $allocations,
+            'warehouses'             => $warehouses,
+            'warehouseId'            => $warehouseId,
             'pendingBatchesCount'    => $pendingBatchesCount,
             'receivedBatchesCount'   => $receivedBatchesCount,
-            'totalInwardPcs'         => $totalInwardPcs,
+            'totalReceivedQty'       => $totalReceivedQty,
+            'totalPendingMissingQty' => $totalPendingMissingQty,
+            'totalDispatchedQty'     => $totalDispatchedQty,
             'totalValuation'         => $totalValuation,
             'search'                 => $search,
             'status'                 => $status,

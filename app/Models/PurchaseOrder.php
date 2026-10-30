@@ -7,7 +7,7 @@
 require_once __DIR__ . '/PurchaseItem.php';
 
 class PurchaseOrder {
-
+    private static bool $productEditTrackingReady = false;
 
     /**
      * Find purchase order by ID.
@@ -210,5 +210,40 @@ class PurchaseOrder {
     public static function getItems(int $id): array {
         return PurchaseItem::getByPurchaseOrder($id);
     }
-}
 
+    /**
+     * Check whether this purchase order has already been edited.
+     */
+    public static function hasPriorEdit(int $id): bool {
+        if (!self::$productEditTrackingReady) {
+            $column = Database::fetchOne("SHOW COLUMNS FROM purchase_orders LIKE 'product_edit_count'");
+            if (!$column) {
+                Database::execute(
+                    "ALTER TABLE purchase_orders
+                     ADD COLUMN product_edit_count TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER updated_at"
+                );
+                Database::execute(
+                    "UPDATE purchase_orders po
+                     SET product_edit_count = 1
+                     WHERE EXISTS (
+                         SELECT 1
+                         FROM audit_logs al
+                         WHERE al.reference_type = 'purchase_orders'
+                           AND al.reference_id = po.id
+                           AND al.action = 'EDIT'
+                     )"
+                );
+            }
+            self::$productEditTrackingReady = true;
+        }
+
+        $purchase = Database::fetchOne(
+            "SELECT product_edit_count
+             FROM purchase_orders
+             WHERE id = ?",
+            [$id]
+        );
+
+        return (int)($purchase['product_edit_count'] ?? 0) > 0;
+    }
+}

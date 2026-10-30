@@ -726,6 +726,22 @@ class WarehouseService {
                 throw new Exception("Purchase Order #$id not found.");
             }
 
+            $isDirectCustomerPurchase = empty($existing['seller_id']) && empty($existing['warehouse_supplier_id']);
+            $lockProductItems = false;
+            if ($isDirectCustomerPurchase) {
+                $editState = Database::fetchOne(
+                    "SELECT product_edit_count
+                     FROM purchase_orders
+                     WHERE id = ?
+                     FOR UPDATE",
+                    [$id]
+                );
+                $lockProductItems = (int)($editState['product_edit_count'] ?? 0) > 0;
+            }
+            if ($lockProductItems) {
+                $items = PurchaseOrder::getItems($id);
+            }
+
             // Calculate totals matching Shop POS (Inclusive GST and item discount)
             $subtotal = 0.0;
             $totalDiscount = 0.0;
@@ -828,56 +844,66 @@ class WarehouseService {
             $poData['tax_amount'] = $totalCgst + $totalSgst + $totalIgst;
             $poData['total_amount'] = $grandTotal;
 
-            $previousStockTransactions = Database::fetchAll(
-                "SELECT variant_id, location_type, location_id, SUM(quantity) as net_quantity
-                 FROM stock_transactions
-                 WHERE reference_type = 'purchase_orders'
-                   AND reference_id = ?
-                   AND transaction_type IN ('WAREHOUSE_DIRECT_SALE', 'WAREHOUSE_DIRECT_SALE_REVERSAL')
-                   AND stock_state = 'AVAILABLE'
-                 GROUP BY variant_id, location_type, location_id",
-                [$id]
-            );
-            foreach ($previousStockTransactions as $transaction) {
-                $netQuantity = (float)$transaction['net_quantity'];
-                if ($netQuantity < 0) {
-                    StockService::increase(
-                        variantId: (int)$transaction['variant_id'],
-                        locationType: $transaction['location_type'],
-                        locationId: (int)$transaction['location_id'],
-                        stockState: 'AVAILABLE',
-                        quantity: abs($netQuantity),
-                        transactionType: 'WAREHOUSE_DIRECT_SALE_REVERSAL',
-                        referenceType: 'purchase_orders',
-                        referenceId: $id,
-                        userId: $userId,
-                        notes: "Reconcile edited Direct Purchase #" . ($existing['po_number'] ?? $id)
-                    );
-                } elseif ($netQuantity > 0) {
-                    StockService::decrease(
-                        variantId: (int)$transaction['variant_id'],
-                        locationType: $transaction['location_type'],
-                        locationId: (int)$transaction['location_id'],
-                        stockState: 'AVAILABLE',
-                        quantity: $netQuantity,
-                        transactionType: 'WAREHOUSE_DIRECT_SALE',
-                        referenceType: 'purchase_orders',
-                        referenceId: $id,
-                        userId: $userId,
-                        notes: "Reconcile edited Direct Purchase #" . ($existing['po_number'] ?? $id)
-                    );
+            if (!$lockProductItems) {
+                $previousStockTransactions = Database::fetchAll(
+                    "SELECT variant_id, location_type, location_id, SUM(quantity) as net_quantity
+                     FROM stock_transactions
+                     WHERE reference_type = 'purchase_orders'
+                       AND reference_id = ?
+                       AND transaction_type IN ('WAREHOUSE_DIRECT_SALE', 'WAREHOUSE_DIRECT_SALE_REVERSAL')
+                       AND stock_state = 'AVAILABLE'
+                     GROUP BY variant_id, location_type, location_id",
+                    [$id]
+                );
+                foreach ($previousStockTransactions as $transaction) {
+                    $netQuantity = (float)$transaction['net_quantity'];
+                    if ($netQuantity < 0) {
+                        StockService::increase(
+                            variantId: (int)$transaction['variant_id'],
+                            locationType: $transaction['location_type'],
+                            locationId: (int)$transaction['location_id'],
+                            stockState: 'AVAILABLE',
+                            quantity: abs($netQuantity),
+                            transactionType: 'WAREHOUSE_DIRECT_SALE_REVERSAL',
+                            referenceType: 'purchase_orders',
+                            referenceId: $id,
+                            userId: $userId,
+                            notes: "Reconcile edited Direct Purchase #" . ($existing['po_number'] ?? $id)
+                        );
+                    } elseif ($netQuantity > 0) {
+                        StockService::decrease(
+                            variantId: (int)$transaction['variant_id'],
+                            locationType: $transaction['location_type'],
+                            locationId: (int)$transaction['location_id'],
+                            stockState: 'AVAILABLE',
+                            quantity: $netQuantity,
+                            transactionType: 'WAREHOUSE_DIRECT_SALE',
+                            referenceType: 'purchase_orders',
+                            referenceId: $id,
+                            userId: $userId,
+                            notes: "Reconcile edited Direct Purchase #" . ($existing['po_number'] ?? $id)
+                        );
+                    }
                 }
             }
 
             PurchaseOrder::update($id, $poData);
-            PurchaseItem::deleteByPurchaseOrder($id);
+            if ($isDirectCustomerPurchase) {
+                Database::execute(
+                    "UPDATE purchase_orders SET product_edit_count = 1 WHERE id = ?",
+                    [$id]
+                );
+            }
+            if (!$lockProductItems) {
+                PurchaseItem::deleteByPurchaseOrder($id);
 
-            foreach ($processedItems as $pItem) {
-                $pItem['purchase_order_id'] = $id;
-                PurchaseItem::create($pItem);
+                foreach ($processedItems as $pItem) {
+                    $pItem['purchase_order_id'] = $id;
+                    PurchaseItem::create($pItem);
+                }
             }
 
-            if (self::isDirectPurchaseFulfilled($poData)) {
+            if (!$lockProductItems && self::isDirectPurchaseFulfilled($poData)) {
                 self::applyDirectPurchaseStock(
                     $processedItems,
                     $id,
@@ -1006,6 +1032,15 @@ class WarehouseService {
      * Create Stock Adjustment Request.
      */
     public static function createAdjustment(array $data, int $userId): int {
+        if (($data['adjustment_type'] ?? '') === 'DECREASE') {
+            self::validateAdjustmentQrCodes(
+                (int)$data['variant_id'],
+                (int)$data['warehouse_id'],
+                $data['qr_codes'] ?? [],
+                (int)$data['quantity']
+            );
+        }
+
         if (empty($data['adjustment_number'])) {
             $data['adjustment_number'] = self::generateSequenceNumber('stock_adjustments', 'adjustment_number', 'ADJ');
         }
@@ -1015,6 +1050,201 @@ class WarehouseService {
         $id = StockAdjustment::create($data);
         AuditService::log('warehouse', 'request_adjustment', 'stock_adjustments', $id, null, $data);
         return $id;
+    }
+
+    public static function validateAdjustmentQrCodes(
+        int $variantId,
+        int $warehouseId,
+        array $tagCodes,
+        int $quantity,
+        int $excludeAdjustmentId = 0
+    ): void {
+        $tagCodes = array_values(array_unique(array_map(
+            static fn($tag): string => strtoupper(trim((string)$tag)),
+            $tagCodes
+        )));
+        if ($variantId <= 0 || $warehouseId <= 0 || empty($tagCodes)) {
+            throw new InvalidArgumentException('Scan at least one product QR code before requesting a stock decrease.');
+        }
+
+        foreach ($tagCodes as $tag) {
+            if ($tag === '' || !preg_match('/^[A-Z0-9_-]+$/', $tag)) {
+                throw new InvalidArgumentException('The scanned QR code is invalid.');
+            }
+        }
+
+        $variant = Database::fetchOne(
+            "SELECT pv.qr_type, pv.pack_quantity, pv.is_complementary,
+                    p.is_complementary as product_is_complementary,
+                    wc.category_type
+             FROM product_variants pv
+             JOIN products p ON p.id = pv.product_id
+             LEFT JOIN warehouse_categories wc ON wc.id = p.warehouse_category_id
+             WHERE pv.id = ?",
+            [$variantId]
+        );
+        if (!$variant) {
+            throw new RuntimeException('The selected product variant could not be found.');
+        }
+
+        $isPack = strtoupper((string)($variant['qr_type'] ?? '')) === 'SERIES_BATCH'
+            || strtoupper((string)($variant['qr_type'] ?? '')) === 'SERIES'
+            || strtoupper((string)($variant['category_type'] ?? '')) === 'SERIES'
+            || strtoupper((string)($variant['category_type'] ?? '')) === 'COMPLEMENTARY'
+            || (int)($variant['pack_quantity'] ?? 0) > 1
+            || !empty($variant['is_complementary'])
+            || !empty($variant['product_is_complementary']);
+        $quantityPerTag = $isPack ? max(1, (int)$variant['pack_quantity']) : 1;
+        if ($quantity !== count($tagCodes) * $quantityPerTag) {
+            throw new InvalidArgumentException("The scanned QR codes represent " . (count($tagCodes) * $quantityPerTag) . " pcs; the adjustment quantity does not match.");
+        }
+
+        $available = (float)(Database::fetchOne(
+            "SELECT COALESCE(SUM(quantity), 0) as quantity
+             FROM stock_balances
+             WHERE variant_id = ? AND location_type = 'WAREHOUSE'
+               AND location_id = ? AND stock_state = 'AVAILABLE'",
+            [$variantId, $warehouseId]
+        )['quantity'] ?? 0);
+        if ($available < $quantity) {
+            throw new RuntimeException("Insufficient available stock. Available: {$available} pcs; requested: {$quantity} pcs.");
+        }
+
+        foreach ($tagCodes as $tag) {
+            $used = StockAdjustment::findQrCodeUsage($tag, $excludeAdjustmentId);
+            if ($used) {
+                throw new RuntimeException("QR code '{$tag}' is already recorded in adjustment #{$used['adjustment_number']} ({$used['status']}).");
+            }
+
+            $allocation = Database::fetchOne(
+                "SELECT wa.allocation_number, wa.status
+                 FROM allocation_items ai
+                 JOIN warehouse_allocations wa ON wa.id = ai.allocation_id
+                 WHERE FIND_IN_SET(?, REPLACE(UPPER(COALESCE(ai.selected_qr_codes, '')), ' ', '')) > 0
+                   AND wa.status IN ('REQUESTED', 'APPROVED', 'PICKED', 'PACKED', 'DISPATCHED', 'DELIVERED', 'RECEIVED')
+                 LIMIT 1",
+                [$tag]
+            );
+            if ($allocation) {
+                throw new RuntimeException("QR code '{$tag}' is allocated in pass #{$allocation['allocation_number']} ({$allocation['status']}) and cannot be removed from warehouse stock.");
+            }
+
+            $damaged = Database::fetchOne(
+                "SELECT damage_number
+                 FROM warehouse_damages
+                 WHERE variant_id = ? AND UPPER(TRIM(COALESCE(tag_code, ''))) = ?
+                 LIMIT 1",
+                [$variantId, $tag]
+            );
+            if ($damaged) {
+                throw new RuntimeException("QR code '{$tag}' is already recorded as damaged (#{$damaged['damage_number']}).");
+            }
+
+            $productionDamage = Database::fetchOne(
+                "SELECT pb.batch_number
+                 FROM production_batch_items pbi
+                 JOIN production_batches pb ON pb.id = pbi.production_batch_id
+                 WHERE pbi.variant_id = ? AND pb.destination_warehouse_id = ?
+                   AND pb.status IN ('RECEIVED', 'DISPATCHED')
+                   AND FIND_IN_SET(?, REPLACE(UPPER(COALESCE(pbi.damaged_qr_codes, '')), ' ', '')) > 0
+                 LIMIT 1",
+                [$variantId, $warehouseId, $tag]
+            );
+            if ($productionDamage) {
+                throw new RuntimeException("QR code '{$tag}' is recorded as damaged in production batch #{$productionDamage['batch_number']}.");
+            }
+
+            $sold = Database::fetchOne(
+                "SELECT pi.variant_id, po.po_number, po.status
+                 FROM purchase_items pi
+                 JOIN purchase_orders po ON po.id = pi.purchase_order_id
+                 WHERE (
+                        FIND_IN_SET(?, REPLACE(UPPER(COALESCE(pi.batch_lot_no, '')), ' ', '')) > 0
+                        OR UPPER(TRIM(COALESCE(pi.batch_lot_no, ''))) = ?
+                        OR pi.notes LIKE ?
+                   )
+                   AND po.status NOT IN ('CANCELLED', 'VOID')
+                 ORDER BY po.id DESC, pi.id DESC
+                 LIMIT 1",
+                [$tag, $tag, '%' . $tag . '%']
+            );
+            if ($sold) {
+                $restocked = Database::fetchOne(
+                    "SELECT r.id
+                     FROM return_items ri
+                     JOIN `returns` r ON r.id = ri.return_id
+                     WHERE ri.variant_id = ? AND ri.reason LIKE ?
+                       AND ri.item_condition = 'GOOD' AND ri.destination = 'AVAILABLE'
+                       AND r.status NOT IN ('CANCELLED', 'REJECTED')
+                     ORDER BY r.id DESC LIMIT 1",
+                    [(int)$sold['variant_id'], '%' . $tag . '%']
+                );
+                if (!$restocked) {
+                    throw new RuntimeException("QR code '{$tag}' was sold in direct purchase #{$sold['po_number']} and cannot be removed from warehouse stock.");
+                }
+            }
+
+            $directTag = Database::fetchOne(
+                "SELECT id FROM product_variants
+                 WHERE id = ? AND (UPPER(COALESCE(qr_code, '')) = ? OR UPPER(COALESCE(series_start_code, '')) = ?)",
+                [$variantId, $tag, $tag]
+            );
+            $tagRecorded = (bool)$directTag;
+            if (!$tagRecorded) {
+                $productionReceipt = Database::fetchOne(
+                    "SELECT pbi.id
+                     FROM production_batch_items pbi
+                     JOIN production_batches pb ON pb.id = pbi.production_batch_id
+                     WHERE pbi.variant_id = ? AND pb.destination_warehouse_id = ?
+                       AND pb.status IN ('RECEIVED', 'DISPATCHED')
+                       AND FIND_IN_SET(?, REPLACE(UPPER(COALESCE(pbi.received_qr_codes, '')), ' ', '')) > 0
+                     LIMIT 1",
+                    [$variantId, $warehouseId, $tag]
+                );
+                $tagRecorded = (bool)$productionReceipt;
+            }
+            if (!$tagRecorded) {
+                $transactions = Database::fetchAll(
+                    "SELECT notes FROM stock_transactions
+                     WHERE variant_id = ? AND location_type = 'WAREHOUSE' AND location_id = ?
+                       AND notes LIKE ? AND notes LIKE '%Tags:%'
+                     ORDER BY id DESC LIMIT 100",
+                    [$variantId, $warehouseId, '%' . $tag . '%']
+                );
+                foreach ($transactions as $transaction) {
+                    $notes = (string)($transaction['notes'] ?? '');
+                    if (preg_match('/(?<![A-Z0-9])' . preg_quote($tag, '/') . '(?![A-Z0-9])/i', $notes)) {
+                        $tagRecorded = true;
+                        break;
+                    }
+                    if (preg_match('/Tags:\s*([A-Z0-9_-]+)\s*-\s*([A-Z0-9_-]+)/i', $notes, $range)
+                        && preg_match('/^(.+?)(\d+)$/', $range[1], $start)
+                        && preg_match('/^(.+?)(\d+)$/', $range[2], $end)
+                        && preg_match('/^(.+?)(\d+)$/', $tag, $scanned)
+                        && strtoupper($start[1]) === strtoupper($end[1])
+                        && strtoupper($start[1]) === strtoupper($scanned[1])
+                        && strlen($start[2]) === strlen($scanned[2])
+                        && (int)$scanned[2] >= (int)$start[2]
+                        && (int)$scanned[2] <= (int)$end[2]) {
+                        $tagRecorded = true;
+                        break;
+                    }
+                    if (preg_match('/Tags:\s*([A-Z0-9_-]+).*?\(total\s+(\d+)\)/i', $notes, $summary)
+                        && preg_match('/^(.+?)(\d+)$/', $summary[1], $start)
+                        && preg_match('/^(.+?)(\d+)$/', $tag, $scanned)
+                        && strtoupper($start[1]) === strtoupper($scanned[1])
+                        && strlen($start[2]) === strlen($scanned[2])
+                        && (int)$scanned[2] >= (int)$start[2]
+                        && (int)$scanned[2] < (int)$start[2] + (int)$summary[2]) {
+                        $tagRecorded = true;
+                        break;
+                    }
+                }
+            }
+            if (!$tagRecorded) {
+                throw new RuntimeException("QR code '{$tag}' is not recorded for this variant in the selected warehouse.");
+            }
+        }
     }
 
     /**
@@ -1032,7 +1262,21 @@ class WarehouseService {
             }
 
             if ($action === 'APPROVE') {
+                if ($adj['adjustment_type'] === 'DECREASE') {
+                    $tagCodes = json_decode((string)($adj['qr_codes'] ?? '[]'), true);
+                    self::validateAdjustmentQrCodes(
+                        (int)$adj['variant_id'],
+                        (int)$adj['warehouse_id'],
+                        is_array($tagCodes) ? $tagCodes : [],
+                        (int)$adj['quantity'],
+                        $id
+                    );
+                }
+
                 // Execute stock adjustment through StockService
+                $qrNote = !empty($adj['qr_codes'])
+                    ? ' Removed QR codes: ' . implode(', ', json_decode((string)$adj['qr_codes'], true) ?: [])
+                    : '';
                 StockService::adjust(
                     variantId: (int)$adj['variant_id'],
                     locationType: 'WAREHOUSE',
@@ -1041,7 +1285,7 @@ class WarehouseService {
                     quantity: (float)$adj['quantity'],
                     reason: $adj['reason'],
                     userId: $userId,
-                    notes: "Audit Ref: " . $adj['adjustment_number']
+                    notes: "Audit Ref: " . $adj['adjustment_number'] . $qrNote
                 );
 
                 StockAdjustment::updateStatus($id, 'APPROVED', $userId);
@@ -1296,9 +1540,23 @@ class WarehouseService {
             throw new \InvalidArgumentException("This purchase order (PO-SUPP-{$po['id']}) has already been fully returned or exchanged. No items left to return.");
         }
 
+        $invoiceCount = null;
+        if (preg_match('/^\d{10,15}$/', $query)) {
+            $invoiceCount = (int)(Database::fetchOne(
+                "SELECT COUNT(*) AS invoice_count
+                 FROM purchase_orders po
+                 JOIN customers c ON c.id = po.customer_id
+                 WHERE c.phone = ?
+                   AND po.seller_id IS NULL
+                   AND po.warehouse_supplier_id IS NULL",
+                [$query]
+            )['invoice_count'] ?? 0);
+        }
+
         return [
             'purchase' => $po,
             'items'    => $items,
+            'invoice_count' => $invoiceCount,
         ];
     }
 

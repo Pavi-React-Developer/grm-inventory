@@ -100,9 +100,6 @@
                     <span class="badge bg-light text-dark border font-monospace ms-1">Bill: <?= e($billSetup['bill_number']) ?></span>
                 <?php endif; ?>
             </div>
-            <a href="<?= url('warehouse/sellers/edit/' . $seller['id']) ?>" class="btn btn-sm btn-outline-secondary" title="Edit Supplier Profile">
-                <i class="bi bi-pencil me-1"></i> Edit Supplier
-            </a>
         </div>
     </div>
 </div>

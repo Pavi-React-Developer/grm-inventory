@@ -1334,15 +1334,31 @@ class ShopController {
             $params[] = (int)$warehouseId;
         }
 
-        if (!empty($status)) {
+        if ($status === 'RECEIVED') {
+            $sql .= " AND wa.status IN ('RECEIVED', 'COMPLETED', 'DELIVERED')";
+        } elseif (!empty($status)) {
             $sql .= " AND wa.status = ?";
             $params[] = $status;
         }
 
         if (!empty($search)) {
-            $sql .= " AND (wa.allocation_number LIKE ? OR ao.outward_number LIKE ? OR ao.vehicle_number LIKE ? OR ao.driver_name LIKE ? OR w.name LIKE ?)";
+            $sql .= " AND (
+                wa.allocation_number LIKE ?
+                OR ao.outward_number LIKE ?
+                OR ao.vehicle_number LIKE ?
+                OR ao.driver_name LIKE ?
+                OR w.name LIKE ?
+                OR EXISTS (
+                    SELECT 1
+                    FROM allocation_items search_ai
+                    JOIN product_variants search_pv ON search_ai.variant_id = search_pv.id
+                    JOIN products search_p ON search_pv.product_id = search_p.id
+                    WHERE search_ai.allocation_id = wa.id
+                      AND (search_pv.sku LIKE ? OR search_p.name LIKE ?)
+                )
+            )";
             $srch = '%' . $search . '%';
-            $params = array_merge($params, [$srch, $srch, $srch, $srch, $srch]);
+            $params = array_merge($params, [$srch, $srch, $srch, $srch, $srch, $srch, $srch]);
         }
 
         $sql .= " ORDER BY wa.id DESC";
@@ -1375,14 +1391,16 @@ class ShopController {
         $totalPendingMissingQty = 0;
         $receivedInwardsCount = 0;
         $totalReceivedQty = 0;
+        $totalDispatchedQty = 0;
 
         foreach ($allocations as &$a) {
             $a['items'] = $allocItemsMap[$a['id']] ?? [];
             $a['total_variants'] = count($a['items']);
             $qty = (int)($a['total_dispatched_qty'] > 0 ? $a['total_dispatched_qty'] : $a['total_requested_qty']);
             $a['effective_qty'] = $qty;
+            $totalDispatchedQty += $qty;
 
-            // Calculate actual received and damaged count across items
+            // Received quantities include damaged units; only good units become available shop stock.
             $itemRecvSum = 0;
             $itemDamSum = 0;
             foreach ($a['items'] as $itemLine) {
@@ -1391,20 +1409,15 @@ class ShopController {
             }
             $a['total_received_items_qty'] = $itemRecvSum;
             $a['total_damaged_items_qty'] = $itemDamSum;
+            $a['total_good_items_qty'] = max(0, $itemRecvSum - $itemDamSum);
+            $a['missing_qty'] = max(0, $qty - $itemRecvSum);
+            $totalReceivedQty += $a['total_good_items_qty'];
 
-            if ($a['status'] === 'RECEIVED' || $a['status'] === 'COMPLETED') {
-                $a['missing_qty'] = 0;
+            if (in_array($a['status'], ['RECEIVED', 'COMPLETED', 'DELIVERED'], true) && $a['missing_qty'] === 0) {
                 $receivedInwardsCount++;
-                $totalReceivedQty += $qty;
-            } elseif ($a['status'] === 'PARTIAL_RECEIVED') {
-                $a['missing_qty'] = max(0, $qty - $itemRecvSum);
+            } else {
                 $pendingInwardsCount++;
                 $totalPendingMissingQty += $a['missing_qty'];
-                $totalReceivedQty += $itemRecvSum;
-            } else {
-                $a['missing_qty'] = $qty;
-                $pendingInwardsCount++;
-                $totalPendingMissingQty += $qty;
             }
         }
         unset($a);
@@ -1423,6 +1436,7 @@ class ShopController {
             'totalPendingMissingQty' => $totalPendingMissingQty,
             'receivedInwardsCount'   => $receivedInwardsCount,
             'totalReceivedQty'       => $totalReceivedQty,
+            'totalDispatchedQty'     => $totalDispatchedQty,
             'breadcrumb'             => [
                 ['label' => 'Shop', 'url' => url('shop/dashboard')],
                 ['label' => 'Inward / GRN'],
@@ -3090,4 +3104,3 @@ class ShopController {
         exit;
     }
 }
-

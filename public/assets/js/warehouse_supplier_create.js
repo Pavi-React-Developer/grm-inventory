@@ -181,6 +181,7 @@ function onSupplierDropdownSelect(id) {
         return parseInt(s.id, 10) === parseInt(id, 10);
     });
     if (!supplier) return;
+    renderExistingBillDocument(isEditMode ? supplier.document_url : '');
 
     const searchInput = document.getElementById('supplierSearchInput');
     const suggestionsBox = document.getElementById('supplierSuggestionsBox');
@@ -311,6 +312,7 @@ function clearExistingSupplierSelection() {
 }
 
 function clearFormInputs() {
+    renderExistingBillDocument('');
     const supplierName = document.getElementById('supplierName');
     if (supplierName) supplierName.value = '';
     const newName = document.getElementById('newSupplierNameInput');
@@ -342,6 +344,46 @@ function clearFormInputs() {
 
     const termsInput = document.querySelector('input[name="payment_terms"]');
     if (termsInput) termsInput.value = '';
+}
+
+function renderExistingBillDocument(url) {
+    const container = document.getElementById('existingBillDocument');
+    const preview = document.getElementById('existingBillPreview');
+    const link = document.getElementById('existingBillLink');
+    if (!container || !preview || !link) return;
+
+    preview.innerHTML = '';
+    const requiredMarker = document.getElementById('billRequiredMarker');
+    const uploadHelp = document.getElementById('billUploadHelp');
+    if (!url) {
+        container.classList.add('d-none');
+        if (requiredMarker) requiredMarker.classList.remove('d-none');
+        if (uploadHelp) uploadHelp.textContent = 'Required to continue. Supports JPG, PNG, WEBP, or PDF invoices (max 10MB).';
+        return;
+    }
+    if (requiredMarker) requiredMarker.classList.add('d-none');
+    if (uploadHelp) uploadHelp.textContent = 'Existing bill will be reused. Upload a new bill only to replace it.';
+
+    link.href = url;
+    preview.className = 'd-flex align-items-center justify-content-center rounded border bg-light flex-shrink-0';
+    preview.style.width = '64px';
+    preview.style.height = '64px';
+    const isImage = /\.(jpe?g|png|webp|gif)(?:$|[?#])/i.test(url) || (/\/image\/upload\//i.test(url) && !/\.pdf(?:$|[?#])/i.test(url));
+    if (isImage) {
+        const image = document.createElement('img');
+        image.src = url;
+        image.alt = 'Existing supplier bill';
+        image.className = 'rounded';
+        image.style.maxWidth = '64px';
+        image.style.maxHeight = '64px';
+        image.style.objectFit = 'contain';
+        preview.appendChild(image);
+    } else {
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-file-earmark-pdf fs-2 text-danger';
+        preview.appendChild(icon);
+    }
+    container.classList.remove('d-none');
 }
 
 function handleBillImageSelect(event) {
@@ -392,7 +434,12 @@ function normalizeSupplierPhone(phone) {
 
 function handlePhase1Submit(event) {
     const billImageInput = document.getElementById('billImageInput');
-    if (!billImageInput || !billImageInput.files || billImageInput.files.length === 0) {
+    const selectedSupplierId = Number(document.getElementById('existingSupplierId')?.value || 0);
+    const selectedSupplier = existingSuppliersData.find(function (supplier) {
+        return Number(supplier.id) === selectedSupplierId;
+    });
+    const hasExistingBill = isEditMode && !!(selectedSupplier && selectedSupplier.document_url);
+    if ((!billImageInput || !billImageInput.files || billImageInput.files.length === 0) && !hasExistingBill) {
         event.preventDefault();
         const billDropzone = document.getElementById('billDropzone');
         if (billDropzone) {

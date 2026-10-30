@@ -66,20 +66,40 @@ class WhatsappController {
         $status = trim($_GET['status'] ?? '');
         $dateFrom = trim($_GET['date_from'] ?? '');
         $dateTo = trim($_GET['date_to'] ?? '');
+        $warehouseId = trim($_GET['warehouse_id'] ?? '');
 
         $where = [$allocWhereSql];
         $where[] = "wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED')";
         $params = $allocWhereParams;
 
         if (!empty($search)) {
-            $where[] = "(wa.allocation_number LIKE ? OR sc.name LIKE ? OR wa.notes LIKE ?)";
+            $where[] = "(wa.allocation_number LIKE ? OR sc.name LIKE ? OR wa.notes LIKE ?
+                         OR ao.outward_number LIKE ? OR ao.vehicle_number LIKE ? OR ao.driver_name LIKE ?
+                         OR w.name LIKE ?
+                         OR EXISTS (
+                             SELECT 1
+                             FROM allocation_items search_ai
+                             JOIN product_variants search_pv ON search_ai.variant_id = search_pv.id
+                             JOIN products search_p ON search_pv.product_id = search_p.id
+                             WHERE search_ai.allocation_id = wa.id
+                               AND (search_pv.sku LIKE ? OR search_p.name LIKE ?)
+                         ))";
             $sWild = "%{$search}%";
-            $params[] = $sWild;
-            $params[] = $sWild;
-            $params[] = $sWild;
+            $params = array_merge($params, array_fill(0, 9, $sWild));
         }
 
-        if (!empty($status)) {
+        if ($warehouseId !== '') {
+            $where[] = "wa.warehouse_id = ?";
+            $params[] = (int)$warehouseId;
+        }
+
+        if ($status === 'RECEIVED') {
+            $where[] = "wa.status IN ('RECEIVED', 'COMPLETED', 'DELIVERED')";
+        } elseif ($status === 'PARTIAL_RECEIVED') {
+            $where[] = "wa.status IN ('PARTIAL_RECEIVED', 'IN_PROGRESS')";
+        } elseif ($status === 'DISPATCHED') {
+            $where[] = "wa.status IN ('DISPATCHED', 'APPROVED')";
+        } elseif (!empty($status)) {
             $where[] = "wa.status = ?";
             $params[] = $status;
         }
@@ -289,10 +309,11 @@ class WhatsappController {
                     COALESCE(w.name, 'Main Warehouse') as warehouse_name,
                     w.code as warehouse_code,
                     ao.outward_number, ao.vehicle_number, ao.driver_name, ao.driver_contact, ao.transporter_name, ao.total_boxes, ao.dispatch_date,
-                    (SELECT COALESCE(SUM(GREATEST(dispatched_qty, requested_qty)), 0) FROM allocation_items WHERE allocation_id = wa.id) as total_quantity,
+                    (SELECT COALESCE(SUM(CASE WHEN dispatched_qty > 0 THEN dispatched_qty ELSE requested_qty END), 0) FROM allocation_items WHERE allocation_id = wa.id) as total_quantity,
                     (SELECT COALESCE(SUM(received_qty), 0) FROM allocation_items WHERE allocation_id = wa.id) as total_received_quantity,
+                    (SELECT COALESCE(SUM(damaged_qty), 0) FROM allocation_items WHERE allocation_id = wa.id) as total_damaged_quantity,
                     (SELECT COUNT(DISTINCT variant_id) FROM allocation_items WHERE allocation_id = wa.id) as distinct_items_count,
-                    (SELECT COALESCE(SUM(GREATEST(ai.dispatched_qty, ai.requested_qty) * COALESCE(NULLIF(pv.selling_price, 0), NULLIF(pv.mrp, 0), 250)), 0)
+                    (SELECT COALESCE(SUM((CASE WHEN ai.dispatched_qty > 0 THEN ai.dispatched_qty ELSE ai.requested_qty END) * COALESCE(NULLIF(pv.selling_price, 0), NULLIF(pv.mrp, 0), 250)), 0)
                      FROM allocation_items ai
                      JOIN product_variants pv ON ai.variant_id = pv.id
                      WHERE ai.allocation_id = wa.id) as total_value
@@ -330,6 +351,7 @@ class WhatsappController {
         $totalPendingMissingQty = 0;
         $receivedBatchesCount = 0;
         $totalReceivedQty = 0;
+        $totalDispatchedQty = 0;
         $totalValuation = 0.0;
 
         foreach ($allocations as &$a) {
@@ -338,25 +360,34 @@ class WhatsappController {
             $a['batch_number'] = $a['allocation_number'];
             $a['quantity'] = (int)($a['total_quantity'] ?? 0);
             $totalValuation += (float)($a['total_value'] ?? 0);
+            $totalDispatchedQty += $a['quantity'];
 
             $st = strtoupper($a['status'] ?? 'PENDING');
-            $recQty = (int)($a['total_received_quantity'] ?? 0);
+            $goodQty = (int)($a['total_received_quantity'] ?? 0);
+            $damagedQty = (int)($a['total_damaged_quantity'] ?? 0);
+            if ($a['quantity'] > 0 && $goodQty === 0 && $damagedQty === 0 && in_array($st, ['COMPLETED', 'RECEIVED', 'DELIVERED'], true)) {
+                foreach ($a['items'] as &$item) {
+                    $item['received_qty'] = (int)($item['dispatched_qty'] > 0 ? $item['dispatched_qty'] : ($item['requested_qty'] ?? 0));
+                    $goodQty += (int)$item['received_qty'];
+                }
+                unset($item);
+            }
+            $receivedQty = $goodQty + $damagedQty;
+            $a['good_received_quantity'] = $goodQty;
+            $a['received_qty'] = $goodQty;
+            $a['damaged_qty'] = $damagedQty;
+            $a['total_received_quantity'] = $receivedQty;
+            $a['missing_qty'] = max(0, $a['quantity'] - $receivedQty);
 
-            if (in_array($st, ['COMPLETED', 'RECEIVED', 'DELIVERED']) || ($recQty >= $a['quantity'] && $a['quantity'] > 0)) {
-                $a['received_qty'] = $a['quantity'];
-                $a['missing_qty'] = 0;
+            if ($a['quantity'] > 0 && $a['missing_qty'] === 0) {
                 $a['status_state'] = 'RECEIVED';
                 $receivedBatchesCount++;
-                $totalReceivedQty += $a['quantity'];
-            } elseif ($recQty > 0 || in_array($st, ['IN_PROGRESS', 'PARTIAL_RECEIVED'])) {
-                $a['received_qty'] = $recQty;
-                $a['missing_qty'] = max(0, $a['quantity'] - $recQty);
+                $totalReceivedQty += $goodQty;
+            } elseif ($receivedQty > 0 || in_array($st, ['IN_PROGRESS', 'PARTIAL_RECEIVED'], true)) {
                 $a['status_state'] = 'PARTIAL';
                 $pendingBatchesCount++;
                 $totalPendingMissingQty += $a['missing_qty'];
             } else {
-                $a['received_qty'] = 0;
-                $a['missing_qty'] = $a['quantity'];
                 $a['status_state'] = 'IN_TRANSIT';
                 $pendingBatchesCount++;
                 $totalPendingMissingQty += $a['quantity'];
@@ -391,11 +422,13 @@ class WhatsappController {
             'batches'                => $allocations,
             'returnInwards'          => $returnInwards,
             'warehouses'             => $warehouses,
+            'warehouseId'            => $warehouseId,
             'totalInwardCount'       => count($allocations),
             'pendingBatchesCount'    => $pendingBatchesCount,
             'totalPendingMissingQty' => $totalPendingMissingQty,
             'receivedBatchesCount'   => $receivedBatchesCount,
             'totalReceivedQty'       => $totalReceivedQty,
+            'totalDispatchedQty'     => $totalDispatchedQty,
             'totalValuation'         => $totalValuation,
             'search'                 => $search,
             'status'                 => $status,

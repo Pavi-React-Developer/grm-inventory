@@ -177,18 +177,12 @@
                         <?php endif; ?>
                     </div>
 
-                    <div class="row g-2 mb-2.5">
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">Purchase Date</label>
-                            <input type="date" name="order_date" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>" required>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">Delivery Date</label>
-                            <input type="date" name="expected_date" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>">
-                        </div>
+                    <div class="mb-2.5">
+                        <label class="form-label small fw-semibold mb-1 text-secondary">Purchase Date</label>
+                        <input type="date" name="order_date" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>" required>
                     </div>
 
-                    <!-- Payment Mode & Payment Status -->
+                    <!-- Payment mode; payment status is derived automatically -->
                     <div class="row g-2 mb-2.5">
                         <div class="col-6">
                             <label class="form-label small fw-semibold mb-1 text-secondary">Payment Mode</label>
@@ -201,14 +195,7 @@
                                 <option value="CREDIT">On Account / Credit</option>
                             </select>
                         </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">Payment Status</label>
-                            <select name="payment_status" id="paymentStatusSelect" class="form-select form-select-sm">
-                                <option value="PAID">PAID</option>
-                                <option value="PARTIAL">PARTIAL</option>
-                                <option value="PENDING">PENDING</option>
-                            </select>
-                        </div>
+                        <input type="hidden" name="payment_status" id="paymentStatusInput" value="PAID">
                     </div>
 
                     <!-- ============================================================= -->
@@ -243,23 +230,8 @@
                         </div>
                     </div>
 
-                    <div class="row g-2 mb-2.5">
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">GST Regime</label>
-                            <select name="gst_type" class="form-select form-select-sm" id="gstTypeSelect" onchange="calculateTotals()">
-                                <option value="CGST_SGST">Intra-State (CGST + SGST)</option>
-                                <option value="IGST">Inter-State (IGST)</option>
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-semibold mb-1 text-secondary">Order Status</label>
-                            <select name="status" class="form-select form-select-sm">
-                                <option value="COMPLETED">COMPLETED (Direct Sale)</option>
-                                <option value="CONFIRMED">CONFIRMED (Awaiting Dispatch)</option>
-                                <option value="DRAFT">DRAFT</option>
-                            </select>
-                        </div>
-                    </div>
+                    <input type="hidden" name="gst_type" id="gstTypeSelect" value="CGST_SGST">
+                    <input type="hidden" name="status" value="COMPLETED">
 
                     <div class="mb-0">
                         <label class="form-label small fw-semibold mb-1 text-secondary">Notes / Terms / Reference</label>
@@ -406,7 +378,7 @@
                                     <th class="ps-3 text-center" style="width: 38px;">#</th>
                                     <th>Item Details</th>
                                     <th class="text-end" style="width: 100px;">Base Price</th>
-                                    <th class="text-end" style="width: 90px;">GST</th>
+                                    <th class="text-end" style="width: 120px;">GST</th>
                                     <th class="text-end" style="width: 105px;">Discount</th>
                                     <th class="text-end" style="width: 130px;">Billed Price</th>
                                     <th class="text-center" style="width: 40px;"></th>
@@ -487,9 +459,11 @@
                                         <span class="base-price-display">₹0.00</span>
                                     </td>
                                     <td class="text-end gst-cell">
-                                        <span class="badge bg-info-subtle text-info-emphasis font-monospace gst-badge-display" style="font-size: 10px;">5%</span>
-                                        <div class="text-muted font-monospace mt-0.5 gst-val-display" style="font-size: 10px;">+₹0.00</div>
-                                        <input type="hidden" name="gst_percentage[]" class="gst-input" value="5">
+                                        <div class="input-group input-group-sm gst-rate-control">
+                                            <input type="number" name="gst_percentage[]" class="form-control form-control-sm text-end fw-bold font-monospace gst-input" value="5" min="0" max="100" step="0.01" required oninput="calculateTotals()" aria-label="GST percentage" title="Enter GST percentage (0 to 100)">
+                                            <span class="input-group-text px-1">%</span>
+                                        </div>
+                                        <div class="text-muted font-monospace mt-0.5 gst-val-display" style="font-size: 10px; white-space: nowrap;">+₹0.00</div>
                                     </td>
                                     <td class="text-end discount-cell item-discount-cell">
                                         <span class="badge bg-light text-muted font-monospace disc-badge-display" style="font-size: 10.5px;">₹0.00</span>
@@ -663,6 +637,19 @@
 .qr-render-target canvas {
     display: none !important;
 }
+.gst-cell {
+    min-width: 120px;
+}
+.gst-rate-control {
+    width: 108px;
+    min-width: 108px;
+    margin-left: auto;
+    margin-right: auto;
+}
+.gst-rate-control .gst-input {
+    flex: 1 1 auto;
+    min-width: 72px;
+}
 </style>
 
 <!-- QRCode Library -->
@@ -707,7 +694,9 @@ function onPaymentMethodChange() {
     const sel = document.getElementById('paymentMethodSelect');
     const splitSec = document.getElementById('splitPaymentSection');
     const screenshotSec = document.getElementById('paymentScreenshotSection');
+    const paymentStatus = document.getElementById('paymentStatusInput');
     if (!sel) return;
+    if (paymentStatus) paymentStatus.value = sel.value === 'CREDIT' ? 'PENDING' : 'PAID';
 
     if (sel.value === 'CASH_UPI') {
         if (splitSec) splitSec.classList.remove('d-none');
@@ -1325,7 +1314,10 @@ function onVariantChange(selectEl, customTags = null) {
                 priceInput.title = 'Given Billing Price (Inclusive of GST)';
             }
         }
-        if (gstInput) gstInput.value = gstRate;
+        if (gstInput) {
+            gstInput.value = gstRate;
+            gstInput.readOnly = isComp;
+        }
 
         if (nameText) nameText.textContent = name;
         if (skuBadge) skuBadge.textContent = sku;
@@ -1393,6 +1385,10 @@ function onVariantChange(selectEl, customTags = null) {
             priceInput.readOnly = false;
         }
         if (mrpInput) mrpInput.value = '0.00';
+        if (gstInput) {
+            gstInput.value = '5';
+            gstInput.readOnly = false;
+        }
         if (selectBox) selectBox.classList.remove('d-none');
         if (infoDisplay) infoDisplay.classList.add('d-none');
         if (scannedTagBox) scannedTagBox.classList.add('d-none');
@@ -1416,7 +1412,6 @@ function onRowPriceChange(priceEl) {
     const discAmtHidden = row.querySelector('.disc-amt-hidden');
     const baseDisp = row.querySelector('.base-price-display');
     const gstValDisp = row.querySelector('.gst-val-display');
-    const gstBadgeDisp = row.querySelector('.gst-badge-display');
     const gstInput = row.querySelector('.gst-input');
     const qtyInput = row.querySelector('.qty-input');
     
@@ -1455,8 +1450,6 @@ function onRowPriceChange(priceEl) {
     
     if (baseDisp) baseDisp.textContent = '₹' + lineTaxable.toFixed(2);
     if (gstValDisp) gstValDisp.textContent = '+₹' + lineGst.toFixed(2);
-    if (gstBadgeDisp) gstBadgeDisp.textContent = isComp ? '0%' : (gstRate + '%');
-    
     if (discBadge) {
         if (lineDisc > 0) {
             discBadge.className = 'badge bg-danger-subtle text-danger fw-bold font-monospace disc-badge-display';
@@ -1595,9 +1588,11 @@ function addItemRow(selectedVariantId = null, initialQr = null) {
             <span class="base-price-display">₹${initTaxable.toFixed(2)}</span>
         </td>
         <td class="text-end gst-cell">
-            <span class="badge bg-info-subtle text-info-emphasis font-monospace gst-badge-display" style="font-size: 10px;">${initGst}%</span>
-            <div class="text-muted font-monospace mt-0.5 gst-val-display" style="font-size: 10px;">+₹${initTax.toFixed(2)}</div>
-            <input type="hidden" name="gst_percentage[]" class="gst-input" value="${initGst}">
+            <div class="input-group input-group-sm gst-rate-control">
+                <input type="number" name="gst_percentage[]" class="form-control form-control-sm text-end fw-bold font-monospace gst-input" value="${initGst}" min="0" max="100" step="0.01" required oninput="calculateTotals()" aria-label="GST percentage" title="Enter GST percentage (0 to 100)" ${isMatchedComp ? 'readonly' : ''}>
+                <span class="input-group-text px-1">%</span>
+            </div>
+            <div class="text-muted font-monospace mt-0.5 gst-val-display" style="font-size: 10px; white-space: nowrap;">+₹${initTax.toFixed(2)}</div>
         </td>
         <td class="text-end discount-cell item-discount-cell">
             ${initDisc > 0 
@@ -2066,7 +2061,6 @@ function calculateTotals() {
         const discAmtHidden = row.querySelector('.disc-amt-hidden');
         const baseDisp = row.querySelector('.base-price-display');
         const gstValDisp = row.querySelector('.gst-val-display');
-        const gstBadgeDisp = row.querySelector('.gst-badge-display');
         const discBadge = row.querySelector('.disc-badge-display');
         const discPctDisp = row.querySelector('.disc-pct-display');
 
@@ -2099,8 +2093,6 @@ function calculateTotals() {
 
         if (baseDisp) baseDisp.textContent = '₹' + lineTaxable.toFixed(2);
         if (gstValDisp) gstValDisp.textContent = '+₹' + lineTax.toFixed(2);
-        if (gstBadgeDisp) gstBadgeDisp.textContent = gstRate + '%';
-
         if (discBadge) {
             if (lineDisc > 0) {
                 discBadge.className = 'badge bg-danger-subtle text-danger fw-bold font-monospace disc-badge-display';

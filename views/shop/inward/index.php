@@ -2,19 +2,62 @@
 $canInward = hasPermission('shop_inward', 'verify') || hasPermission('shop_inward', 'receive') || hasPermission('shop_inward', 'create');
 $canPrintInward = hasPermission('shop_inward', 'print');
 ?>
+<style>
+.custom-inward-pills .nav-link {
+    border-radius: 8px;
+    padding: 0.5rem 1.1rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+    background-color: #fff;
+    white-space: nowrap;
+}
+.custom-inward-pills .nav-link.active {
+    background-color: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+}
+.custom-inward-pills .nav-link.active .badge {
+    background-color: #fff !important;
+    color: #2563eb !important;
+}
+.batch-card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.batch-card-hover:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1) !important;
+}
+.variant-scroll-box {
+    max-height: 110px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+.source-badge-box {
+    background: #fffbeb;
+    border: 1px solid #fef3c7;
+    border-radius: 6px;
+}
+.dest-badge-box {
+    background: #eff6ff;
+    border: 1px solid #dbeafe;
+    border-radius: 6px;
+}
+.fs-7 { font-size: 0.825rem; }
+.fs-8 { font-size: 0.75rem; }
+@media (max-width: 1200px) {
+    .metric-card-title { font-size: 0.72rem !important; }
+    .metric-card-value { font-size: 1.35rem !important; }
+}
+</style>
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
-        <h2 class="mb-1"><i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Shop Stock Inward &amp; QR Receiving</h2>
-        <span class="text-muted">Scan QR codes for instant shop inventory auto-inward or perform manual allocation cross-check</span>
+        <h2 class="mb-1 fs-4 fw-bold"><i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Shop Inward / GRN</h2>
     </div>
     <div class="d-flex gap-2">
-        <?php if ($canInward): ?>
-            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#cameraScanModal" id="btnOpenCam">
-                <i class="bi bi-camera me-1"></i> Camera Scanner
-            </button>
-        <?php endif; ?>
-        <a href="<?= url('shop/inventory') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-shop me-1"></i> Shop Stock Ledger
+        <a href="<?= url('shop/dashboard') ?>" class="btn btn-sm btn-outline-secondary px-3">
+            <i class="bi bi-arrow-left me-1"></i> Dashboard
         </a>
     </div>
 </div>
@@ -28,16 +71,16 @@ $canPrintInward = hasPermission('shop_inward', 'print');
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between">
                     <div>
-                        <span class="text-muted small fw-semibold text-uppercase">Awaiting Shop Inward (Missing Stock)</span>
-                        <h3 class="mb-0 fw-bold text-danger mt-1">
+                        <span class="text-muted small fw-bold text-uppercase d-block text-truncate metric-card-title">Awaiting Shop Inward (Missing Stock)</span>
+                        <h4 class="mb-0 fw-bold text-danger mt-1 metric-card-value">
                             <?= number_format($pendingInwardsCount ?? 0) ?> <small class="fs-6 text-muted">Batches</small>
-                        </h3>
-                        <small class="text-danger fw-semibold mt-1 d-block">
+                        </h4>
+                        <small class="text-danger fw-semibold mt-1 d-block text-truncate">
                             <i class="bi bi-exclamation-triangle-fill me-1"></i><?= number_format($totalPendingMissingQty ?? 0) ?> pcs pending verification
                         </small>
                     </div>
-                    <div class="rounded-circle bg-danger bg-opacity-10 p-3 text-danger">
-                        <i class="bi bi-hourglass-split fs-3"></i>
+                    <div class="rounded-circle bg-danger bg-opacity-10 p-2 p-xl-3 text-danger flex-shrink-0 ms-2">
+                        <i class="bi bi-hourglass-split fs-4"></i>
                     </div>
                 </div>
             </div>
@@ -48,16 +91,16 @@ $canPrintInward = hasPermission('shop_inward', 'print');
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between">
                     <div>
-                        <span class="text-muted small fw-semibold text-uppercase">Received &amp; Stock Credited</span>
-                        <h3 class="mb-0 fw-bold text-success mt-1">
+                        <span class="text-muted small fw-bold text-uppercase d-block text-truncate metric-card-title">Received &amp; Stock Credited</span>
+                        <h4 class="mb-0 fw-bold text-success mt-1 metric-card-value">
                             <?= number_format($receivedInwardsCount ?? 0) ?> <small class="fs-6 text-muted">Batches</small>
-                        </h3>
-                        <small class="text-success fw-semibold mt-1 d-block">
+                        </h4>
+                        <small class="text-success fw-semibold mt-1 d-block text-truncate">
                             <i class="bi bi-check2-circle me-1"></i><?= number_format($totalReceivedQty ?? 0) ?> pcs in shop inventory
                         </small>
                     </div>
-                    <div class="rounded-circle bg-success bg-opacity-10 p-3 text-success">
-                        <i class="bi bi-shield-check fs-3"></i>
+                    <div class="rounded-circle bg-success bg-opacity-10 p-2 p-xl-3 text-success flex-shrink-0 ms-2">
+                        <i class="bi bi-shield-check fs-4"></i>
                     </div>
                 </div>
             </div>
@@ -68,16 +111,16 @@ $canPrintInward = hasPermission('shop_inward', 'print');
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between">
                     <div>
-                        <span class="text-muted small fw-semibold text-uppercase">Total Inward Dispatches</span>
-                        <h3 class="mb-0 fw-bold text-primary mt-1">
+                        <span class="text-muted small fw-bold text-uppercase d-block text-truncate metric-card-title">Total Inward Dispatches</span>
+                        <h4 class="mb-0 fw-bold text-primary mt-1 metric-card-value">
                             <?= number_format(count($allocations ?? [])) ?> <small class="fs-6 text-muted">Batches</small>
-                        </h3>
-                        <small class="text-muted mt-1 d-block">
-                            <i class="bi bi-truck me-1"></i><?= number_format(($totalPendingMissingQty ?? 0) + ($totalReceivedQty ?? 0)) ?> total dispatched pcs
+                        </h4>
+                        <small class="text-muted mt-1 d-block text-truncate">
+                            <i class="bi bi-truck me-1"></i><?= number_format($totalDispatchedQty ?? 0) ?> total dispatched pcs
                         </small>
                     </div>
-                    <div class="rounded-circle bg-primary bg-opacity-10 p-3 text-primary">
-                        <i class="bi bi-box-seam fs-3"></i>
+                    <div class="rounded-circle bg-primary bg-opacity-10 p-2 p-xl-3 text-primary flex-shrink-0 ms-2">
+                        <i class="bi bi-box-seam fs-4"></i>
                     </div>
                 </div>
             </div>
@@ -85,67 +128,53 @@ $canPrintInward = hasPermission('shop_inward', 'print');
     </div>
 </div>
 
-<?php if ($canInward): ?>
 <!-- ========================================================================= -->
-<!-- 2. LIVE QR CODE SCANNER BAR -->
+<!-- VIEW MODE SELECTION (LIST VIEW / ALLOCATION CARDS) -->
 <!-- ========================================================================= -->
-<div class="card border-0 shadow-sm mb-4 border-start border-primary border-4">
-    <div class="card-body p-4">
-        <div class="row g-3 align-items-center">
-            <div class="col-lg-7">
-                <label class="form-label fw-bold text-dark mb-1">
-                    <i class="bi bi-qr-code-scan me-1 text-primary"></i> Scan Allocation / Outward / Piece QR Code
-                </label>
-                <div class="input-group input-group-lg">
-                    <span class="input-group-text bg-white"><i class="bi bi-upc-scan text-primary"></i></span>
-                    <input type="text" id="qrInput" class="form-control font-monospace" placeholder="Scan or type Allocation # (e.g. ALC-20260917-0006 or GIR092601)..." autofocus autocomplete="off">
-                    <button class="btn btn-primary px-4 fw-semibold" type="button" id="btnScanSubmit">
-                        <i class="bi bi-box-arrow-in-down me-1"></i> Process QR
-                    </button>
-                </div>
-                <small class="text-muted mt-1 d-block">
-                    <i class="bi bi-info-circle me-1"></i> Handheld USB/Bluetooth barcode guns will automatically submit upon scan.
-                </small>
-            </div>
-            <div class="col-lg-5">
-                <div class="p-3 bg-light rounded border">
-                    <div class="form-check form-switch mb-2">
-                        <input class="form-check-input" type="checkbox" role="switch" id="autoReceiveSwitch" checked>
-                        <label class="form-check-label fw-bold text-dark" for="autoReceiveSwitch">
-                            ⚡ Auto-Inward on Scan
-                        </label>
-                    </div>
-                    <small class="text-muted d-block" id="switchHelpText">
-                        <strong class="text-success">ON:</strong> Automatically verifies allocation and credits shop inventory instantly upon scan.
-                    </small>
-                </div>
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body p-2 p-md-3">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="fw-bold text-dark small text-uppercase d-none d-sm-inline"><i class="bi bi-layout-split me-1 text-primary"></i>View Mode:</span>
+                <ul class="nav nav-pills custom-inward-pills" id="inwardViewTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active d-flex align-items-center gap-2" id="tab-list-btn" data-bs-toggle="pill" data-bs-target="#tab-list-view" type="button" role="tab" aria-controls="tab-list-view" aria-selected="true">
+                            <i class="bi bi-list-task fs-6"></i><span>List / Ledger View</span>
+                            <span class="badge bg-secondary"><?= count($allocations ?? []) ?></span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link d-flex align-items-center gap-2" id="tab-cards-btn" data-bs-toggle="pill" data-bs-target="#tab-cards-view" type="button" role="tab" aria-controls="tab-cards-view" aria-selected="false">
+                            <i class="bi bi-grid-fill fs-6"></i><span>Batch Cards View</span>
+                            <?php if (($pendingInwardsCount ?? 0) > 0): ?>
+                                <span class="badge bg-danger"><?= (int)$pendingInwardsCount ?> Missing</span>
+                            <?php else: ?>
+                                <span class="badge bg-secondary"><?= count($allocations ?? []) ?></span>
+                            <?php endif; ?>
+                        </button>
+                    </li>
+                </ul>
             </div>
         </div>
-
-        <!-- Dynamic Scan Result Feedback Alert -->
-        <div id="scanFeedback" class="mt-3 d-none"></div>
     </div>
 </div>
-<?php endif; ?>
-
-<!-- ========================================================================= -->
-<!-- 3. ALLOCATION-WISE MISSING STOCK & PRODUCT VARIANTS SMALL CARDS UI -->
-<!-- ========================================================================= -->
+<div class="tab-content" id="inwardViewTabsContent">
+    <div class="tab-pane fade" id="tab-cards-view" role="tabpanel" aria-labelledby="tab-cards-btn">
 <div class="card border-0 shadow-sm mb-4 border-start border-danger border-4">
-    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="card-header bg-white py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h6 class="card-title mb-0 fw-bold text-danger">
                 <i class="bi bi-grid-fill me-2"></i>Allocation-Wise Missing Stock &amp; Variant Overview
             </h6>
-            <small class="text-muted">Quick-glance small cards showing missing stock count per allocation with variant details for easy identification</small>
+            <small class="text-muted fs-8">Interactive allocation cards with product variants and source warehouse details</small>
         </div>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center flex-wrap gap-2">
             <div class="input-group input-group-sm" style="width: 220px;">
                 <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
                 <input type="text" id="batchCardSearch" class="form-control" placeholder="Search variant / SKU...">
             </div>
             <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn btn-outline-secondary active btn-batch-filter" data-filter="all">All</button>
+                <button type="button" class="btn btn-outline-secondary active btn-batch-filter" data-filter="all">All (<?= count($allocations ?? []) ?>)</button>
                 <button type="button" class="btn btn-outline-danger btn-batch-filter" data-filter="missing">Missing Only (<?= $pendingInwardsCount ?? 0 ?>)</button>
                 <button type="button" class="btn btn-outline-success btn-batch-filter" data-filter="stocked">Stocked (<?= $receivedInwardsCount ?? 0 ?>)</button>
             </div>
@@ -160,17 +189,21 @@ $canPrintInward = hasPermission('shop_inward', 'print');
             <div class="row g-3" id="batchCardsContainer">
                 <?php foreach ($allocations as $a): ?>
                     <?php 
-                        $isFullyReceived = in_array($a['status'], ['RECEIVED', 'COMPLETED']);
-                        $isPartiallyReceived = ($a['status'] === 'PARTIAL_RECEIVED');
-                        $isReceived = $isFullyReceived;
                         $totalCredited = (int)($a['total_received_items_qty'] ?? 0);
-                        $missingQty = $isFullyReceived ? 0 : max(0, (int)$a['effective_qty'] - $totalCredited);
+                        $missingQty = (int)($a['missing_qty'] ?? max(0, (int)$a['effective_qty'] - $totalCredited));
+                        $isFullyReceived = in_array($a['status'], ['RECEIVED', 'COMPLETED', 'DELIVERED'], true) && $missingQty === 0;
+                        $isPartiallyReceived = $a['status'] === 'PARTIAL_RECEIVED' || $missingQty > 0;
                         $itemsList = $a['items'] ?? [];
                         $skuSearchTerms = implode(' ', array_map(function($i) { return ($i['sku'] ?? '') . ' ' . ($i['size_name'] ?? '') . ' ' . ($i['color_name'] ?? '') . ' ' . ($i['product_name'] ?? ''); }, $itemsList));
                         $primaryProduct = $itemsList[0]['product_name'] ?? 'Assorted Apparels';
                     ?>
-                    <div class="col-md-6 col-xl-4 batch-card-item" data-alloc-id="<?= (int)$a['id'] ?>" data-status="<?= $isFullyReceived ? 'stocked' : 'missing' ?>" data-search="<?= strtolower(e($a['allocation_number'] . ' ' . ($a['outward_number'] ?? '') . ' ' . $a['warehouse_name'] . ' ' . $skuSearchTerms)) ?>">
-                        <div class="card border shadow-sm h-100 <?= $isFullyReceived ? 'border-success border-opacity-50' : ($isPartiallyReceived ? 'border-warning border-opacity-75' : 'border-danger border-opacity-50') ?>">
+                    <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3 batch-card-item"
+                         data-alloc-id="<?= (int)$a['id'] ?>"
+                         data-status="<?= $missingQty > 0 ? 'missing' : 'stocked' ?>"
+                         data-inward-status="<?= e($a['status']) ?>"
+                         data-warehouse-id="<?= (int)($a['warehouse_id'] ?? 0) ?>"
+                         data-search="<?= strtolower(e($a['allocation_number'] . ' ' . ($a['outward_number'] ?? '') . ' ' . ($a['vehicle_number'] ?? '') . ' ' . ($a['driver_name'] ?? '') . ' ' . $a['warehouse_name'] . ' ' . $skuSearchTerms)) ?>">
+                        <div class="card border shadow-sm h-100 batch-card-hover <?= $missingQty > 0 ? ($isPartiallyReceived ? 'border-warning border-opacity-75' : 'border-danger border-opacity-50') : 'border-success border-opacity-50' ?>">
                             <!-- Card Header -->
                             <div class="card-header <?= $isFullyReceived ? 'bg-success bg-opacity-10 border-success border-opacity-25' : ($isPartiallyReceived ? 'bg-warning bg-opacity-15 border-warning border-opacity-25' : 'bg-danger bg-opacity-10 border-danger border-opacity-25') ?> py-2 px-3 d-flex justify-content-between align-items-center">
                                 <div class="d-flex align-items-center gap-1">
@@ -215,18 +248,22 @@ $canPrintInward = hasPermission('shop_inward', 'print');
                                     </small>
                                     <?php if (!empty($itemsList)): ?>
                                         <?php foreach ($itemsList as $v): ?>
-                                            <?php 
+                                            <?php
                                                 $vDispatched = (int)($v['dispatched_qty'] > 0 ? $v['dispatched_qty'] : $v['requested_qty']);
                                                 $vRecv = (int)($v['received_qty'] ?? 0);
                                                 $vDam = (int)($v['damaged_qty'] ?? 0);
-                                                $vDone = $isFullyReceived ? true : ($vRecv >= $vDispatched);
+                                                $vGood = max(0, $vRecv - $vDam);
+                                                $vMissing = max(0, $vDispatched - $vRecv);
                                             ?>
                                             <div class="d-flex justify-content-between align-items-center bg-white px-2 py-1 rounded border mb-1 fs-8">
                                                 <span class="font-monospace text-truncate" style="max-width: 170px;" title="<?= e($v['sku']) ?>">
                                                     <strong><?= e($v['sku']) ?></strong> (<?= e($v['size_name'] ?? 'Std') ?>, <?= e($v['color_name'] ?? 'Std') ?>)
                                                 </span>
-                                                <span class="badge <?= $vDone ? 'bg-success-subtle text-success border border-success-subtle' : ($vRecv > 0 ? 'bg-warning-subtle text-dark border border-warning-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle') ?> font-monospace">
-                                                    <?= $isFullyReceived ? $vDispatched . ' pcs' : ($vRecv > 0 ? "$vRecv / $vDispatched pcs" : "$vDispatched pcs") ?>
+                                                <span class="d-flex align-items-center gap-1 font-monospace flex-shrink-0">
+                                                    <span class="badge bg-success-subtle text-success border border-success-subtle" title="Good stock"><?= $vGood ?></span>
+                                                    <span class="badge <?= $vMissing > 0 ? 'bg-danger-subtle text-danger border border-danger-subtle' : 'bg-light text-muted border' ?>" title="Missing"><?= $vMissing ?></span>
+                                                    <?php if ($vDam > 0): ?><span class="badge bg-danger text-white" title="Damaged"><?= $vDam ?></span><?php endif; ?>
+                                                    <span class="badge bg-light text-dark border" title="Expected">/ <?= $vDispatched ?></span>
                                                 </span>
                                             </div>
                                         <?php endforeach; ?>
@@ -275,24 +312,24 @@ $canPrintInward = hasPermission('shop_inward', 'print');
         <?php endif; ?>
     </div>
 </div>
-
+    </div>
+    <div class="tab-pane fade show active" id="tab-list-view" role="tabpanel" aria-labelledby="tab-list-btn">
 <!-- Filters Card -->
 <div class="card border-0 shadow-sm mb-4">
-    <div class="card-body">
-        <form method="GET" action="<?= url('shop/inward') ?>" class="row g-3" id="inwardFilterForm" onsubmit="return true;">
-            <div class="col-md-4">
-                <label class="form-label small fw-semibold">Search Filter</label>
-                <div class="input-group">
-                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-                    <input type="text" name="search" id="inwardSearchInput" class="form-control" 
-                           placeholder="Search allocation, outward, vehicle, SKU, product..." 
+    <div class="card-body p-3">
+        <form method="GET" action="<?= url('shop/inward') ?>" class="row g-2 align-items-end" id="inwardFilterForm">
+            <div class="col-12 col-sm-6 col-lg-4">
+                <label class="form-label small fw-semibold text-muted mb-1">Search Filter</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white"><i class="bi bi-search text-secondary"></i></span>
+                    <input type="text" name="search" id="inwardSearchInput" class="form-control form-control-sm"
+                           placeholder="Search allocation, outward, product, SKU..."
                            value="<?= e($search ?? '') ?>" autocomplete="off">
-                    <button type="button" id="btnClearInwardSearch" class="btn btn-outline-secondary <?= empty($search) ? 'd-none' : '' ?>" title="Clear Search" onclick="clearInwardSearch()"><i class="bi bi-x"></i></button>
                 </div>
             </div>
-            <div class="col-md-3">
-                <label class="form-label small fw-semibold">Source Warehouse</label>
-                <select name="warehouse_id" id="inwardWarehouseSelect" class="form-select">
+            <div class="col-12 col-sm-6 col-lg-4">
+                <label class="form-label small fw-semibold text-muted mb-1">Source Warehouse</label>
+                <select name="warehouse_id" id="inwardWarehouseSelect" class="form-select form-select-sm">
                     <option value="">All Warehouses</option>
                     <?php foreach ($warehouses as $wh): ?>
                         <option value="<?= $wh['id'] ?>" <?= ($warehouseId ?? '') == $wh['id'] ? 'selected' : '' ?>>
@@ -301,17 +338,20 @@ $canPrintInward = hasPermission('shop_inward', 'print');
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label class="form-label small fw-semibold">Inward Status</label>
-                <select name="status" id="inwardStatusSelect" class="form-select">
+            <div class="col-8 col-sm-4 col-lg-2">
+                <label class="form-label small fw-semibold text-muted mb-1">Inward Status</label>
+                <select name="status" id="inwardStatusSelect" class="form-select form-select-sm">
                     <option value="">All Statuses</option>
                     <option value="DISPATCHED" <?= ($status ?? '') === 'DISPATCHED' ? 'selected' : '' ?>>DISPATCHED (Awaiting Inward)</option>
+                    <option value="PARTIAL_RECEIVED" <?= ($status ?? '') === 'PARTIAL_RECEIVED' ? 'selected' : '' ?>>PARTIAL (Continue Inward)</option>
                     <option value="RECEIVED" <?= in_array(($status ?? ''), ['RECEIVED', 'COMPLETED', 'DELIVERED']) ? 'selected' : '' ?>>RECEIVED (Stock Credited)</option>
                 </select>
             </div>
-            <div class="col-md-2 d-flex align-items-end gap-2">
-                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-funnel me-1"></i> Filter</button>
-                <a href="<?= url('shop/inward') ?>" class="btn btn-outline-secondary" title="Reset Filters"><i class="bi bi-arrow-clockwise"></i></a>
+            <div class="col-4 col-sm-2 col-lg-2">
+                <div class="btn-group btn-group-sm w-100" role="group">
+                    <button type="submit" class="btn btn-primary" title="Apply Filter"><i class="bi bi-funnel-fill"></i></button>
+                    <a href="<?= url('shop/inward') ?>" class="btn btn-outline-secondary" title="Reset Filters"><i class="bi bi-arrow-clockwise"></i></a>
+                </div>
             </div>
         </form>
     </div>
@@ -321,25 +361,23 @@ $canPrintInward = hasPermission('shop_inward', 'print');
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h6 class="card-title mb-0 fw-bold text-dark"><i class="bi bi-table me-2 text-primary"></i>All Inward Allocations Detailed Ledger</h6>
-        <span class="badge bg-primary-subtle text-primary rounded-pill px-3 py-1 font-monospace" id="inwardTableCountBadge">
-            <?= count($allocations ?? []) ?> Consignments
-        </span>
+        <span class="badge bg-light text-dark border font-monospace fs-8" id="inwardTableCountBadge">Showing <?= count($allocations ?? []) ?> Dispatches</span>
     </div>
     <div class="card-body p-0">
         <?php if (empty($allocations)): ?>
             <div class="text-center py-5">
                 <i class="bi bi-inbox fs-1 text-muted d-block mb-3"></i>
                 <h5 class="text-muted">No Inward Allocations Found</h5>
-                <p class="text-muted small">Consignments dispatched from central warehouse will appear here ready to receive into shop inventory.</p>
+                <p class="text-muted small">Allocations dispatched from warehouses will appear here ready for shop inward verification.</p>
             </div>
         <?php else: ?>
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0" id="inwardTable">
+                <table class="table table-hover align-middle mb-0" id="inwardTable" style="min-width: 800px;">
                     <thead class="table-light">
                         <tr>
-                            <th>Allocation #</th>
-                            <th>Source Warehouse</th>
-                            <th>Items &amp; Products</th>
+                            <th>Allocation</th>
+                            <th>Product &amp; Items</th>
+                            <th>Source Warehouse &rarr; Destination</th>
                             <th>Quantity &amp; Boxes</th>
                             <th>Dispatch Date &amp; Vehicle</th>
                             <th>Status</th>
@@ -349,16 +387,17 @@ $canPrintInward = hasPermission('shop_inward', 'print');
                     <tbody id="inwardTableBody">
                         <?php foreach ($allocations as $a): ?>
                             <?php 
-                                $isRecv = in_array($a['status'], ['RECEIVED', 'COMPLETED', 'DELIVERED']); 
+                                $isPartial = $a['status'] === 'PARTIAL_RECEIVED' || (int)($a['missing_qty'] ?? 0) > 0;
+                                $isRecv = in_array($a['status'], ['RECEIVED', 'COMPLETED', 'DELIVERED'], true) && !$isPartial;
                                 $itemsList = $a['items'] ?? [];
                                 $skuSearchTerms = implode(' ', array_map(function($i) { return ($i['sku'] ?? '') . ' ' . ($i['size_name'] ?? '') . ' ' . ($i['color_name'] ?? '') . ' ' . ($i['product_name'] ?? ''); }, $itemsList));
-                                $searchHaystack = strtolower(e($a['allocation_number'] . ' ' . ($a['outward_number'] ?? '') . ' ' . ($a['vehicle_number'] ?? '') . ' ' . $a['warehouse_name'] . ' ' . $skuSearchTerms));
+                                $searchHaystack = strtolower(e($a['allocation_number'] . ' ' . ($a['outward_number'] ?? '') . ' ' . ($a['vehicle_number'] ?? '') . ' ' . ($a['driver_name'] ?? '') . ' ' . $a['warehouse_name'] . ' ' . $skuSearchTerms));
                             ?>
                             <tr id="row-alloc-<?= $a['id'] ?>" 
                                 class="inward-alloc-row" 
                                 data-search="<?= $searchHaystack ?>"
-                                data-warehouse="<?= (int)($a['warehouse_id'] ?? 0) ?>"
-                                data-status="<?= $isRecv ? 'RECEIVED' : 'DISPATCHED' ?>">
+                                data-warehouse-id="<?= (int)($a['warehouse_id'] ?? 0) ?>"
+                                data-status="<?= $isPartial ? 'PARTIAL_RECEIVED' : ($isRecv ? 'RECEIVED' : 'DISPATCHED') ?>">
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
                                         <button type="button" class="btn btn-sm btn-light border p-1 btn-show-qr" data-code="<?= e($a['allocation_number']) ?>" data-product="<?= e($a['items'][0]['product_name'] ?? 'Stock Consignment') ?>" title="Show QR Code">
@@ -373,13 +412,22 @@ $canPrintInward = hasPermission('shop_inward', 'print');
                                     </div>
                                 </td>
                                 <td>
-                                    <span class="badge bg-secondary"><?= e($a['warehouse_name']) ?> (<?= e($a['warehouse_code']) ?>)</span>
-                                </td>
-                                <td>
                                     <span class="fw-semibold text-dark"><?= e($a['items'][0]['product_name'] ?? 'Assorted Apparels') ?></span>
                                     <?php if (count($a['items']) > 1): ?>
                                         <br><small class="text-muted">+<?= count($a['items']) - 1 ?> other variant(s)</small>
                                     <?php endif; ?>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-column gap-1">
+                                        <div class="p-1 source-badge-box d-flex align-items-center justify-content-between gap-1">
+                                            <span class="small fw-semibold text-dark text-truncate"><i class="bi bi-building text-warning me-1"></i>From: <?= e($a['warehouse_name']) ?></span>
+                                            <span class="badge bg-warning text-dark border border-warning font-monospace fs-8"><?= e($a['warehouse_code'] ?? 'WH') ?></span>
+                                        </div>
+                                        <div class="p-1 dest-badge-box d-flex align-items-center justify-content-between gap-1">
+                                            <span class="small fw-semibold text-primary text-truncate"><i class="bi bi-shop me-1"></i>To: <?= e($shop['name'] ?? 'Shop') ?></span>
+                                            <span class="badge bg-primary text-white font-monospace fs-8"><?= e($shop['code'] ?? 'SHOP') ?></span>
+                                        </div>
+                                    </div>
                                 </td>
                                 <td>
                                     <span class="fw-bold text-success fs-6"><?= number_format($a['effective_qty']) ?> pcs</span>
@@ -395,7 +443,9 @@ $canPrintInward = hasPermission('shop_inward', 'print');
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if (!$isRecv): ?>
+                                    <?php if ($isPartial): ?>
+                                        <span class="badge bg-warning text-dark border border-warning batch-status-badge"><i class="bi bi-exclamation-triangle me-1"></i>Partial (<?= (int)($a['missing_qty'] ?? 0) ?> Short)</span>
+                                    <?php elseif (!$isRecv): ?>
                                         <span class="badge bg-warning text-dark batch-status-badge"><i class="bi bi-hourglass-split me-1"></i>Awaiting Shop Inward</span>
                                     <?php else: ?>
                                         <span class="badge bg-success batch-status-badge"><i class="bi bi-check2-all me-1"></i>Received &amp; Stocked</span>
@@ -411,9 +461,9 @@ $canPrintInward = hasPermission('shop_inward', 'print');
                                                 <i class="bi bi-file-earmark-text"></i>
                                             </a>
                                         <?php endif; ?>
-                                        <a href="<?= url('shop/inward/view/' . $a['id']) ?>" class="btn btn-sm <?= (!$isRecv && $canInward) ? 'btn-primary fw-semibold' : 'btn-outline-primary' ?>">
-                                            <i class="bi <?= (!$isRecv && $canInward) ? 'bi-qr-code-scan' : 'bi-eye' ?> me-1"></i>
-                                            <?= (!$isRecv && $canInward) ? 'Cross-Check & Inward' : 'View Inward' ?>
+                                        <a href="<?= url('shop/inward/view/' . $a['id']) ?>" class="btn btn-sm <?= ((!$isRecv || $isPartial) && $canInward) ? ($isPartial ? 'btn-warning text-dark fw-semibold' : 'btn-primary fw-semibold') : 'btn-outline-primary' ?>">
+                                            <i class="bi <?= ((!$isRecv || $isPartial) && $canInward) ? 'bi-qr-code-scan' : 'bi-eye' ?> me-1"></i>
+                                            <?= ((!$isRecv || $isPartial) && $canInward) ? ($isPartial ? 'Continue Inward' : 'Cross-Check &amp; Inward') : 'View Inward' ?>
                                         </a>
                                     </div>
                                 </td>
@@ -425,30 +475,8 @@ $canPrintInward = hasPermission('shop_inward', 'print');
         <?php endif; ?>
     </div>
 </div>
-
-<?php if ($canInward): ?>
-<!-- ========================================================================= -->
-<!-- MODAL: CAMERA QR SCANNER -->
-<!-- ========================================================================= -->
-<div class="modal fade" id="cameraScanModal" tabindex="-1" aria-labelledby="cameraScanModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title fw-bold" id="cameraScanModalLabel">
-                    <i class="bi bi-camera me-2 text-primary"></i> Live Camera QR Scanner
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="btnCloseCam"></button>
-            </div>
-            <div class="modal-body text-center p-4">
-                <div id="cameraReader" style="width: 100%; min-height: 250px; background:#000; border-radius: 8px;"></div>
-                <div class="mt-3">
-                    <small class="text-muted">Point your camera at the Allocation, Outward, or Piece QR code.</small>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
-<?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- MODAL: SHOW QR CODE -->
@@ -474,136 +502,6 @@ $canPrintInward = hasPermission('shop_inward', 'print');
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const qrInput = document.getElementById('qrInput');
-    const btnSubmit = document.getElementById('btnScanSubmit');
-    const autoSwitch = document.getElementById('autoReceiveSwitch');
-    const switchHelp = document.getElementById('switchHelpText');
-    const feedbackBox = document.getElementById('scanFeedback');
-    let html5QrScanner = null;
-
-    // Toggle switch text
-    autoSwitch.addEventListener('change', function() {
-        if (this.checked) {
-            switchHelp.innerHTML = '<strong class="text-success">ON:</strong> Automatically verifies allocation and credits shop inventory instantly upon scan.';
-        } else {
-            switchHelp.innerHTML = '<strong class="text-warning text-dark">OFF (Manual Mode):</strong> Loads allocation inspection details for manual cross-check before stock update.';
-        }
-    });
-
-    // Handle QR Input Enter key (for barcode/QR handheld guns)
-    qrInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            processScannedCode(qrInput.value);
-        }
-    });
-
-    btnSubmit.addEventListener('click', function() {
-        processScannedCode(qrInput.value);
-    });
-
-    // Core function to process scanned code via AJAX
-    function processScannedCode(code) {
-        code = (code || '').trim();
-        if (!code) {
-            showFeedback('warning', 'Please enter or scan a valid QR code.');
-            return;
-        }
-
-        const isAuto = autoSwitch.checked;
-        showFeedback('info', '<div class="spinner-border spinner-border-sm me-2"></div> Processing QR Code: <strong>' + code + '</strong>...');
-
-        const formData = new FormData();
-        formData.append('qr_code', code);
-        formData.append('auto_receive', isAuto ? '1' : '0');
-        formData.append('_csrf_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
-
-        fetch('<?= url("api/shop/inward/scan") ?>', {
-            method: 'POST',
-            body: formData
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (!data.success) {
-                playAudioBeep(false);
-                showFeedback('danger', '<i class="bi bi-exclamation-triangle-fill me-2"></i> ' + (data.message || 'Consignment not found.'));
-                return;
-            }
-
-            playAudioBeep(true);
-            const alloc = data.data.allocation;
-
-            if (data.data.already_received) {
-                showFeedback('warning', '<i class="bi bi-info-circle-fill me-2"></i> ' + data.message + ' <a href="' + data.data.viewUrl + '" class="btn btn-sm btn-outline-dark ms-2">View</a>');
-            } else if (data.data.credited) {
-                // Auto-received!
-                showFeedback('success', '<i class="bi bi-check-circle-fill me-2 fs-5"></i> <strong>SUCCESS!</strong> ' + data.message + ' <a href="' + data.data.viewUrl + '" class="btn btn-sm btn-dark ms-2">View Inward</a>');
-                // Update row in table if present
-                const row = document.getElementById('row-alloc-' + alloc.id);
-                if (row) {
-                    const badge = row.querySelector('.batch-status-badge');
-                    if (badge) {
-                        badge.className = 'badge bg-success batch-status-badge';
-                        badge.innerHTML = '<i class="bi bi-check2-all me-1"></i>Received & Stocked';
-                    }
-                }
-            } else {
-                // Manual mode: Redirect or prompt view
-                showFeedback('info', '<i class="bi bi-eye-fill me-2"></i> Allocation <strong>' + alloc.allocation_number + '</strong> found. <a href="' + data.data.viewUrl + '" class="btn btn-sm btn-success ms-2">Inspect & Inward Now &rarr;</a>');
-                setTimeout(() => {
-                    window.location.href = data.data.viewUrl;
-                }, 800);
-            }
-
-            qrInput.value = '';
-            qrInput.focus();
-        })
-        .catch(err => {
-            playAudioBeep(false);
-            showFeedback('danger', 'Server communication error: ' + err.message);
-        });
-    }
-
-    function showFeedback(type, html) {
-        feedbackBox.className = 'mt-3 alert alert-' + type + ' d-flex align-items-center justify-content-between';
-        feedbackBox.innerHTML = '<div>' + html + '</div><button type="button" class="btn-close" onclick="this.parentElement.classList.add(\'d-none\')"></button>';
-        feedbackBox.classList.remove('d-none');
-    }
-
-    // Audio Beep generator using Web Audio API
-    function playAudioBeep(isSuccess) {
-        try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.frequency.value = isSuccess ? 880 : 330;
-            gain.gain.value = 0.15;
-            osc.start();
-            setTimeout(() => { osc.stop(); ctx.close(); }, isSuccess ? 120 : 300);
-        } catch(e) {}
-    }
-
-    // Camera QR Scanner Modal
-    const camModal = document.getElementById('cameraScanModal');
-    camModal.addEventListener('shown.bs.modal', function() {
-        if (!html5QrScanner && typeof Html5QrcodeScanner !== 'undefined') {
-            html5QrScanner = new Html5QrcodeScanner("cameraReader", { fps: 10, qrbox: 250 });
-            html5QrScanner.render(function(decodedText) {
-                bootstrap.Modal.getInstance(camModal).hide();
-                processScannedCode(decodedText);
-            }, function(err) {});
-        }
-    });
-
-    camModal.addEventListener('hidden.bs.modal', function() {
-        if (html5QrScanner) {
-            try { html5QrScanner.clear(); } catch(e){}
-            html5QrScanner = null;
-        }
-    });
-
     // View QR Modal
     document.querySelectorAll('.btn-show-qr').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -613,14 +511,49 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('modalQrCode').innerHTML = '';
             document.getElementById('qrModalCodeText').textContent = code;
             document.getElementById('qrModalProductText').textContent = product;
-            new QRCode(document.getElementById("modalQrCode"), {
-                text: code,
-                width: 160,
-                height: 160
-            });
+            if (typeof QRCode !== 'undefined') {
+                new QRCode(document.getElementById("modalQrCode"), {
+                    text: code,
+                    width: 160,
+                    height: 160
+                });
+            }
             new bootstrap.Modal(modalEl).show();
         });
     });
+
+    // Keep the selected view while navigating between inward records.
+    const listTabBtn = document.getElementById('tab-list-btn');
+    const cardsTabBtn = document.getElementById('tab-cards-btn');
+    const tabStorageKey = 'grm_shop_inward_view_mode';
+    const activateTab = function(tabName) {
+        const tabButton = tabName === 'cards' ? cardsTabBtn : listTabBtn;
+        if (tabButton) {
+            (bootstrap.Tab.getInstance(tabButton) || new bootstrap.Tab(tabButton)).show();
+        }
+    };
+    const tabHash = window.location.hash;
+    if (tabHash === '#tab-cards-view' || tabHash === '#cards') {
+        activateTab('cards');
+    } else if (tabHash === '#tab-list-view' || tabHash === '#list') {
+        activateTab('list');
+    } else {
+        try {
+            activateTab(localStorage.getItem(tabStorageKey) || 'list');
+        } catch (error) {
+            activateTab('list');
+        }
+    }
+    if (listTabBtn) {
+        listTabBtn.addEventListener('shown.bs.tab', function() {
+            try { localStorage.setItem(tabStorageKey, 'list'); } catch (error) {}
+        });
+    }
+    if (cardsTabBtn) {
+        cardsTabBtn.addEventListener('shown.bs.tab', function() {
+            try { localStorage.setItem(tabStorageKey, 'cards'); } catch (error) {}
+        });
+    }
 
     // Interactive Allocation Cards Filter & Search
     const batchFilterBtns = document.querySelectorAll('.btn-batch-filter');
@@ -631,17 +564,24 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentFilter = 'all';
 
     function filterBatchCards() {
-        const query = (batchSearchInput ? batchSearchInput.value : '').toLowerCase().trim();
+        const mainQuery = (inwardSearchInput ? inwardSearchInput.value : '').toLowerCase().trim();
+        const cardQuery = (batchSearchInput ? batchSearchInput.value : '').toLowerCase().trim();
+        const query = mainQuery || cardQuery;
+        const whId = inwardWhSelect ? inwardWhSelect.value : '';
+        const statusVal = inwardStatusSelect ? inwardStatusSelect.value : '';
         let visibleCount = 0;
 
         batchCardItems.forEach(card => {
             const status = card.getAttribute('data-status');
+            const inwardStatus = card.getAttribute('data-inward-status') || '';
             const searchData = card.getAttribute('data-search') || '';
 
             const matchesStatus = (currentFilter === 'all') || (currentFilter === status);
             const matchesSearch = !query || searchData.includes(query);
+            const matchesWarehouse = !whId || card.getAttribute('data-warehouse-id') === whId;
+            const matchesInwardStatus = !statusVal || inwardStatus === statusVal || (statusVal === 'RECEIVED' && ['COMPLETED', 'DELIVERED'].includes(inwardStatus));
 
-            if (matchesStatus && matchesSearch) {
+            if (matchesStatus && matchesSearch && matchesWarehouse && matchesInwardStatus) {
                 card.classList.remove('d-none');
                 visibleCount++;
             } else {
@@ -667,11 +607,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 filterBatchCards();
             });
         });
-    }
-
-    if (batchSearchInput) {
-        batchSearchInput.addEventListener('input', filterBatchCards);
-        batchSearchInput.addEventListener('keyup', filterBatchCards);
     }
 
     // Instant Real-Time Letter-by-Letter Table Filter Engine for Allocation Ledger
@@ -707,12 +642,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
         allocRows.forEach(row => {
             const searchData = row.getAttribute('data-search') || '';
-            const rowWh = row.getAttribute('data-warehouse') || '';
+            const rowWh = row.getAttribute('data-warehouse-id') || '';
             const rowStatus = row.getAttribute('data-status') || '';
 
             const matchQuery = !query || searchData.includes(query);
             const matchWh = !whId || rowWh === whId;
-            const matchStatus = !statusVal || (statusVal === 'DISPATCHED' && rowStatus === 'DISPATCHED') || (statusVal === 'RECEIVED' && rowStatus === 'RECEIVED');
+            const matchStatus = !statusVal || rowStatus === statusVal || (statusVal === 'RECEIVED' && ['COMPLETED', 'DELIVERED'].includes(rowStatus));
 
             if (matchQuery && matchWh && matchStatus) {
                 row.style.display = '';
@@ -746,6 +681,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (emptyRow) {
             emptyRow.remove();
         }
+        filterBatchCards();
     };
 
     if (inwardSearchInput) {
@@ -758,6 +694,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (inwardStatusSelect) {
         inwardStatusSelect.addEventListener('change', applyInwardFilters);
     }
+    if (batchSearchInput) {
+        batchSearchInput.addEventListener('input', applyInwardFilters);
+        batchSearchInput.addEventListener('keyup', applyInwardFilters);
+    }
+    applyInwardFilters();
 
     // Check localStorage for any in-progress scan drafts and badge the cards
     try {
