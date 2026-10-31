@@ -8921,6 +8921,7 @@ class WarehouseController {
         $quantity    = (float)($_POST['quantity'] ?? 0);
         $sellerId    = !empty($_POST['seller_id']) ? (int)$_POST['seller_id'] : null;
         $poId        = !empty($_POST['source_id']) ? (int)$_POST['source_id'] : (!empty($_POST['po_id']) ? (int)$_POST['po_id'] : null);
+        $isReturnInward = ($_POST['return_inward'] ?? '0') === '1';
         $tagCodes    = !empty($_POST['tag_codes']) ? (is_array($_POST['tag_codes']) ? $_POST['tag_codes'] : json_decode($_POST['tag_codes'], true)) : [];
         $notes       = trim($_POST['notes'] ?? '');
 
@@ -8931,6 +8932,12 @@ class WarehouseController {
 
         if ($quantity <= 0) {
             Response::json(['success' => false, 'message' => 'Stickered quantity to inward must be at least 1 unit.'], 400);
+            return;
+        }
+
+        // Inward is explicitly QR-selection driven; never credit warehouse stock without selected labels.
+        if (empty($tagCodes) || !is_array($tagCodes) || count(array_filter($tagCodes, 'is_scalar')) === 0) {
+            Response::json(['success' => false, 'message' => 'Select at least one generated QR sticker before inwarding stock.'], 400);
             return;
         }
 
@@ -8970,7 +8977,7 @@ class WarehouseController {
 
         $packTransactionStarted = false;
         try {
-        if ($isSeriesOrComp) {
+        if ($isSeriesOrComp && !$isReturnInward) {
             Database::beginTransaction();
             $packTransactionStarted = true;
             Database::fetchOne("SELECT id FROM product_variants WHERE id = ? FOR UPDATE", [$variantId]);

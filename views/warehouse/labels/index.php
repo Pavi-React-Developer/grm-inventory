@@ -342,6 +342,16 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
         }
 
         if ($activeVar) {
+            // Preserve the returned product hierarchy when opening Return QR generation directly.
+            if (empty($selectedCategoryId)) {
+                $selectedCategoryId = (int)($activeVar['category_id'] ?? $activeVar['warehouse_category_id'] ?? 0) ?: null;
+            }
+            if (empty($selectedSubcategoryId)) {
+                $selectedSubcategoryId = (int)($activeVar['subcategory_id'] ?? $activeVar['warehouse_subcategory_id'] ?? 0) ?: null;
+            }
+            if (empty($selectedSubSubcategoryId)) {
+                $selectedSubSubcategoryId = (int)($activeVar['sub_subcategory_id'] ?? $activeVar['warehouse_sub_subcategory_id'] ?? 0) ?: null;
+            }
             if (!empty($activeVar['catalog_code']) && empty($selectedCatalogCode)) {
                 $selectedCatalogCode = $activeVar['catalog_code'];
             }
@@ -388,6 +398,10 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
             $isComp = !empty($activeVar['is_complementary']) || !empty($activeVar['product_is_comp']) || $activeCategoryType === 'COMPLEMENTARY';
             $isSeries = ($activeVar['qr_type'] ?? '') === 'SERIES_BATCH' || $qrMode === 'SERIES_BATCH' || $activeCategoryType === 'SERIES';
             $isSeriesOrComp = $isSeries || $isComp;
+            // Series/Complementary products use one aggregate QR for the returned pack.
+            if ($isSeriesOrComp && empty($_GET['copies'])) {
+                $copiesCount = 1;
+            }
 
             // Pack QR products represent one fixed inward quantity; normal products follow PO quantities.
             if ($isSeriesOrComp && (int)($activeVar['pack_quantity'] ?? 0) > 1) {
@@ -733,7 +747,9 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
             if ($c3 !== '') $prodPrefix .= strtoupper($c3[0]);
             if (strlen($prodPrefix) < 2) $prodPrefix = 'TTS';
 
-            $retTagPrefix = (strlen($prodPrefix) >= 2) ? ('R' . substr($prodPrefix, 1)) : 'R';
+            // Return QR keeps the complete category hierarchy prefix after R.
+            // Example: T + A + M becomes RTAM102601, not RAM102601.
+            $retTagPrefix = 'R' . $prodPrefix;
             $badgeClass = $tagType === 'DAMAGED' ? 'bg-danger' : ($tagType === 'DEFECTIVE' ? 'bg-warning text-dark' : ($tagType === 'WRONG_SIZE' ? 'bg-info text-dark' : 'bg-success'));
             $fmtMrp = ($activeVar['mrp'] == (int)$activeVar['mrp']) ? (int)$activeVar['mrp'] : number_format($activeVar['mrp'], 2, '.', '');
             $returnBrand = !empty($selectedCustomBrand) ? $selectedCustomBrand : (!empty($activeVar['brand_name']) && $activeVar['brand_name'] !== 'Third-Party Brand' ? $activeVar['brand_name'] : 'GRM RETURN');
@@ -794,8 +810,13 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
             if ($c3 !== '') $prodPrefix .= strtoupper($c3[0]);
             if (strlen($prodPrefix) < 2) $prodPrefix = 'TTS';
 
-            $retTagPrefix = (strlen($prodPrefix) >= 2) ? ('R' . substr($prodPrefix, 1)) : 'R';
-            $count = max(1, (int)$ri['returned_qty']);
+            // Return QR keeps the complete category hierarchy prefix after R.
+            $retTagPrefix = 'R' . $prodPrefix;
+            $itemIsComp = !empty($ri['is_complementary']) || strtoupper((string)($ri['warehouse_category_type'] ?? '')) === 'COMPLEMENTARY';
+            $itemIsSeries = !$itemIsComp && (strtoupper((string)($ri['warehouse_category_type'] ?? '')) === 'SERIES'
+                || strtoupper((string)($ri['qr_type'] ?? '')) === 'SERIES_BATCH'
+                || (int)($ri['pack_quantity'] ?? 1) > 1);
+            $count = ($itemIsComp || $itemIsSeries) ? 1 : max(1, (int)$ri['returned_qty']);
             $class = !empty($ri['classification']) ? $ri['classification'] : $tagType;
             $returnBrand = !empty($selectedCustomBrand) ? $selectedCustomBrand : (!empty($ri['brand_name']) && $ri['brand_name'] !== 'Third-Party Brand' ? $ri['brand_name'] : 'GRM RETURN');
 
@@ -1829,6 +1850,9 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
             <button type="button" class="btn btn-sm btn-success fw-semibold shadow-sm" onclick="printAllGeneratedStickers()">
                 <i class="bi bi-printer me-1"></i> Print All Stickers
             </button>
+            <button type="button" class="btn btn-sm btn-outline-success fw-semibold shadow-sm" id="btnQuickInwardSelected" onclick="confirmStickeredInwardAction(event)" disabled title="Select QR sticker(s) first to inward them into warehouse stock">
+                <i class="bi bi-box-arrow-in-down me-1"></i> Inward Selected QR
+            </button>
             <button type="button" class="btn btn-sm btn-outline-dark fw-semibold shadow-sm" onclick="openPrinterSettingsModal()" title="Calibrate TSC TE244 printer alignment and dimensions">
                 <i class="bi bi-sliders me-1 text-warning"></i> Printer Settings
             </button>
@@ -2143,6 +2167,7 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                     <input type="hidden" name="quantity" id="inwardQtyInput" value="<?= $inwardPieceQty ?>">
                     <input type="hidden" name="seller_id" id="inwardSellerId" value="<?= (int)$selectedSellerId ?>">
                     <input type="hidden" name="source_id" id="inwardSourceId" value="<?= (int)$selectedSourceId ?>">
+                    <input type="hidden" name="return_inward" value="<?= $currentSourceType === 'returns' ? '1' : '0' ?>">
                     <input type="hidden" name="tag_codes" id="inwardTagCodesInput" value="<?= htmlspecialchars(json_encode(array_column($generatedItems, 'tag_code')), ENT_QUOTES, 'UTF-8') ?>">
                     
                     <button type="submit" id="btnConfirmInwardSubmit" class="btn <?= $isFullyInwarded ? 'btn-secondary opacity-75' : 'btn-success' ?> btn-lg shadow fw-bold px-4 py-3 d-flex align-items-center gap-2" <?= $isFullyInwarded ? 'disabled' : '' ?>>
@@ -3154,11 +3179,12 @@ function syncInwardButtonWithSelection() {
     const qtyInput = document.getElementById('inwardQtyInput');
     const tagsInput = document.getElementById('inwardTagCodesInput');
     const btn = document.getElementById('btnConfirmInwardSubmit');
+    const quickBtn = document.getElementById('btnQuickInwardSelected');
     const icon = document.getElementById('btnInwardSubmitIcon');
     if (!btnText || !qtyInput || !tagsInput) return;
 
     // Check if the current variant was already fully inwarded
-    const isAlreadyInwardedInitial = <?= !empty($isFullyInwarded) ? 'true' : 'false' ?>;
+    const isAlreadyInwardedInitial = <?= (!empty($isFullyInwarded) && $currentSourceType !== 'returns') ? 'true' : 'false' ?>;
     if (isAlreadyInwardedInitial) {
         btnText.textContent = 'All <?= (int)($alreadyInwardedQty ?? 0) ?> Pieces Officially Inwarded (1-Time Completed)';
         if (btn) {
@@ -3167,6 +3193,7 @@ function syncInwardButtonWithSelection() {
             btn.classList.remove('btn-success');
         }
         if (icon) icon.className = 'bi bi-check-circle-fill fs-4';
+        if (quickBtn) quickBtn.disabled = true;
         return;
     }
 
@@ -3192,6 +3219,7 @@ function syncInwardButtonWithSelection() {
             btn.classList.remove('btn-success');
         }
         if (icon) icon.className = 'bi bi-check-circle-fill fs-4';
+        if (quickBtn) quickBtn.disabled = true;
         return;
     }
 
@@ -3211,19 +3239,27 @@ function syncInwardButtonWithSelection() {
             btn.classList.add('btn-success');
         }
         if (icon) icon.className = 'bi bi-box-arrow-in-down-right fs-4';
-    } else {
-        // NO PRODUCTS SELECTED: INWARD ALL REMAINING ACTIVE PRODUCTS
-        const count = availableItems.length;
-        const tagCodes = availableItems.map(entry => entry.item.tag_code);
-        btnText.textContent = `Confirm Stickered & Inward to Inventory (+${count} Pcs)`;
-        qtyInput.value = count;
-        tagsInput.value = JSON.stringify(tagCodes);
-        if (btn) {
-            btn.disabled = false;
-            btn.classList.remove('btn-secondary', 'opacity-75');
-            btn.classList.add('btn-success');
+        if (quickBtn) {
+            quickBtn.disabled = false;
+            quickBtn.classList.remove('btn-outline-success');
+            quickBtn.classList.add('btn-success', 'text-white');
         }
-        if (icon) icon.className = 'bi bi-box-arrow-in-down-right fs-4';
+    } else {
+        // No selection means no inward action. Stock must never be credited implicitly.
+        btnText.textContent = 'Select QR Sticker(s) to Inward';
+        qtyInput.value = 0;
+        tagsInput.value = '[]';
+        if (btn) {
+            btn.disabled = true;
+            btn.classList.add('btn-secondary', 'opacity-75');
+            btn.classList.remove('btn-success');
+        }
+        if (icon) icon.className = 'bi bi-hand-index-thumb fs-4';
+        if (quickBtn) {
+            quickBtn.disabled = true;
+            quickBtn.classList.add('btn-outline-success');
+            quickBtn.classList.remove('btn-success', 'text-white');
+        }
     }
 }
 

@@ -91,7 +91,7 @@ $canClassify = hasPermission('returns', 'inspect') || hasPermission('returns', '
                             </select>
                         </td>
                         <td class="text-center">
-                            <a href="<?= url('warehouse/labels?tab=return_tags&return_item_id=' . $item['id'] . '&return_variant_id=' . $item['variant_id']) ?>" 
+                            <a href="<?= url('warehouse/labels?source_type=returns&view=generate&tab=return_tags&return_id=' . $return['id'] . '&return_item_id=' . $item['id'] . '&return_variant_id=' . $item['variant_id']) ?>" 
                                class="btn btn-sm btn-outline-danger" title="Generate Return QR Tag">
                                 <i class="bi bi-qr-code me-1"></i> Return Tag
                             </a>
@@ -104,7 +104,7 @@ $canClassify = hasPermission('returns', 'inspect') || hasPermission('returns', '
 
     <div class="d-flex justify-content-between align-items-center">
         <div>
-            <a href="<?= url('warehouse/labels?tab=return_tags') ?>" class="btn btn-outline-danger">
+            <a href="<?= url('warehouse/labels?source_type=returns&view=generate&tab=return_tags&return_id=' . $return['id']) ?>" class="btn btn-outline-danger">
                 <i class="bi bi-qr-code-scan me-1"></i> Open Return QR Suite
             </a>
         </div>
