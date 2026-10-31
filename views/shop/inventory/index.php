@@ -687,6 +687,7 @@ $currSearch = $filters['search'] ?? '';
                                                 <small class="text-success fw-semibold d-block text-uppercase" style="font-size: 10px;">Shop Stock</small>
                                                 <div class="fw-bold text-success fs-5" id="modalAvailableStock">0</div>
                                                 <small class="text-success" style="font-size: 10px;" id="modalStockStatus">In Stock</small>
+                                                <small class="text-danger d-block" style="font-size: 10px;" id="modalDamagedStock">0 Damaged</small>
                                             </div>
                                         </div>
                                         <div class="col-3">
@@ -1149,6 +1150,7 @@ function openProductDetailModal(variantId) {
 
             const item = data.item;
             const qty = parseFloat(item.quantity) || 0;
+            const damagedQty = parseFloat(item.damaged_quantity) || 0;
             const minStock = parseFloat(item.min_stock) || 5;
             const isLow = qty <= minStock && qty > 0;
             const isOut = qty <= 0;
@@ -1202,6 +1204,7 @@ function openProductDetailModal(variantId) {
             }
 
             document.getElementById('modalAvailableStock').textContent = `${qty} pcs`;
+            document.getElementById('modalDamagedStock').textContent = `${damagedQty} Damaged • ${qty + damagedQty} Total`;
             const stockStatusEl = document.getElementById('modalStockStatus');
             if (isOut) {
                 stockStatusEl.textContent = 'Out of Stock';
@@ -1229,7 +1232,10 @@ function openProductDetailModal(variantId) {
                 const status = (piece.status || '').toUpperCase();
                 return status === 'AVAILABLE' || status === 'IN STOCK';
             }).length;
-            document.getElementById('modalPiecesTabCount').textContent = `${availablePieceCount} In Stock / ${pieces.length} Total`;
+            const damagedPieceCount = pieces.filter(piece => (
+                piece.is_damaged || (piece.status || '').toUpperCase() === 'DAMAGED'
+            )).length;
+            document.getElementById('modalPiecesTabCount').textContent = `${availablePieceCount} In Stock / ${damagedPieceCount} Damaged / ${pieces.length} Total`;
 
             if (piecesGrid) {
                 if (pieces.length === 0) {

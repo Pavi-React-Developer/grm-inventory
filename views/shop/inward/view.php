@@ -544,15 +544,15 @@
                     <div class="col-md-7">
                         <h6 class="fw-bold text-dark mb-2"><i class="bi bi-upc-scan text-primary me-2"></i>Instant Missing Piece Reconciliation</h6>
                         <p class="text-muted small mb-3">
-                            Choose the condition, then scan an individual QR tag or use the button below.
+                            Choose the condition, then scan an individual piece QR or barcode to record it immediately.
                         </p>
                         <div class="d-flex flex-column gap-2">
                             <div class="input-group input-group-sm">
-                                <span class="input-group-text bg-white"><i class="bi bi-search text-primary"></i></span>
-                                <input type="text" class="form-control font-monospace" id="qrProductLookup" placeholder="Enter or scan a product QR code" aria-label="Find product by QR code" autocomplete="off">
-                                <button type="button" class="btn btn-outline-primary" id="btnQrProductLookup">Find</button>
+                                <span class="input-group-text bg-white"><i class="bi bi-upc-scan text-primary"></i></span>
+                                <input type="text" class="form-control font-monospace" id="modalPieceQrInput" placeholder="Scan piece QR / barcode" aria-label="Scan piece QR code or barcode" autocomplete="off">
+                                <button type="button" class="btn btn-outline-primary" id="btnModalPieceQrScan">Scan QR</button>
                             </div>
-                            <small id="qrProductLookupMessage" class="text-muted" aria-live="polite">Find a product by scanning or entering its QR code.</small>
+                            <small id="qrScanInstruction" class="text-muted" aria-live="polite">Press Enter or Scan QR to record the scanned piece using the selected condition.</small>
                             <div class="btn-group btn-group-sm align-self-start" role="group" aria-label="Product condition">
                                 <input type="radio" class="btn-check" name="modalScanModeToggle" id="modalModeGood" value="good" autocomplete="off" checked onchange="setScanMode('good')">
                                 <label class="btn btn-outline-success fw-semibold" for="modalModeGood"><i class="bi bi-check-circle-fill me-1"></i>Good / Intact</label>
@@ -1221,6 +1221,9 @@
             missingModal.addEventListener('show.bs.modal', function() {
                 setScanMode('good');
             });
+            missingModal.addEventListener('shown.bs.modal', function() {
+                document.getElementById('modalPieceQrInput')?.focus();
+            });
             missingModal.addEventListener('hidden.bs.modal', function() {
                 setScanMode('good');
                 activeModalVariantId = null;
@@ -1229,19 +1232,19 @@
             });
         }
 
-        const qrProductLookup = document.getElementById('qrProductLookup');
-        const btnQrProductLookup = document.getElementById('btnQrProductLookup');
-        if (qrProductLookup) {
-            qrProductLookup.addEventListener('keydown', function(e) {
+        const modalPieceQrInput = document.getElementById('modalPieceQrInput');
+        const btnModalPieceQrScan = document.getElementById('btnModalPieceQrScan');
+        if (modalPieceQrInput) {
+            modalPieceQrInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    findProductByQr(this.value);
+                    scanModalQr();
                 }
             });
         }
-        if (btnQrProductLookup) {
-            btnQrProductLookup.addEventListener('click', function() {
-                findProductByQr(qrProductLookup ? qrProductLookup.value : '');
+        if (btnModalPieceQrScan) {
+            btnModalPieceQrScan.addEventListener('click', function() {
+                scanModalQr();
             });
         }
 
@@ -1256,7 +1259,7 @@
     function setupGlobalScannerListener() {
         window.addEventListener('keydown', function(e) {
             const activeEl = document.activeElement;
-            if (activeEl && activeEl.id === 'qrProductLookup') {
+            if (activeEl && activeEl.id === 'modalPieceQrInput') {
                 if (e.key === 'Enter') globalScanBuffer = '';
                 return;
             }
@@ -1284,60 +1287,26 @@
         }, true);
     }
 
-    function findProductByQr(rawCode) {
-        const lookupMessage = document.getElementById('qrProductLookupMessage');
-        const code = String(rawCode || '').trim();
+    function scanModalQr() {
+        const qrInput = document.getElementById('modalPieceQrInput');
+        const scanInstruction = document.getElementById('qrScanInstruction');
+        const code = String(qrInput ? qrInput.value : '').trim();
         if (!code) {
-            if (lookupMessage) {
-                lookupMessage.textContent = 'Enter or scan a product QR code.';
-                lookupMessage.className = 'text-danger small';
+            if (scanInstruction) {
+                scanInstruction.textContent = 'Scan a piece QR code or barcode first.';
+                scanInstruction.className = 'text-danger small';
             }
+            if (qrInput) qrInput.focus();
             return;
         }
 
-        let tag = code;
-        if (code.startsWith('{') && code.endsWith('}')) {
-            try {
-                const payload = JSON.parse(code);
-                tag = payload.tag_code || payload.qr_code || code;
-            } catch (error) {
-                tag = code;
-            }
-        } else if (code.includes('|')) {
-            tag = code.split('|')[0].trim();
+        if (scanInstruction) {
+            scanInstruction.textContent = 'Scan another piece or close this window when finished.';
+            scanInstruction.className = 'text-muted small';
         }
-        const normalizedTag = String(tag).trim().toUpperCase();
-
-        const matchedItem = ITEMS.find(item => {
-            const tags = [
-                item.qr_code,
-                item.series_qr_code,
-                item.series_start_code,
-                ...(Array.isArray(item.saved_tags) ? item.saved_tags : [])
-            ].filter(Boolean).map(value => String(value).trim().toUpperCase());
-
-            if (tags.includes(normalizedTag)) return true;
-            for (let sequence = item.startSeq || 1; sequence <= (item.endSeq || item.startSeq || 1); sequence++) {
-                if (getLabelCode(sequence, item).toUpperCase() === normalizedTag) return true;
-            }
-            return false;
-        });
-
-        if (!matchedItem) {
-            if (lookupMessage) {
-                lookupMessage.textContent = `No product was found for QR code "${normalizedTag}".`;
-                lookupMessage.className = 'text-danger small';
-            }
-            return;
-        }
-
-        activeModalVariantId = matchedItem.variant_id;
-        modalPieceFilter = 'all';
-        updateModalState(activeModalVariantId);
-        if (lookupMessage) {
-            lookupMessage.textContent = `Product found: ${matchedItem.product_name || matchedItem.sku} (${matchedItem.sku}).`;
-            lookupMessage.className = 'text-success small';
-        }
+        if (qrInput) qrInput.value = '';
+        processScanInput(code, true);
+        if (qrInput) qrInput.focus();
     }
 
     function initCrossCheckEngine() {
@@ -1386,7 +1355,7 @@
         });
     }
 
-    function processScanInput(rawCode) {
+    function processScanInput(rawCode, scannedFromModalInput = false) {
         const code = (rawCode || '').replace(/[^\x20-\x7E]/g, '').trim();
         const liveInput = document.getElementById('liveScannerInput');
         if (!code) return;
@@ -1496,6 +1465,10 @@
 
         if (matched && matchedItem) {
             const vid = matchedItem.variant_id;
+            if (scannedFromModalInput) {
+                activeModalVariantId = vid;
+                modalPieceFilter = 'all';
+            }
             const recvInput = document.getElementById(`input-recv-${vid}`);
             const dmgInput = document.getElementById(`input-dmg-${vid}`);
             const expected = parseInt(matchedItem.dispatched_qty > 0 ? matchedItem.dispatched_qty : matchedItem.requested_qty) || 1;

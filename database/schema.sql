@@ -20,6 +20,7 @@ CREATE TABLE `allocation_items` (
   `packed_qty` int DEFAULT '0',
   `dispatched_qty` int DEFAULT '0',
   `selected_qr_codes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `received_qr_codes` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `received_qty` int NOT NULL DEFAULT '0',
   `damaged_qty` int NOT NULL DEFAULT '0',
   `missing_qty` int NOT NULL DEFAULT '0',

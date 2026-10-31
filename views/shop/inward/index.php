@@ -1,6 +1,5 @@
 <?php
 $canInward = hasPermission('shop_inward', 'verify') || hasPermission('shop_inward', 'receive') || hasPermission('shop_inward', 'create');
-$canPrintInward = hasPermission('shop_inward', 'print');
 ?>
 <style>
 .custom-inward-pills .nav-link {
@@ -280,14 +279,6 @@ $canPrintInward = hasPermission('shop_inward', 'print');
 
                             <!-- Card Footer -->
                             <div class="card-footer bg-light py-2 px-3 d-flex justify-content-between align-items-center gap-1">
-                                <?php if ($canPrintInward): ?>
-                                    <a href="<?= url('shop/inward/label/' . $a['id']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2" title="Print Carton QR Label">
-                                        <i class="bi bi-printer"></i>
-                                    </a>
-                                    <a href="<?= url('shop/inward/gatepass/' . $a['id']) ?>" target="_blank" class="btn btn-sm btn-outline-dark py-1 px-2" title="Print Delivery Gate Pass">
-                                        <i class="bi bi-file-earmark-text"></i>
-                                    </a>
-                                <?php endif; ?>
                                 <?php if ($isFullyReceived || !$canInward): ?>
                                     <a href="<?= url('shop/inward/view/' . $a['id']) ?>" class="btn btn-sm btn-outline-primary flex-grow-1 py-1">
                                         <i class="bi bi-eye me-1"></i> View Inward
@@ -453,14 +444,6 @@ $canPrintInward = hasPermission('shop_inward', 'print');
                                 </td>
                                 <td class="text-end">
                                     <div class="d-inline-flex gap-1">
-                                        <?php if ($canPrintInward): ?>
-                                            <a href="<?= url('shop/inward/label/' . $a['id']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary" title="Print Carton QR Label">
-                                                <i class="bi bi-qr-code"></i>
-                                            </a>
-                                            <a href="<?= url('shop/inward/gatepass/' . $a['id']) ?>" target="_blank" class="btn btn-sm btn-outline-dark" title="Print Delivery Gate Pass">
-                                                <i class="bi bi-file-earmark-text"></i>
-                                            </a>
-                                        <?php endif; ?>
                                         <a href="<?= url('shop/inward/view/' . $a['id']) ?>" class="btn btn-sm <?= ((!$isRecv || $isPartial) && $canInward) ? ($isPartial ? 'btn-warning text-dark fw-semibold' : 'btn-primary fw-semibold') : 'btn-outline-primary' ?>">
                                             <i class="bi <?= ((!$isRecv || $isPartial) && $canInward) ? 'bi-qr-code-scan' : 'bi-eye' ?> me-1"></i>
                                             <?= ((!$isRecv || $isPartial) && $canInward) ? ($isPartial ? 'Continue Inward' : 'Cross-Check &amp; Inward') : 'View Inward' ?>

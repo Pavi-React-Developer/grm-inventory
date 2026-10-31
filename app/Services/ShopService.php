@@ -1692,7 +1692,9 @@ class ShopService {
         $item = Database::fetchOne($sql, [$shopId, $variantId]);
         if (!$item) {
             // Fallback query if stock balance is zero or not yet initialized
-            $fallbackSql = "SELECT pv.*, pv.id as variant_id, 0 as quantity, 0 as available_quantity, 0 as damaged_quantity, 0 as sold_quantity, 0 as returned_quantity, 0 as exchanged_quantity,
+            $fallbackSql = "SELECT pv.*, pv.id as variant_id, 0 as quantity, 0 as available_quantity,
+                                   (SELECT COALESCE(SUM(quantity), 0) FROM stock_balances WHERE variant_id = pv.id AND location_type = 'SHOP' AND location_id = ? AND stock_state = 'DAMAGED') as damaged_quantity,
+                                   0 as sold_quantity, 0 as returned_quantity, 0 as exchanged_quantity,
                                    pv.weight as variant_weight, pv.image_url as variant_image,
                                    p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
                                    p.category_code, p.subcategory_code, p.sub_subcategory_code, p.qr_code_prefix,
@@ -1720,7 +1722,7 @@ class ShopService {
                             LEFT JOIN sizes s ON pv.size_id = s.id
                             LEFT JOIN colors c ON pv.color_id = c.id
                             WHERE pv.id = ?";
-            $item = Database::fetchOne($fallbackSql, [$variantId]);
+            $item = Database::fetchOne($fallbackSql, [$shopId, $variantId]);
         }
 
         if ($item) {
@@ -1759,7 +1761,25 @@ class ShopService {
                 [$variantId, $shopId, $shopId, $variantId, $shopId]
             );
 
+            $damageRecords = Database::fetchAll(
+                "SELECT tag_code, quantity, damage_reason, status, damage_number, defect_type, created_at
+                 FROM shop_damages
+                 WHERE shop_id = ? AND variant_id = ? AND status != 'RESTOCKED'
+                 ORDER BY id ASC",
+                [$shopId, $variantId]
+            );
+            $damagedTagsMap = [];
+            foreach ($damageRecords as $damageRecord) {
+                foreach (explode(',', (string)($damageRecord['tag_code'] ?? '')) as $damageTag) {
+                    $damageTag = strtoupper(trim($damageTag));
+                    if ($damageTag !== '') {
+                        $damagedTagsMap[$damageTag] = $damageRecord;
+                    }
+                }
+            }
+
             $savedTags = [];
+            $savedTagsByKey = [];
             $allocRef = '';
             $allocationBatches = [];
             $isSingleQrProduct = (
@@ -1777,27 +1797,64 @@ class ShopService {
                     if (is_array($decoded)) {
                         foreach ($decoded as $t) {
                             $tagStr = is_array($t) ? ($t['tag_code'] ?? ($t['qr_code'] ?? '')) : (string)$t;
-                            $tagStr = trim($tagStr);
+                            $tagStr = strtoupper(trim($tagStr));
                             if ($tagStr) {
-                                $batchTags[] = $tagStr;
+                                $batchTags[$tagStr] = $tagStr;
                             }
                         }
                     } else {
                         $tags = explode(',', $ai['selected_qr_codes']);
                         foreach ($tags as $t) {
-                            $t = trim($t);
+                            $t = strtoupper(trim($t));
                             if ($t) {
-                                $batchTags[] = $t;
+                                $batchTags[$t] = $t;
                             }
                         }
                     }
                 }
+                $batchTags = array_values($batchTags);
                 if ($isSingleQrProduct) {
                     $batchTags = array_slice($batchTags, 0, 1);
                 }
-                foreach ($batchTags as $tag) {
-                    if (!in_array($tag, $savedTags, true)) {
-                        $savedTags[] = $tag;
+
+                $receivedQty = max(0, (int)($ai['received_qty'] ?? 0));
+                $receivedTags = [];
+                if (!empty($ai['received_qr_codes'])) {
+                    $decodedReceivedTags = json_decode((string)$ai['received_qr_codes'], true);
+                    $rawReceivedTags = is_array($decodedReceivedTags)
+                        ? $decodedReceivedTags
+                        : explode(',', (string)$ai['received_qr_codes']);
+                    foreach ($rawReceivedTags as $receivedTag) {
+                        $receivedTag = is_array($receivedTag)
+                            ? ($receivedTag['tag_code'] ?? ($receivedTag['qr_code'] ?? ''))
+                            : (string)$receivedTag;
+                        $receivedTag = strtoupper(trim($receivedTag));
+                        if ($receivedTag !== '') {
+                            $receivedTags[$receivedTag] = $receivedTag;
+                        }
+                    }
+                    $receivedTags = array_values($receivedTags);
+                }
+
+                if ($receivedTags) {
+                    $inventoryTags = array_slice($receivedTags, 0, $receivedQty ?: count($receivedTags));
+                } elseif ($receivedQty > 0) {
+                    $batchDamagedTags = array_values(array_intersect($batchTags, array_keys($damagedTagsMap)));
+                    $batchDamagedTags = array_slice($batchDamagedTags, 0, min(
+                        (int)($ai['damaged_qty'] ?? 0),
+                        $receivedQty
+                    ));
+                    $goodTagLimit = max(0, $receivedQty - count($batchDamagedTags));
+                    $batchGoodTags = array_values(array_diff($batchTags, $batchDamagedTags));
+                    $inventoryTags = array_merge(array_slice($batchGoodTags, 0, $goodTagLimit), $batchDamagedTags);
+                } else {
+                    $inventoryTags = [];
+                }
+
+                foreach ($inventoryTags as $tag) {
+                    $tagKey = strtoupper(trim($tag));
+                    if ($tagKey !== '' && !isset($savedTagsByKey[$tagKey])) {
+                        $savedTagsByKey[$tagKey] = $tagKey;
                     }
                 }
 
@@ -1820,15 +1877,7 @@ class ShopService {
                     'tags'              => $batchTags,
                 ];
             }
-
-            // Fetch active shop damages for this shop & variant
-            $damageRecords = Database::fetchAll(
-                "SELECT tag_code, quantity, damage_reason, status, damage_number, defect_type, created_at
-                 FROM shop_damages
-                 WHERE shop_id = ? AND variant_id = ? AND status != 'RESTOCKED'
-                 ORDER BY id ASC",
-                [$shopId, $variantId]
-            );
+            $savedTags = array_values($savedTagsByKey);
 
             // Fetch sales / billed pieces for this shop & variant
             $salesRecords = Database::fetchAll(
@@ -1847,8 +1896,9 @@ class ShopService {
                 if (!empty($sr['scanned_qr_codes'])) {
                     $tags = array_map('trim', explode(',', $sr['scanned_qr_codes']));
                     foreach ($tags as $t) {
-                        if (!empty($t)) {
-                            $soldTagsMap[$t] = $sr;
+                        $tagKey = strtoupper($t);
+                        if ($tagKey !== '') {
+                            $soldTagsMap[$tagKey] = $sr;
                         }
                     }
                 }
@@ -1877,8 +1927,9 @@ class ShopService {
                 if (!empty($rawTagString)) {
                     $tags = array_map('trim', explode(',', $rawTagString));
                     foreach ($tags as $t) {
-                        if (!empty($t) && !str_starts_with($t, 'TP-') && !str_starts_with($t, 'SKU-')) {
-                            $returnedTagsMap[$t] = $rr;
+                        $tagKey = strtoupper($t);
+                        if ($tagKey !== '' && !str_starts_with($tagKey, 'TP-') && !str_starts_with($tagKey, 'SKU-')) {
+                            $returnedTagsMap[$tagKey] = $rr;
                         }
                     }
                 }
@@ -1903,6 +1954,7 @@ class ShopService {
                 if (!empty($ex['piece_tag'])) {
                     $tags = array_map('trim', explode(',', $ex['piece_tag']));
                     foreach ($tags as $pt) {
+                        $pt = strtoupper($pt);
                         if (empty($pt)) continue;
                         if ($ex['item_type'] === 'NEW') {
                             $exchangeDispatchedTagsMap[$pt] = $ex;
@@ -1931,15 +1983,6 @@ class ShopService {
                  ORDER BY wr.id DESC",
                 [$variantId, $shopId]
             );
-
-            $damagedTagsMap = [];
-
-            foreach ($damageRecords as $dr) {
-                if (!empty($dr['tag_code'])) {
-                    $rawTag = trim($dr['tag_code']);
-                    $damagedTagsMap[$rawTag] = $dr;
-                }
-            }
 
             $pieces = [];
             foreach ($savedTags as $index => $tag) {
@@ -3113,6 +3156,41 @@ class ShopService {
                     $damagedTagsList = [];
                 }
 
+                $receivedTagMap = [];
+                $existingReceivedTags = json_decode((string)($item['received_qr_codes'] ?? ''), true);
+                if (is_array($existingReceivedTags)) {
+                    foreach ($existingReceivedTags as $existingTag) {
+                        $existingTag = strtoupper(trim((string)$existingTag));
+                        if ($existingTag !== '') {
+                            $receivedTagMap[$existingTag] = $existingTag;
+                        }
+                    }
+                }
+                foreach (array_merge($scannedTagsList, $damagedTagsList) as $receivedTag) {
+                    $receivedTag = strtoupper(trim((string)$receivedTag));
+                    if ($receivedTag !== '') {
+                        $receivedTagMap[$receivedTag] = $receivedTag;
+                    }
+                }
+                if (!$receivedTagMap && $recv > 0) {
+                    $allocatedTags = $item['saved_tags'] ?? [];
+                    if (!$allocatedTags && !empty($item['selected_qr_codes'])) {
+                        $allocatedTags = json_decode((string)$item['selected_qr_codes'], true);
+                        if (!is_array($allocatedTags)) {
+                            $allocatedTags = explode(',', (string)$item['selected_qr_codes']);
+                        }
+                    }
+                    foreach (array_slice((array)$allocatedTags, 0, (int)$recv) as $allocatedTag) {
+                        $allocatedTag = is_array($allocatedTag)
+                            ? ($allocatedTag['tag_code'] ?? ($allocatedTag['qr_code'] ?? ''))
+                            : (string)$allocatedTag;
+                        $allocatedTag = strtoupper(trim($allocatedTag));
+                        if ($allocatedTag !== '') {
+                            $receivedTagMap[$allocatedTag] = $allocatedTag;
+                        }
+                    }
+                }
+
                 $accepted = max(0.0, $recv - $dam);
                 $missing = max(0.0, $dispatchedQty - $recv);
 
@@ -3124,9 +3202,9 @@ class ShopService {
                 // Persist variant-level received_qty, damaged_qty, missing_qty in allocation_items
                 Database::execute(
                     "UPDATE allocation_items 
-                     SET received_qty = ?, damaged_qty = ?, missing_qty = ?
+                     SET received_qty = ?, damaged_qty = ?, missing_qty = ?, received_qr_codes = ?
                      WHERE allocation_id = ? AND variant_id = ?",
-                    [(int)$recv, (int)$dam, (int)$missing, $allocationId, $vid]
+                    [(int)$recv, (int)$dam, (int)$missing, json_encode(array_values($receivedTagMap)), $allocationId, $vid]
                 );
 
                 // Incremental deltas for AVAILABLE shop stock
