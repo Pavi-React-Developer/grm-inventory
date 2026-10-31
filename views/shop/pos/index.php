@@ -53,9 +53,6 @@
         </div>
         <div class="d-flex align-items-center gap-2">
             <span class="badge bg-success-subtle text-success px-3 py-2 rounded-pill"><i class="bi bi-circle-fill me-1 small"></i> QR Scanner Active</span>
-            <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="clearCartBtn">
-                <i class="bi bi-trash me-1"></i> Clear Cart
-            </button>
         </div>
     </div>
 
@@ -92,33 +89,6 @@
                     <div class="d-flex justify-content-between align-items-center mt-2">
                         <small class="text-muted"><i class="bi bi-info-circle me-1"></i>Each scanned piece is added one by one.</small>
                         <small class="text-primary fw-semibold" id="scanStatus">Ready for next scan...</small>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Last Scanned Product Details Card -->
-            <div class="card border-0 shadow-sm rounded-4 bg-white" id="lastScannedCard" style="display:none;">
-                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
-                    <h6 class="fw-bold text-success mb-0"><i class="bi bi-check-circle-fill me-2"></i>Last Scanned Piece</h6>
-                    <span id="lastScanTagBadge"></span>
-                </div>
-                <div class="card-body pt-0">
-                    <div class="d-flex align-items-center">
-                        <div id="lastScanImgContainer" class="rounded-3 bg-light border me-3 d-flex align-items-center justify-content-center overflow-hidden" style="width:70px; height:70px; min-width:70px;">
-                            <i class="bi bi-bag-check text-primary fs-2"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="fw-bold text-dark mb-1" id="lastScanName">Product Name</h5>
-                            <div class="d-flex flex-wrap gap-2 small text-muted mb-1">
-                                <span class="badge bg-light text-dark border">SKU: <span id="lastScanSku"></span></span>
-                                <span class="badge bg-light text-dark border">Size: <span id="lastScanSize"></span></span>
-                                <span class="badge bg-light text-dark border">Color: <span id="lastScanColor"></span></span>
-                            </div>
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div class="fs-5 fw-bold text-primary">₹<span id="lastScanPrice">0.00</span></div>
-                                <span class="badge bg-success-subtle text-success" id="lastScanStock">Stock: 0 Available</span>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -594,7 +564,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         playDuplicateAlert();
                         scanStatus.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> <strong class="text-danger">DAMAGED ITEM:</strong> Piece Tag <code>${escapeHtml(variant.scanned_piece_tag || code)}</code> is recorded in Damage #<strong>${escapeHtml(variant.damage_number)}</strong>. Cannot bill this product.`;
                         scanStatus.className = 'text-danger fw-bold';
-                        highlightLastScanned(variant, 'danger');
                         return;
                     }
 
@@ -604,7 +573,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         playDuplicateAlert();
                         scanStatus.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> <strong class="text-danger">ALREADY SOLD:</strong> Piece Tag <code>${escapeHtml(variant.scanned_piece_tag || code)}</code> was already sold in Invoice #<strong>${escapeHtml(variant.already_sold_invoice)}</strong>! Cannot bill again.`;
                         scanStatus.className = 'text-danger fw-bold';
-                        highlightLastScanned(variant, 'danger');
                         return;
                     }
 
@@ -622,8 +590,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     // 4. Valid new piece scan -> Add to cart as a separate individual row (one by one)
                     playBeep(980, 0.12);
                     addItemToCart(variant);
-                    showLastScanned(variant);
-                    
                     const tagInfo = variant.scanned_piece_tag ? ` [Tag: ${variant.scanned_piece_tag}]` : '';
                     scanStatus.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i> Added: <strong>${escapeHtml(variant.product_name)}</strong> (${escapeHtml(variant.size_name || 'Free')}) ${tagInfo}`;
                     scanStatus.className = 'text-success fw-bold';
@@ -703,44 +669,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (row) {
             row.classList.add('table-warning');
             setTimeout(() => row.classList.remove('table-warning'), 1500);
-        }
-    }
-
-    function showLastScanned(variant) {
-        document.getElementById('lastScannedCard').style.display = 'block';
-        document.getElementById('lastScanName').innerText = variant.product_name;
-        document.getElementById('lastScanSku').innerText = variant.sku;
-        document.getElementById('lastScanSize').innerText = variant.size_name || 'N/A';
-        document.getElementById('lastScanColor').innerText = variant.color_name || 'N/A';
-        const pVal = parseFloat(variant.selling_price > 0 ? variant.selling_price : (variant.mrp || 0));
-        document.getElementById('lastScanPrice').innerText = pVal.toFixed(2);
-        document.getElementById('lastScanStock').innerText = `Stock: ${variant.available_stock} Available`;
-
-        const imgContainer = document.getElementById('lastScanImgContainer');
-        if (imgContainer) {
-            if (variant.image) {
-                imgContainer.innerHTML = `<img src="${variant.image}" alt="" class="rounded-3" style="width:100%; height:100%; object-fit: cover;">`;
-            } else {
-                imgContainer.innerHTML = `<i class="bi bi-bag-check text-primary fs-2"></i>`;
-            }
-        }
-
-        const tagBadge = document.getElementById('lastScanTagBadge');
-        if (tagBadge) {
-            if (variant.scanned_piece_tag) {
-                tagBadge.innerHTML = `<span class="badge bg-dark font-monospace text-warning"><i class="bi bi-qr-code me-1"></i>${escapeHtml(variant.scanned_piece_tag)}</span>`;
-            } else {
-                tagBadge.innerHTML = '';
-            }
-        }
-    }
-
-    function highlightLastScanned(variant, alertType = 'danger') {
-        showLastScanned(variant);
-        const card = document.getElementById('lastScannedCard');
-        if (card) {
-            card.classList.add('border', 'border-2', `border-${alertType}`);
-            setTimeout(() => card.classList.remove('border', 'border-2', `border-${alertType}`), 2500);
         }
     }
 
@@ -1149,15 +1077,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('click', function(e) {
         if (!e.target.closest('#custSuggestions') && !e.target.closest('#custPhone') && !e.target.closest('#custName')) {
             if (custSuggestions) custSuggestions.style.display = 'none';
-        }
-    });
-
-    document.getElementById('clearCartBtn').addEventListener('click', function() {
-        if (cart.length > 0 && confirm('Clear all current cart items?')) {
-            cart = [];
-            scannedPieceTags.clear();
-            renderCart();
-            focusQR();
         }
     });
 

@@ -17,9 +17,7 @@
             <p class="text-muted small mb-0">Manage damaged goods dispatches, excess inventory returns, seasonal stock transfers, and delivery gate passes.</p>
         </div>
         <div class="d-flex gap-2">
-            <a href="<?= url('shop/inventory') ?>" class="btn btn-outline-secondary rounded-pill px-3 fw-semibold">
-                <i class="bi bi-boxes me-1"></i> Shop Inventory
-            </a>
+           
             <?php if (hasPermission('return_to_warehouse', 'create')): ?>
             <a href="<?= url('shop/return-to-warehouse/create') ?>" class="btn btn-danger rounded-pill px-4 shadow-sm fw-semibold">
                 <i class="bi bi-plus-circle me-1"></i> New Return Dispatch
@@ -218,11 +216,6 @@
                                         <a href="<?= url('shop/return-to-warehouse/view/' . $r['id']) ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3" title="View Manifest Details">
                                             <i class="bi bi-eye-fill me-1"></i> View
                                         </a>
-                                        <?php if (hasPermission('return_to_warehouse', 'gatepass') || hasPermission('return_to_warehouse', 'print')): ?>
-                                        <a href="<?= url('shop/return-to-warehouse/gatepass/' . $r['id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print Delivery Gate Pass">
-                                            <i class="bi bi-file-earmark-text"></i>
-                                        </a>
-                                        <?php endif; ?>
                                         <?php if (hasPermission('return_to_warehouse', 'print')): ?>
                                         <a href="<?= url('shop/return-to-warehouse/label/' . $r['id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print Carton QR Label">
                                             <i class="bi bi-qr-code"></i>

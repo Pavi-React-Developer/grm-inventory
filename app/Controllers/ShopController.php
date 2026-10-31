@@ -2296,13 +2296,16 @@ class ShopController {
 
         $warehouses = Database::fetchAll("SELECT id, name, code, address FROM warehouses WHERE is_active = 1 ORDER BY name ASC");
         
-        // Fetch inventory items available in this shop (both AVAILABLE and DAMAGED stock) with complete metadata
+        // Return-to-warehouse accepts both available and damaged shop stock; the scan flow preserves each item's condition.
         $inventory = Database::fetchAll(
             "SELECT sb.variant_id, sb.stock_state, sb.quantity,
                     pv.sku, pv.qr_code, pv.mrp, pv.selling_price, pv.image_url as variant_image,
                     p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
                     p.category_code, p.subcategory_code, p.sub_subcategory_code, p.material, p.hsn_code, p.description,
                     c.id as category_id, c.name as category_name,
+                    COALESCE(wc.category_type, 'NORMAL') as category_type,
+                    COALESCE(pv.is_complementary, 0) as is_complementary,
+                    pv.qr_type, pv.pack_quantity,
                     sc.id as subcategory_id, sc.name as subcategory_name,
                     ssc.id as sub_subcategory_id, ssc.name as sub_subcategory_name,
                     sz.name as size_name, sz.code as size_code,
@@ -2311,11 +2314,13 @@ class ShopController {
              JOIN product_variants pv ON sb.variant_id = pv.id
              JOIN products p ON pv.product_id = p.id
              LEFT JOIN categories c ON p.category_id = c.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
              LEFT JOIN sub_subcategories ssc ON p.sub_subcategory_id = ssc.id
              LEFT JOIN sizes sz ON pv.size_id = sz.id
              LEFT JOIN colors cl ON pv.color_id = cl.id
-             WHERE sb.location_type = 'SHOP' AND sb.location_id = ? AND sb.quantity > 0
+             WHERE sb.location_type = 'SHOP' AND sb.location_id = ?
+               AND sb.stock_state IN ('AVAILABLE', 'DAMAGED') AND sb.quantity > 0
              ORDER BY c.name ASC, p.name ASC, pv.sku ASC, sb.stock_state ASC",
             [$shopId]
         );
@@ -3080,6 +3085,7 @@ class ShopController {
         header('Content-Type: application/json');
 
         $rawCode = trim($_REQUEST['code'] ?? $_REQUEST['query'] ?? $_REQUEST['search'] ?? '');
+        $isReturnLookup = ($_REQUEST['purpose'] ?? '') === 'return';
         $shop = ShopService::getActiveShop();
         $shopId = (int)($shop['id'] ?? 1);
 
@@ -3432,7 +3438,7 @@ class ShopController {
                 || strtoupper((string)($foundVariant['qr_type'] ?? '')) === 'SERIES_BATCH'
                 || (int)($foundVariant['pack_quantity'] ?? 1) > 1
             );
-            if (!$isSeries && !$isComplementary) {
+            if (!$isReturnLookup && !$isSeries && !$isComplementary) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'Normal products cannot be scanned into the shop damage module. Only Series or Complementary products are allowed.',
@@ -3440,7 +3446,7 @@ class ShopController {
                 exit;
             }
 
-            if ((float)($foundVariant['available_qty'] ?? 0) <= 0) {
+            if (!$isReturnLookup && (float)($foundVariant['available_qty'] ?? 0) <= 0) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'This QR/product has no available stock in the selected shop. Sold or out-of-stock items cannot be added to damage.',

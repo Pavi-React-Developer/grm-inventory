@@ -32,11 +32,11 @@ class Role {
         ],
         'WHATSAPP'   => [
             'whatsapp_dashboard', 'whatsapp_orders', 'whatsapp_inward', 'whatsapp_inventory', 'whatsapp_damage', 'whatsapp_returns', 'whatsapp_return_to_wh', 'whatsapp_expenses',
-            'reports_whatsapp'
+            'reports_whatsapp', 'reports_online'
         ],
         'WEBSITE'    => [
             'website_dashboard', 'website_orders', 'website_inward', 'website_inventory', 'website_damage', 'website_returns', 'website_return_to_wh', 'website_expenses',
-            'reports_website'
+            'reports_website', 'reports_online'
         ],
         'SHOP'       => [
             'shop', 'shop_cash', 'shop_inward', 'shop_stock', 'shop_damage', 'pos', 'sales',
@@ -379,6 +379,7 @@ class Role {
                     'reports_overview'      => ['name' => 'Overview & P&L', 'icon' => 'bi-pie-chart', 'desc' => 'Executive summary, revenue, gross profit, expenditure, and net profitability', 'department' => 'ALL'],
                     'reports_profitability' => ['name' => 'Revenue & Loss', 'icon' => 'bi-cash-coin', 'desc' => 'Cost of goods sold (COGS), margins, revenue breakdown, and financial health', 'department' => 'ALL'],
                     'reports_sales'         => ['name' => 'Multi-Channel Sales', 'icon' => 'bi-cart-check', 'desc' => 'Combined sales analytics across POS Counter, WhatsApp, and Website', 'department' => 'ALL'],
+                    'reports_online'       => ['name' => 'Online & Digital Reports', 'icon' => 'bi-broadcast', 'desc' => 'Consolidated Website and WhatsApp channel sales, orders, payments, and performance', 'department' => 'ALL'],
                     'reports_website'       => ['name' => 'Website Reports', 'icon' => 'bi-globe2', 'desc' => 'Online visitor conversion, sales volume, courier delivery rate, and returns', 'department' => 'WEBSITE'],
                     'reports_whatsapp'      => ['name' => 'WhatsApp Reports', 'icon' => 'bi-whatsapp', 'desc' => 'WhatsApp B2B sales throughput, top buyers, channel revenue, and growth', 'department' => 'WHATSAPP'],
                     'reports_production'    => ['name' => 'Production Reports', 'icon' => 'bi-gear', 'desc' => 'Floor cutting yields, tailor piece-rates, sewing output, and scrap wastage', 'department' => 'PRODUCTION'],

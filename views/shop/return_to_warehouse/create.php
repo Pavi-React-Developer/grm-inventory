@@ -76,6 +76,10 @@ thead th.sticky-col-select {
     box-shadow: 0 4px 10px rgba(22, 163, 74, 0.12) !important;
 }
 
+#inventoryLedgerCard {
+    display: none !important;
+}
+
 /* Modal Piece Tag Chips in Configuration Box */
 .modal-piece-chip {
     background-color: #ffffff;
@@ -119,11 +123,6 @@ thead th.sticky-col-select {
                 <h3 class="fw-bold mb-1 text-dark">Initiate Return to Warehouse</h3>
                 <p class="text-muted small mb-0">Select shop inventory products, inspect full product specifications &amp; piece QR codes, and dispatch return consignments.</p>
             </div>
-        </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <a href="<?= url('shop/inventory') ?>" class="btn btn-outline-secondary rounded-pill px-3 btn-sm fw-semibold">
-                <i class="bi bi-boxes me-1"></i> Shop Stock Inventory
-            </a>
         </div>
     </div>
 
@@ -250,7 +249,32 @@ thead th.sticky-col-select {
                 <div class="alert alert-info border-0 rounded-4 shadow-sm mb-3 py-2 px-3 d-flex align-items-center justify-content-between">
                     <div class="d-flex align-items-center small">
                         <i class="bi bi-info-circle-fill fs-5 text-primary me-2"></i>
-                        <span><strong>How to Return Products:</strong> Click the <strong>Select checkbox</strong> (or click <strong>+</strong>) on any product below to add it to the <strong>Selected Return Items</strong> section. Click <strong>"View"</strong> to inspect piece QR codes.</span>
+                        <span><strong>Scan &amp; Send Flow:</strong> Scan an available or damaged product QR/SKU. Each scanned product will be added to the floating warehouse dispatch list below.</span>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
+                    <div class="card-body p-3">
+                        <label for="damageScanInput" class="form-label fw-bold small text-dark mb-2">
+                            <i class="bi bi-qr-code-scan text-danger me-1"></i>Scan Product for Warehouse Dispatch
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-danger text-white border-0"><i class="bi bi-upc-scan"></i></span>
+                            <input type="text" id="damageScanInput" class="form-control font-monospace" placeholder="Scan available or damaged QR/SKU and press Enter" autocomplete="off" autofocus>
+                            <button type="button" class="btn btn-danger" id="btnDamageScan">Add to Dispatch</button>
+                        </div>
+                        <div class="d-flex align-items-center gap-3 mt-2 small">
+                            <span class="text-muted fw-semibold">Scan from:</span>
+                            <label class="form-check mb-0">
+                                <input class="form-check-input" type="radio" name="scanStockPool" value="AVAILABLE" checked>
+                                <span class="form-check-label text-success fw-semibold">Available Stock</span>
+                            </label>
+                            <label class="form-check mb-0">
+                                <input class="form-check-input" type="radio" name="scanStockPool" value="DAMAGED">
+                                <span class="form-check-label text-danger fw-semibold">Damaged Stock</span>
+                            </label>
+                        </div>
+                        <small id="damageScanStatus" class="text-muted d-block mt-2">Available and damaged shop stock can be scanned for warehouse dispatch.</small>
                     </div>
                 </div>
 
@@ -320,45 +344,10 @@ thead th.sticky-col-select {
                 <!-- ========================================================================= -->
                 <!-- 3. SHOP STOCK LEDGER & AVAILABLE INVENTORY SELECTOR -->
                 <!-- ========================================================================= -->
-                <!-- Search & Filter Card -->
-                <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
-                    <div class="card-body p-3">
-                        <div class="row g-2 align-items-center">
-                            <div class="col-md-5">
-                                <div class="input-group input-group-sm">
-                                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
-                                    <input type="text" id="filterSearchInput" class="form-control border-start-0 ps-0" placeholder="Search by Product Name, SKU, Style Code, Category...">
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <select id="filterCategorySelect" class="form-select form-select-sm bg-light">
-                                    <option value="ALL">All Categories</option>
-                                    <?php foreach ($categories as $cat): ?>
-                                        <option value="<?= e($cat) ?>"><?= e($cat) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <select id="filterStockPoolSelect" class="form-select form-select-sm bg-light">
-                                    <option value="ALL">All Stock Pools</option>
-                                    <option value="AVAILABLE">Available Stock</option>
-                                    <option value="DAMAGED">Damaged Stock</option>
-                                </select>
-                            </div>
-                            <div class="col-md-2 d-flex gap-1 justify-content-end">
-                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnSelectAllVisible">
-                                    <i class="bi bi-check-all me-1"></i> Select All
-                                </button>
-                                <button type="button" class="btn btn-sm btn-light border rounded-circle" id="btnClearSelection" title="Clear Selection">
-                                    <i class="bi bi-x-lg"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+               
 
                 <!-- Ledger Table Card -->
-                <div class="card border-0 shadow-sm rounded-4 bg-white">
+                <div class="card border-0 shadow-sm rounded-4 bg-white" id="inventoryLedgerCard">
                     <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <h5 class="fw-bold text-dark mb-0"><i class="bi bi-boxes me-2 text-primary"></i>3. Shop Stock Ledger &amp; Product Selector</h5>
                         <span class="badge bg-light text-dark border rounded-pill px-3 py-2"><?= count($inventory) ?> Items in Shop</span>
@@ -400,6 +389,8 @@ thead th.sticky-col-select {
                                             data-variant-id="<?= (int)$item['variant_id'] ?>"
                                             data-sku="<?= e(strtolower($item['sku'])) ?>"
                                             data-sku-raw="<?= e($item['sku']) ?>"
+                                            data-qr-code="<?= e(strtolower($item['qr_code'] ?? '')) ?>"
+                                            data-qr-code-raw="<?= e($item['qr_code'] ?? '') ?>"
                                             data-name="<?= e(strtolower($item['product_name'])) ?>"
                                             data-name-raw="<?= e($item['product_name']) ?>"
                                             data-code="<?= e(strtolower($item['product_code'] ?? '')) ?>"
@@ -410,6 +401,11 @@ thead th.sticky-col-select {
                                             data-color="<?= e($item['color_name'] ?? 'Std') ?>"
                                             data-image="<?= e($imgUrl) ?>"
                                             data-stock-state="<?= e($item['stock_state']) ?>"
+                                            data-piece-tags="<?= e(implode('|', $item['piece_tags'] ?? [])) ?>"
+                                            data-category-type="<?= e($item['category_type'] ?? 'NORMAL') ?>"
+                                            data-complementary="<?= !empty($item['is_complementary']) ? '1' : '0' ?>"
+                                            data-qr-type="<?= e($item['qr_type'] ?? '') ?>"
+                                            data-pack-quantity="<?= (int)($item['pack_quantity'] ?? 1) ?>"
                                             data-price="<?= (float)($item['selling_price'] ?? $item['mrp'] ?? 0) ?>"
                                             data-max-stock="<?= (int)$qty ?>">
                                             
@@ -505,14 +501,7 @@ thead th.sticky-col-select {
                                                 </select>
                                             </td>
 
-                                            <!-- 10. Action: Exact Replica View Button -->
-                                            <td class="text-end pe-4">
-                                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 shadow-sm fw-semibold" 
-                                                        onclick="openProductDetailModal(<?= (int)$item['variant_id'] ?>)" 
-                                                        title="View Complete Product Details, Images &amp; Piece QR Codes">
-                                                    <i class="bi bi-eye me-1"></i> View
-                                                </button>
-                                            </td>
+                                            <td class="text-end pe-4"></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
@@ -1459,6 +1448,63 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectedProductsTableBody = document.getElementById('selectedProductsTableBody');
     const selectedTableTotalQty = document.getElementById('selectedTableTotalQty');
     const selectedTableTotalValue = document.getElementById('selectedTableTotalValue');
+    const damageScanInput = document.getElementById('damageScanInput');
+    const damageScanStatus = document.getElementById('damageScanStatus');
+    function selectScannedRow(row, code) {
+        const idx = row.getAttribute('data-idx');
+        const checkbox = document.querySelector(`.item-select[data-idx="${idx}"]`);
+        const qtyInput = document.querySelector(`.return-qty[data-idx="${idx}"]`);
+        const maxQty = parseInt(row.getAttribute('data-max-stock')) || 1;
+        const categoryType = (row.getAttribute('data-category-type') || 'NORMAL').toUpperCase();
+        const allowMultiple = categoryType === 'SERIES'
+            || row.getAttribute('data-complementary') === '1'
+            || (row.getAttribute('data-qr-type') || '').toUpperCase() === 'SERIES_BATCH'
+            || parseInt(row.getAttribute('data-pack-quantity')) > 1;
+        if (checkbox && !checkbox.checked) checkbox.checked = true;
+        else if (qtyInput && allowMultiple) qtyInput.value = Math.min(maxQty, (parseInt(qtyInput.value) || 0) + 1);
+        calculateConsignment();
+        const stockState = row.getAttribute('data-stock-state') || 'AVAILABLE';
+        damageScanStatus.innerHTML = `<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>Added: ${escapeHtml(row.getAttribute('data-name-raw') || code)} (${stockState})</span>`;
+        damageScanInput.value = '';
+        damageScanInput.focus();
+    }
+
+    function scanDamagedProduct() {
+        const code = (damageScanInput?.value || '').trim().toLowerCase();
+        if (!code) return;
+        const selectedStockPool = document.querySelector('input[name="scanStockPool"]:checked')?.value || 'AVAILABLE';
+        const rows = Array.from(document.querySelectorAll('.inv-row'));
+        const row = rows.find(candidate => {
+            if ((candidate.getAttribute('data-stock-state') || 'AVAILABLE').toUpperCase() !== selectedStockPool) return false;
+            const values = [
+                candidate.getAttribute('data-sku'), candidate.getAttribute('data-code'),
+                candidate.getAttribute('data-qr-code'), candidate.getAttribute('data-name'), candidate.getAttribute('data-piece-tags')
+            ].filter(Boolean).join('|').toLowerCase().split('|');
+            return values.some(value => value === code || value.includes(code));
+        });
+        if (row) {
+            selectScannedRow(row, code);
+            return;
+        }
+
+        damageScanStatus.innerHTML = '<span class="text-primary fw-semibold"><span class="spinner-border spinner-border-sm me-1"></span>Looking up QR code...</span>';
+        fetch(`<?= url('api/shop/damage/lookup-scan') ?>?purpose=return&code=${encodeURIComponent(code)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) throw new Error(data.message || 'Product not found');
+                const variantId = String(data.variant_id || data.id || '');
+                const matchedRow = rows.find(candidate =>
+                    String(candidate.getAttribute('data-variant-id')) === variantId
+                    && (candidate.getAttribute('data-stock-state') || 'AVAILABLE').toUpperCase() === selectedStockPool
+                );
+                if (!matchedRow) throw new Error('This product has no available or damaged stock in the selected shop.');
+                selectScannedRow(matchedRow, code);
+            })
+            .catch(error => {
+                damageScanStatus.innerHTML = `<span class="text-danger fw-semibold"><i class="bi bi-x-circle me-1"></i>${escapeHtml(error.message)}</span>`;
+                damageScanInput.select();
+            });
+    }
 
     calculateConsignment = function() {
         let selectedCount = 0;
@@ -1480,6 +1526,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const variantId = row.getAttribute('data-variant-id') || '';
             const maxStock = parseInt(row.getAttribute('data-max-stock')) || 0;
+            const categoryType = (row.getAttribute('data-category-type') || 'NORMAL').toUpperCase();
+            const allowMultiple = categoryType === 'SERIES'
+                || row.getAttribute('data-complementary') === '1'
+                || (row.getAttribute('data-qr-type') || '').toUpperCase() === 'SERIES_BATCH'
+                || parseInt(row.getAttribute('data-pack-quantity')) > 1;
             const unitPrice = parseFloat(row.getAttribute('data-price')) || 0;
             const skuRaw = row.getAttribute('data-sku-raw') || '';
             const nameRaw = row.getAttribute('data-name-raw') || '';
@@ -1500,12 +1551,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (selectedRowBadge) selectedRowBadge.classList.remove('d-none');
 
                 hiddenInputs.forEach(h => h.disabled = false);
-                qtyInput.disabled = false;
-                if (minusBtn) minusBtn.disabled = false;
-                if (plusBtn) plusBtn.disabled = false;
+                qtyInput.disabled = !allowMultiple;
+                if (minusBtn) minusBtn.disabled = !allowMultiple;
+                if (plusBtn) plusBtn.disabled = !allowMultiple;
                 classSelect.disabled = false;
 
                 let qty = parseInt(qtyInput.value) || 0;
+                if (!allowMultiple) qty = 1;
                 if (qty <= 0) qty = 1; // When selected, ensure at least 1
                 if (qty > maxStock) qty = maxStock;
                 qtyInput.value = qty;
@@ -1527,6 +1579,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 const thumbnailHtml = imgRaw 
                     ? `<img src="${escapeHtml(imgRaw)}" class="rounded border shadow-sm flex-shrink-0" style="width: 38px; height: 38px; object-fit: cover;">`
                     : `<div class="rounded bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center flex-shrink-0 shadow-sm" style="width: 38px; height: 38px;"><i class="bi bi-box-seam fs-6"></i></div>`;
+                const productTypeLabel = row.getAttribute('data-complementary') === '1'
+                    ? 'Complementary Product'
+                    : (categoryType === 'SERIES' || (row.getAttribute('data-qr-type') || '').toUpperCase() === 'SERIES_BATCH' || parseInt(row.getAttribute('data-pack-quantity')) > 1)
+                        ? 'Series Product'
+                        : 'Normal Product';
+                const productTypeClass = productTypeLabel === 'Complementary Product'
+                    ? 'bg-warning-subtle text-warning-emphasis'
+                    : productTypeLabel === 'Series Product'
+                        ? 'bg-info-subtle text-info-emphasis'
+                        : 'bg-secondary-subtle text-secondary';
 
                 selectedTableRowsHtml += `
                     <tr class="selected-product-entry" data-idx="${idx}" data-variant-id="${variantId}">
@@ -1535,7 +1597,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="d-flex align-items-center gap-2">
                                 ${thumbnailHtml}
                                 <div>
-                                    <div class="fw-bold text-dark small">${escapeHtml(nameRaw)}</div>
+                                    <div class="fw-bold text-dark small">${escapeHtml(nameRaw)} <span class="badge ${productTypeClass} ms-1" style="font-size: 9px;">${productTypeLabel}</span></div>
                                     <small class="text-muted font-monospace">${escapeHtml(codeRaw)}</small>
                                 </div>
                             </div>
@@ -1549,12 +1611,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         </td>
                         <td class="text-center">
                             <div class="input-group input-group-sm" style="width: 105px; margin: 0 auto;">
-                                <button type="button" class="btn btn-outline-secondary px-2 sec-qty-minus" data-idx="${idx}" title="Decrease Qty">
+                                <button type="button" class="btn btn-outline-secondary px-2 sec-qty-minus" data-idx="${idx}" ${allowMultiple ? '' : 'disabled'} title="Decrease Qty">
                                     <i class="bi bi-dash"></i>
                                 </button>
                                 <input type="number" class="form-control form-control-sm text-center font-monospace fw-bold sec-qty-input px-1" 
-                                       value="${qty}" min="1" max="${maxStock}" data-idx="${idx}">
-                                <button type="button" class="btn btn-outline-secondary px-2 sec-qty-plus" data-idx="${idx}" title="Increase Qty">
+                                       value="${qty}" min="1" max="${maxStock}" data-idx="${idx}" ${allowMultiple ? '' : 'disabled'}>
+                                <button type="button" class="btn btn-outline-secondary px-2 sec-qty-plus" data-idx="${idx}" ${allowMultiple ? '' : 'disabled'} title="Increase Qty">
                                     <i class="bi bi-plus"></i>
                                 </button>
                             </div>
@@ -1572,9 +1634,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td class="text-end fw-bold text-success font-monospace">₹${lineTotal.toFixed(2)}</td>
                         <td class="text-end pe-4">
                             <div class="d-flex justify-content-end gap-1">
-                                <button type="button" class="btn btn-sm btn-outline-primary rounded-circle p-1" style="width: 28px; height: 28px;" onclick="openProductDetailModal(${variantId})" title="Inspect Piece QR Codes">
-                                    <i class="bi bi-eye"></i>
-                                </button>
                                 <button type="button" class="btn btn-sm btn-outline-danger rounded-circle p-1 sec-remove-btn" style="width: 28px; height: 28px;" data-idx="${idx}" title="Remove Product">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -1646,6 +1705,24 @@ document.addEventListener('DOMContentLoaded', function() {
             selectedChipsTray.innerHTML = '<small class="text-muted fst-italic" style="font-size: 10px;">Select products from the table to dispatch.</small>';
         }
     };
+
+    document.getElementById('btnDamageScan')?.addEventListener('click', scanDamagedProduct);
+    damageScanInput?.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            scanDamagedProduct();
+        }
+    });
+    // Also accept a manually typed/pasted QR when the field is submitted by a scanner
+    // configured without a trailing Enter key.
+    damageScanInput?.addEventListener('change', scanDamagedProduct);
+    document.querySelectorAll('input[name="scanStockPool"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const label = this.value === 'DAMAGED' ? 'damaged' : 'available';
+            if (damageScanStatus) damageScanStatus.textContent = `Scanner is ready for ${label} stock.`;
+            damageScanInput?.focus();
+        });
+    });
 
     // Attach listeners for interactive controls in Section 2 table
     function attachSelectedSectionListeners() {

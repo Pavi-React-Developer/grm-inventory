@@ -2035,6 +2035,7 @@ class ShopService {
 
                 $isSold = false;
                 $isDamaged = false;
+                $isPartialDamage = false;
                 $isReturned = false;
                 $isExchanged = false;
                 $isRestocked = false;
@@ -2044,7 +2045,15 @@ class ShopService {
                 $returnInfo = null;
                 $exchangeInfo = null;
 
-                if (isset($damagedTagsMap[$tag])) {
+                if ($isSingleQrProduct
+                    && (float)($item['damaged_quantity'] ?? 0) > 0
+                    && (float)($item['available_quantity'] ?? $item['quantity'] ?? 0) > 0
+                ) {
+                    // A Series/Complementary QR represents a stock pool, not one physical piece.
+                    // Keep the QR partially damaged when both good and damaged quantities remain.
+                    $isPartialDamage = true;
+                    $pieceStatus = 'Partially Damaged';
+                } elseif (isset($damagedTagsMap[$tag])) {
                     $isDamaged = true;
                     $damageInfo = $damagedTagsMap[$tag];
                     $pieceStatus = 'Damaged';
@@ -2105,6 +2114,7 @@ class ShopService {
                     'status'               => $pieceStatus,
                     'is_sold'              => $isSold,
                     'is_damaged'           => $isDamaged,
+                    'is_partial_damage'    => $isPartialDamage,
                     'is_returned'          => $isReturned,
                     'is_exchanged'         => $isExchanged,
                     'is_restocked'         => $isRestocked,
@@ -3720,6 +3730,27 @@ class ShopService {
                 $classification = strtoupper($it['classification'] ?? ($stockState === 'DAMAGED' ? 'DAMAGED' : 'GOOD'));
 
                 if ($variantId <= 0 || $qty <= 0) continue;
+
+                // Normal garments are individual QR pieces and may only be returned one at a time.
+                // Series and complementary products represent multiple pieces and may use a quantity.
+                $variantType = Database::fetchOne(
+                    "SELECT COALESCE(wc.category_type, 'NORMAL') as category_type,
+                            COALESCE(pv.is_complementary, 0) as is_complementary,
+                            pv.qr_type, pv.pack_quantity
+                     FROM product_variants pv
+                     JOIN products p ON pv.product_id = p.id
+                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                     WHERE pv.id = ? LIMIT 1",
+                    [$variantId]
+                );
+                $variantCategory = strtoupper(trim((string)($variantType['category_type'] ?? 'NORMAL')));
+                $allowsMultiple = $variantCategory === 'SERIES'
+                    || !empty($variantType['is_complementary'])
+                    || strtoupper((string)($variantType['qr_type'] ?? '')) === 'SERIES_BATCH'
+                    || (int)($variantType['pack_quantity'] ?? 1) > 1;
+                if (!$allowsMultiple && $qty > 1) {
+                    throw new RuntimeException("Normal product returns are limited to one individual QR piece per dispatch.");
+                }
 
                 // Validate shop stock
                 $balanceRec = StockBalance::findByKey($variantId, 'SHOP', $shopId, $stockState);

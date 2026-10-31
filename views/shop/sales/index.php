@@ -282,9 +282,6 @@
                                 </td>
                                 <td class="text-center pe-4" style="white-space: nowrap;">
                                     <div class="d-flex justify-content-center gap-1">
-                                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 btn-view-sale-item" data-id="<?= $it['id'] ?>" title="View Sold Garment Specs">
-                                            <i class="bi bi-eye-fill"></i>
-                                        </button>
                                         <a href="<?= url('shop/pos/invoice/' . $it['sale_id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print POS Invoice">
                                             <i class="bi bi-printer"></i>
                                         </a>
@@ -850,14 +847,6 @@ document.addEventListener('DOMContentLoaded', function() {
         soldModalInstance = new bootstrap.Modal(soldModalEl);
     }
 
-    document.querySelectorAll('.btn-view-sale-item').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const saleItemId = this.getAttribute('data-id');
-            const viewMode = this.getAttribute('data-view') || 'specs';
-            if (!saleItemId) return;
-            openSoldProductModal(saleItemId, viewMode);
-        });
-    });
 });
 
 window.openSoldProductModal = function(saleItemId, defaultView = 'specs') {

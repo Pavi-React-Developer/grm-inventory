@@ -383,9 +383,19 @@ $currSearch = $filters['search'] ?? '';
         <div class="card-header bg-white border-bottom pt-3 pb-0 px-4">
             <ul class="nav nav-tabs card-header-tabs" id="shopInventoryTabs" role="tablist">
                 <li class="nav-item">
-                    <a class="nav-link fw-semibold active text-primary border-primary border-bottom-0" href="<?= url('shop/inventory') ?>">
-                        <i class="bi bi-box-seam me-1"></i> Live Product Stock Balances (<?= count($inventory ?? []) ?> items)
-                    </a>
+                    <button type="button" class="nav-link product-type-tab active text-primary" data-product-type="NORMAL">
+                        <i class="bi bi-box me-1"></i> Normal
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button type="button" class="nav-link product-type-tab" data-product-type="SERIES">
+                        <i class="bi bi-boxes me-1"></i> Series
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button type="button" class="nav-link product-type-tab" data-product-type="COMPLEMENTARY">
+                        <i class="bi bi-gift me-1"></i> Complementary
+                    </button>
                 </li>
             </ul>
         </div>
@@ -489,7 +499,8 @@ $currSearch = $filters['search'] ?? '';
                                         data-exchanged="<?= $itemExcQty ?>"
                                         data-price="<?= (float)$item['selling_price'] ?>"
                                         data-name="<?= e(strtolower($item['product_name'] ?? '')) ?>"
-                                        data-search="<?= e($searchHaystack) ?>">
+                                        data-search="<?= e($searchHaystack) ?>"
+                                        data-product-type="<?= e($productType) ?>">
                                         
                                         <td class="price-checkbox-col text-center" style="display: none;">
                                             <input type="checkbox" class="form-check-input price-item-checkbox" 
@@ -2177,4 +2188,24 @@ window.switchStockMetric = function(metric, btn) {
         categoryStockChartInstance.update();
     }
 };
+
+// Quick product-type tabs for the stock ledger.
+document.querySelectorAll('.product-type-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        const selectedType = this.dataset.productType || 'ALL';
+        document.querySelectorAll('.product-type-tab').forEach(item => item.classList.remove('active', 'text-primary'));
+        this.classList.add('active', 'text-primary');
+
+        let visibleCount = 0;
+        document.querySelectorAll('#shopInventoryTableBody .inv-item-row').forEach(row => {
+            const visible = selectedType === 'ALL' || row.dataset.productType === selectedType;
+            row.classList.toggle('d-none', !visible);
+            if (visible) visibleCount++;
+        });
+
+        const countBadge = document.getElementById('tableItemCountBadge');
+        if (countBadge) countBadge.textContent = `${visibleCount} Items Listed`;
+    });
+});
+document.querySelector('.product-type-tab[data-product-type="NORMAL"]')?.click();
 </script>

@@ -30,11 +30,6 @@
             </div>
         </div>
         <div class="d-flex gap-2">
-            <?php if (hasPermission('return_to_warehouse', 'gatepass') || hasPermission('return_to_warehouse', 'print')): ?>
-            <a href="<?= url('shop/return-to-warehouse/gatepass/' . $return['id']) ?>" target="_blank" class="btn btn-outline-primary rounded-pill px-3 btn-sm fw-semibold">
-                <i class="bi bi-file-earmark-text me-1"></i> Print Delivery Gate Pass
-            </a>
-            <?php endif; ?>
             <?php if (hasPermission('return_to_warehouse', 'print')): ?>
             <a href="<?= url('shop/return-to-warehouse/label/' . $return['id']) ?>" target="_blank" class="btn btn-outline-secondary rounded-pill px-3 btn-sm fw-semibold">
                 <i class="bi bi-qr-code me-1"></i> Print Carton QR Sticker
@@ -970,12 +965,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 <!-- Action Prompts -->
                 <div class="row g-3">
-                    <div class="col-md-6">
-                        <a href="<?= url('shop/return-to-warehouse/gatepass/' . $return['id']) ?>" target="_blank" class="btn btn-primary w-100 py-2 rounded-4 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2">
-                            <i class="bi bi-file-earmark-text fs-5"></i>
-                            <span>Print Delivery Gate Pass</span>
-                        </a>
-                    </div>
                     <div class="col-md-6">
                         <a href="<?= url('shop/return-to-warehouse/label/' . $return['id']) ?>" target="_blank" class="btn btn-outline-secondary w-100 py-2 rounded-4 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2">
                             <i class="bi bi-qr-code fs-5"></i>

@@ -430,12 +430,14 @@ $metrics = $metrics ?? [
                                 $isExchanged = !empty($pt['meta']['is_exchange_dispatched']) || !empty($pt['is_exchanged']) || $st === 'EXCHANGED';
                                 $isWarehouseReturned = !empty($pt['meta']['is_warehouse_returned']) || !empty($pt['is_returned']) || ($st === 'RETURNED') || ($st === 'RETURNED_TO_WAREHOUSE');
                                 $isDamaged = !empty($pt['is_damaged']) || ($st === 'DAMAGED');
+                                $isPartialDamage = !empty($pt['is_partial_damage']) || $st === 'PARTIALLY DAMAGED';
                                 $isSold = !empty($pt['is_sold']) || ($st === 'SOLD');
                                 
                                 $cardBorder = match(true) {
                                     $isRestocked => 'border-success shadow',
                                     $isExchanged => 'border-primary',
                                     $isWarehouseReturned => 'border-secondary-subtle',
+                                    $isPartialDamage     => 'border-warning',
                                     $isDamaged           => 'border-danger',
                                     $isSold              => 'border-secondary-subtle',
                                     $st === 'AVAILABLE'  => 'border-success',
@@ -447,6 +449,7 @@ $metrics = $metrics ?? [
                                     $isRestocked => '<span class="badge bg-success text-white fw-bold shadow-sm"><i class="bi bi-arrow-repeat me-1"></i>RESTOCKED (RETURN)</span>',
                                     $isExchanged => '<span class="badge text-white fw-bold shadow-sm" style="background-color: #7c3aed;"><i class="bi bi-arrow-left-right me-1"></i>EXCHANGED (OUT)</span>',
                                     $isWarehouseReturned => '<span class="badge bg-secondary text-white fw-bold shadow-sm"><i class="bi bi-box-arrow-right me-1"></i>RETURNED (WAREHOUSE)</span>',
+                                    $isPartialDamage     => '<span class="badge bg-warning-subtle text-warning-emphasis border border-warning fw-bold"><i class="bi bi-exclamation-circle me-1"></i>PARTIALLY DAMAGED</span>',
                                     $isDamaged   => '<span class="badge bg-danger text-white fw-bold shadow-sm"><i class="bi bi-shield-x me-1"></i>DAMAGED (QUARANTINED)</span>',
                                     $isSold      => '<span class="badge bg-secondary text-white fw-bold shadow-sm"><i class="bi bi-cart-check-fill me-1"></i>SOLD IN INVOICE</span>',
                                     $st === 'AVAILABLE'  => '<span class="badge bg-success-subtle text-success border border-success-subtle fw-bold"><i class="bi bi-check-circle me-1"></i>AVAILABLE IN STOCK</span>',

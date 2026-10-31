@@ -480,6 +480,7 @@ if (!empty($authUser['shop_name'])) {
                         || hasPermission('reports_overview', 'view')
                         || hasPermission('reports_profitability', 'view')
                         || hasPermission('reports_sales', 'view')
+                        || hasPermission('reports_online', 'view')
                         || hasPermission('reports_website', 'view')
                         || hasPermission('reports_whatsapp', 'view')
                         || hasPermission('reports_production', 'view')
@@ -504,6 +505,9 @@ if (!empty($authUser['shop_name'])) {
                             <?php endif; ?>
                             <?php if (hasPermission('reports_sales', 'view') || hasPermission('reports', 'view')): ?>
                             <li><a href="<?= url('reports/sales') ?>" class="<?= ($activeMenu ?? '') === 'reports-sales' ? 'active' : '' ?>"><i class="bi bi-cart-check me-1"></i> Multi-Channel Sales</a></li>
+                            <?php endif; ?>
+                            <?php if (hasPermission('reports_online', 'view') || hasPermission('reports', 'view')): ?>
+                            <li><a href="<?= url('reports/online') ?>" class="<?= ($activeMenu ?? '') === 'reports-online' ? 'active' : '' ?>"><i class="bi bi-broadcast me-1 text-primary"></i> Online &amp; Digital Reports</a></li>
                             <?php endif; ?>
                             <?php if (hasPermission('reports_website', 'view') || hasPermission('reports', 'view')): ?>
                             <li><a href="<?= url('reports/website') ?>" class="<?= ($activeMenu ?? '') === 'reports-website' ? 'active' : '' ?>"><i class="bi bi-globe2 me-1 text-info"></i> Website Reports</a></li>
