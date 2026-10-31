@@ -1282,31 +1282,48 @@ class WarehouseController {
         }
         unset($b);
 
+        $pieceListQty = $totalAvailable;
         $whAllocClause = $selectedWarehouseId ? " AND wa.warehouse_id = " . (int)$selectedWarehouseId : "";
         $allocatedRows = Database::fetchAll(
             "SELECT ai.selected_qr_codes, ai.requested_qty, ai.dispatched_qty,
-                    wa.warehouse_id, wa.status
+                    wa.warehouse_id, wa.status, wa.allocation_number
              FROM allocation_items ai
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
              WHERE ai.variant_id = ? AND wa.status NOT IN ('CANCELLED', 'REJECTED')$whAllocClause",
             [$variantId]
         );
         $pendingAllocationQtyByWarehouse = [];
+        $reservedAllocationQty = 0;
+        $reservedTags = [];
         foreach ($allocatedRows as $ar) {
-            if (in_array(strtoupper((string)$ar['status']), ['REQUESTED', 'APPROVED', 'PICKING', 'PICKED', 'PACKING', 'PACKED'], true)) {
+            $allocationStatus = strtoupper((string)$ar['status']);
+            $isPendingDispatch = in_array($allocationStatus, ['REQUESTED', 'APPROVED', 'PICKING', 'PICKED', 'PACKING', 'PACKED'], true);
+            if ($isPendingDispatch) {
                 $warehouseId = (int)$ar['warehouse_id'];
                 $pendingQty = max(0, (float)$ar['requested_qty'] - (float)$ar['dispatched_qty']);
                 $pendingAllocationQtyByWarehouse[$warehouseId] = ($pendingAllocationQtyByWarehouse[$warehouseId] ?? 0) + $pendingQty;
+
+                foreach (explode(',', (string)($ar['selected_qr_codes'] ?? '')) as $tag) {
+                    $tag = strtoupper(trim($tag));
+                    if ($tag !== '') {
+                        $reservedTags[$tag] = [
+                            'allocation_number' => (string)$ar['allocation_number'],
+                            'allocation_status' => $allocationStatus,
+                        ];
+                    }
+                }
             }
         }
         foreach ($pendingAllocationQtyByWarehouse as $warehouseId => $pendingQty) {
             $deductQty = min((int)($warehouseAvailMap[$warehouseId] ?? 0), (int)$pendingQty);
+            $reservedAllocationQty += $deductQty;
             $warehouseAvailMap[$warehouseId] = max(0, (int)($warehouseAvailMap[$warehouseId] ?? 0) - $deductQty);
             $allWarehouseTotalAvailable = max(0, $allWarehouseTotalAvailable - $deductQty);
             if (!$selectedWarehouseId || (int)$selectedWarehouseId === (int)$warehouseId) {
                 $totalAvailable = max(0, $totalAvailable - $deductQty);
             }
         }
+        $totalReserved += $reservedAllocationQty;
 
         $c1 = !empty($variant['category_name']) ? strtoupper(substr(trim($variant['category_name']), 0, 1)) : (!empty($variant['cat_code']) ? strtoupper(substr(trim($variant['cat_code']), 0, 1)) : '');
         $c2 = !empty($variant['subcategory_name']) ? strtoupper(substr(trim($variant['subcategory_name']), 0, 1)) : (!empty($variant['sub_code']) ? strtoupper(substr(trim($variant['sub_code']), 0, 1)) : '');
@@ -1345,9 +1362,13 @@ class WarehouseController {
         $monthStr = sprintf("%02d", date('n', $mfgTime)); // 2-digit month: 09
         $year2Digit = date('y', $mfgTime); // 2-digit year: 26
 
-        // Allocated piece tags remain unavailable until their allocation is cancelled or rejected.
+        // Dispatched tags leave warehouse stock; pending tags remain visible as reserved.
         $usedTags = [];
         foreach ($allocatedRows as $ar) {
+            $allocationStatus = strtoupper((string)$ar['status']);
+            if (in_array($allocationStatus, ['REQUESTED', 'APPROVED', 'PICKING', 'PICKED', 'PACKING', 'PACKED'], true)) {
+                continue;
+            }
             if (!empty($ar['selected_qr_codes'])) {
                 $spl = explode(',', $ar['selected_qr_codes']);
                 foreach ($spl as $st) {
@@ -1612,7 +1633,7 @@ class WarehouseController {
         }
 
         if ($isSeriesBatch || $isComplementary) {
-            $packQty = (int)$totalAvailable;
+            $packQty = (int)$pieceListQty;
             if ($packQty <= 0) $packQty = max(1, (int)(!empty($variant['pack_quantity']) ? $variant['pack_quantity'] : 1));
 
             // Resolve proper Master QR Code for the Pack
@@ -1712,7 +1733,7 @@ class WarehouseController {
 
             $qrPayload = "SERIES|{$displayBrand}|{$variant['sku']}|{$singleMasterCode}|QTY:{$packQty}|MRP:{$fmtMrp}|Sell:{$fmtSelling}" . ($isComplementary ? "|COMP:1" : "");
 
-            if ($totalAvailable > 0) {
+            if ($pieceListQty > 0) {
                 $pieceQRs = [
                     [
                         'piece_no'              => 1,
@@ -1727,6 +1748,9 @@ class WarehouseController {
                         'color_name'            => $variant['color_name'] ?? 'Std',
                         'is_series'             => true,
                         'is_complementary'      => $isComplementary,
+                        'is_reserved'           => isset($reservedTags[$tagCode]),
+                        'allocation_number'     => $reservedTags[$tagCode]['allocation_number'] ?? null,
+                        'allocation_status'     => $reservedTags[$tagCode]['allocation_status'] ?? null,
                         'pack_quantity'         => $packQty,
                         'series_start_code'     => $singleMasterCode,
                         'series_end_code'       => $seriesEndCode,
@@ -1742,9 +1766,31 @@ class WarehouseController {
                 $pieceQRs = [];
             }
         } else {
+            foreach ($reservedTags as $reservedTag => $allocation) {
+                if (count($pieceQRs) >= $pieceListQty) break;
+                if (isset($usedTags[$reservedTag]) || isset($exchangeOutTags[$reservedTag])) continue;
+                $pieceQRs[] = [
+                    'piece_no'           => count($pieceQRs) + 1,
+                    'tag_code'           => $reservedTag,
+                    'sku'                => $variant['sku'],
+                    'brand_name'         => $displayBrand,
+                    'cost_price'         => $costPrice,
+                    'mrp'                => $basePrice,
+                    'selling_price'      => $sellingPrice,
+                    'size_name'          => $variant['size_name'] ?? 'Free',
+                    'color_name'         => $variant['color_name'] ?? 'Std',
+                    'category_name'      => $variant['category_name'] ?? '',
+                    'category_hierarchy' => $categoryHierarchy,
+                    'is_reserved'        => true,
+                    'allocation_number'  => $allocation['allocation_number'],
+                    'allocation_status'  => $allocation['allocation_status'],
+                ];
+                $usedTags[$reservedTag] = true;
+            }
+
             // First, add all explicitly restocked returned tags into available piece list!
             foreach (array_keys($restockedTags) as $rTag) {
-                if (!isset($exchangeOutTags[$rTag]) && !isset($usedTags[$rTag]) && count($pieceQRs) < $totalAvailable) {
+                if (!isset($exchangeOutTags[$rTag]) && !isset($usedTags[$rTag]) && count($pieceQRs) < $pieceListQty) {
                     $pieceQRs[] = [
                         'piece_no'           => count($pieceQRs) + 1,
                         'tag_code'           => $rTag,
@@ -1807,7 +1853,7 @@ class WarehouseController {
 
             // Add verified inward production tags that are available (not used/damaged/sold/allocated)
             foreach ($productionPieceTags as $prodTag) {
-                if (count($pieceQRs) >= $totalAvailable) break;
+                if (count($pieceQRs) >= $pieceListQty) break;
                 if (!isset($exchangeOutTags[$prodTag]) && !isset($usedTags[$prodTag]) && !isset($restockedTags[$prodTag])) {
                     $pieceQRs[] = [
                         'piece_no'           => count($pieceQRs) + 1,
@@ -1827,7 +1873,7 @@ class WarehouseController {
 
             // Third, add verified inward tags recorded in stock_transactions (Stickered Inward, Purchase Inward)
             foreach ($inwardedTagsFromTx as $txTag) {
-                if (count($pieceQRs) >= $totalAvailable) break;
+                if (count($pieceQRs) >= $pieceListQty) break;
                 if (!isset($exchangeOutTags[$txTag]) && !isset($usedTags[$txTag]) && !isset($restockedTags[$txTag]) && !in_array($txTag, $productionPieceTags)) {
                     $pieceQRs[] = [
                         'piece_no'           => count($pieceQRs) + 1,
@@ -1851,7 +1897,8 @@ class WarehouseController {
                 && empty($inwardedTagsFromTx)
                 && empty($usedTags)
                 && empty($restockedTags)
-                && count($pieceQRs) < $totalAvailable
+                && empty($reservedTags)
+                && count($pieceQRs) < $pieceListQty
             ) {
                 $baseTagPrefix = "{$catPrefix}{$monthStr}{$year2Digit}";
                 $maxSeq = 0;
@@ -1870,7 +1917,7 @@ class WarehouseController {
                 }
 
                 $currSeq = $maxSeq + 1;
-                while (count($pieceQRs) < $totalAvailable) {
+                while (count($pieceQRs) < $pieceListQty) {
                     $pieceSeq = sprintf("%02d", $currSeq);
                     $tagCode = "{$baseTagPrefix}{$pieceSeq}";
 
@@ -1893,6 +1940,17 @@ class WarehouseController {
                     if ($currSeq > 9999) break;
                 }
             }
+        }
+
+        if (empty($isSeriesBatch) && empty($isComplementary)) {
+            usort($pieceQRs, static fn(array $a, array $b): int => strnatcasecmp(
+                (string)($a['tag_code'] ?? ''),
+                (string)($b['tag_code'] ?? '')
+            ));
+            foreach ($pieceQRs as $index => &$piece) {
+                $piece['piece_no'] = $index + 1;
+            }
+            unset($piece);
         }
 
         $warehouses = Database::fetchAll("SELECT * FROM warehouses WHERE is_active = 1 ORDER BY name ASC");
@@ -2165,6 +2223,8 @@ class WarehouseController {
             'totalAvailable'             => $totalAvailable,
             'totalDamaged'               => $totalDamaged,
             'totalReserved'              => $totalReserved,
+            'pieceListQty'               => $pieceListQty,
+            'reservedAllocationQty'      => $reservedAllocationQty,
             'allWarehouseTotalAvailable' => $allWarehouseTotalAvailable,
             'warehouseAvailMap'          => $warehouseAvailMap,
             'selectedWarehouseId'        => $selectedWarehouseId,

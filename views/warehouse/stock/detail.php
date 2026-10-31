@@ -293,7 +293,7 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link tab-green active fw-bold d-flex align-items-center gap-2 py-2 px-3" id="available-pieces-tab" data-bs-toggle="pill" data-bs-target="#available-pieces-pane" type="button" role="tab" aria-controls="available-pieces-pane" aria-selected="true">
                     <i class="bi bi-qr-code-scan"></i>
-                    <span>Available Pieces &amp; QR Labels</span>
+                    <span>Warehouse Pieces &amp; QR Labels</span>
                     <span class="badge rounded-pill font-monospace">
                         <?= number_format($totalAvailable ?? 0) ?>
                     </span>
@@ -343,25 +343,29 @@
         <!-- TAB 1: AVAILABLE PIECE QR CODES & LABELS (Sellable Inventory)     -->
         <!-- ================================================================= -->
         <div class="tab-pane fade show active p-4" id="available-pieces-pane" role="tabpanel" aria-labelledby="available-pieces-tab">
+            <?php
+                $availablePieceCount = count(array_filter($pieceQRs ?? [], static fn($piece) => empty($piece['is_reserved'])));
+                $reservedPieceCount = count($pieceQRs ?? []) - $availablePieceCount;
+            ?>
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 pb-2 border-bottom">
                 <div>
                     <h5 class="card-title mb-0 fw-bold text-dark">
-                        <i class="bi bi-check2-circle me-1 text-success"></i> <?= (!empty($pieceQRs[0]['is_series']) || !empty($pieceQRs[0]['is_complementary'])) ? 'Master Series / Complementary Pack QR Label' : 'Active Sellable Garment Pieces' ?>
+                        <i class="bi bi-check2-circle me-1 text-success"></i> <?= (!empty($pieceQRs[0]['is_series']) || !empty($pieceQRs[0]['is_complementary'])) ? 'Master Series / Complementary Pack QR Label' : 'Warehouse Pieces (Available &amp; Reserved)' ?>
                         <?php if (!empty($selectedWarehouse)): ?>
                             <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-2 fw-normal fs-6">
                                 <i class="bi bi-geo-alt-fill me-1"></i><?= e($selectedWarehouse['name']) ?> (<?= number_format($totalAvailable) ?> pcs)
                             </span>
                         <?php endif; ?>
                     </h5>
-                    <small class="text-muted"><?= (!empty($pieceQRs[0]['is_series']) || !empty($pieceQRs[0]['is_complementary'])) ? 'Single 1-Master QR code represents all ' . ($pieceQRs[0]['pack_quantity'] ?? $totalAvailable) . ' pieces in this bundle/pack. Scanning auto-loads the full pack quantity.' : 'Direct piece-by-piece QR stickers & barcodes for each physical garment ready for dispatch or retail' ?></small>
+                    <small class="text-muted"><?= (!empty($pieceQRs[0]['is_series']) || !empty($pieceQRs[0]['is_complementary'])) ? 'Single 1-Master QR code represents all ' . ($pieceQRs[0]['pack_quantity'] ?? $totalAvailable) . ' pieces in this bundle/pack. Scanning auto-loads the full pack quantity.' : 'Reserved allocation pieces remain visible until dispatch; dispatched pieces are removed from warehouse stock.' ?></small>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
                     <button type="button" class="btn btn-sm btn-outline-dark fw-semibold shadow-sm" onclick="openPrinterSettingsModal()" title="Calibrate TSC TE244 printer alignment and dimensions">
                         <i class="bi bi-sliders me-1 text-warning"></i> Printer Settings
                     </button>
-                    <?php if (!empty($pieceQRs)): ?>
+                    <?php if ($availablePieceCount > 0): ?>
                         <button type="button" class="btn btn-sm btn-success fw-semibold shadow-sm" onclick="printAllPiecesDirectly()">
-                            <i class="bi bi-printer me-1"></i> <?= (!empty($pieceQRs[0]['is_series']) || !empty($pieceQRs[0]['is_complementary'])) ? 'Print Master Pack Sticker (1)' : 'Print All Available Stickers (' . count($pieceQRs) . ')' ?>
+                            <i class="bi bi-printer me-1"></i> <?= (!empty($pieceQRs[0]['is_series']) || !empty($pieceQRs[0]['is_complementary'])) ? 'Print Master Pack Sticker (1)' : 'Print Available Stickers (' . $availablePieceCount . ')' ?>
                         </button>
                     <?php endif; ?>
                 </div>
@@ -393,7 +397,7 @@
                         </div>
                         <div class="col-auto">
                             <span class="badge bg-white text-dark border font-monospace py-2 px-3 shadow-xs" id="pieceCardsFilterCountBadge">
-                                <i class="bi bi-qr-code me-1 text-primary"></i>Showing <?= count($pieceQRs) ?> of <?= count($pieceQRs) ?> pieces
+                                <i class="bi bi-qr-code me-1 text-primary"></i><?= count($pieceQRs) ?> pieces · <?= $availablePieceCount ?> available · <?= $reservedPieceCount ?> reserved
                             </span>
                         </div>
                         <div class="col-auto ms-auto d-flex align-items-center gap-2">
@@ -409,10 +413,10 @@
                             $fmtSelling = ($pq['selling_price'] == (int)$pq['selling_price']) ? (int)$pq['selling_price'] : number_format($pq['selling_price'], 2, '.', '');
                             $qrPayload = $pq['tag_code'];
                             $isItemSeries = !empty($pq['is_series']) || !empty($pq['is_complementary']);
-                            $packQty = (int)($pq['pack_quantity'] ?? $totalAvailable);
+                            $packQty = (int)($pq['pack_quantity'] ?? ($pieceListQty ?? $totalAvailable));
                             $pieceSearchString = strtolower(htmlspecialchars(($pq['tag_code'] ?? '') . ' ' . ($pq['sku'] ?? '') . ' ' . ($variant['sku'] ?? '') . ' ' . ($variant['product_code'] ?? '') . ' ' . ($pq['size_name'] ?? '') . ' ' . ($pq['color_name'] ?? '') . ' ' . ($pq['category_hierarchy'] ?? '') . ' piece #' . ($pq['piece_no'] ?? ''), ENT_QUOTES, 'UTF-8'));
                         ?>
-                        <div class="col piece-card-col" data-search="<?= $pieceSearchString ?>" data-tag-code="<?= htmlspecialchars($pq['tag_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                        <div class="col piece-card-col" data-search="<?= $pieceSearchString ?>" data-tag-code="<?= htmlspecialchars($pq['tag_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>" data-reserved="<?= !empty($pq['is_reserved']) ? '1' : '0' ?>">
                             <div class="card border rounded-3 p-2.5 h-100 shadow-sm bg-white piece-card position-relative">
                                 <div class="d-flex align-items-center justify-content-between mb-1.5">
                                     <?php if ($isItemSeries): ?>
@@ -420,9 +424,15 @@
                                             <i class="bi bi-box-seam me-1"></i><?= !empty($pq['is_complementary']) ? 'Complementary Pack' : 'Master Series Pack' ?> (<?= $packQty ?> Pcs)
                                         </span>
                                     <?php else: ?>
-                                        <span class="badge bg-light text-muted border font-monospace" style="font-size: 0.68rem;">Piece #<?= $pq['piece_no'] ?> of <?= $totalAvailable ?></span>
+                                        <span class="badge bg-light text-muted border font-monospace" style="font-size: 0.68rem;">Piece #<?= $pq['piece_no'] ?> of <?= $pieceListQty ?? $totalAvailable ?></span>
                                     <?php endif; ?>
-                                    <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 0.68rem;"><i class="bi bi-check-circle me-1"></i>Available</span>
+                                    <?php if (!empty($pq['is_reserved'])): ?>
+                                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle" style="font-size: 0.68rem;" title="Allocation <?= e($pq['allocation_number'] ?? '') ?> · <?= e($pq['allocation_status'] ?? 'Reserved') ?>">
+                                            <i class="bi bi-lock-fill me-1"></i>Reserved<?= !empty($pq['allocation_number']) ? ' · ' . e($pq['allocation_number']) : '' ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 0.68rem;"><i class="bi bi-check-circle me-1"></i>Available</span>
+                                    <?php endif; ?>
                                 </div>
                                 
                                 <!-- Garment Tag Sticker Layout (Inward QR Format) -->
@@ -473,8 +483,9 @@
                                     </button>
                                     <button type="button" 
                                             class="btn btn-xs btn-outline-dark flex-fill fw-semibold py-1" 
-                                            onclick="printSinglePiece(<?= $index ?>)" title="Print Thermal Sticker">
-                                        <i class="bi bi-printer"></i> Print
+                                            onclick="printSinglePiece(<?= $index ?>)" title="<?= !empty($pq['is_reserved']) ? 'Reserved pieces cannot be reprinted as available stock' : 'Print Thermal Sticker' ?>"
+                                            <?= !empty($pq['is_reserved']) ? 'disabled' : '' ?>>
+                                        <i class="bi bi-printer"></i> <?= !empty($pq['is_reserved']) ? 'Reserved' : 'Print' ?>
                                     </button>
                                     <button type="button" 
                                             class="btn btn-xs btn-outline-secondary px-2 py-1" 
@@ -2075,12 +2086,13 @@ async function printLabel(labels, mode = 'all', pieceIndex = 0) {
  * Print all available stock pieces directly
  */
 function printAllPiecesDirectly() {
-    if (!PIECE_RECORDS || PIECE_RECORDS.length === 0) {
-        alert('No pieces available to print.');
+    const availablePieces = (PIECE_RECORDS || []).filter(item => !item.is_reserved);
+    if (availablePieces.length === 0) {
+        alert('No available pieces to print. Reserved allocation pieces cannot be printed as available stock.');
         return;
     }
 
-    const batchLabels = PIECE_RECORDS.map(item => ({
+    const batchLabels = availablePieces.map(item => ({
         sku: item.sku,
         basePrice: parseFloat(item.mrp || 0).toFixed(2),
         discountPrice: parseFloat(item.selling_price || item.mrp || 0).toFixed(2),
@@ -2119,6 +2131,7 @@ function printAllDamagedPiecesDirectly() {
 function printSinglePiece(index) {
     if (!PIECE_RECORDS[index]) return;
     const item = PIECE_RECORDS[index];
+    if (item.is_reserved) return;
 
     const labelPayload = [{
         sku: item.sku,
@@ -2509,6 +2522,8 @@ function filterAvailablePieceCards(query) {
 
     const cards = document.querySelectorAll('#availablePieceCardsGrid .piece-card-col');
     let matchCount = 0;
+    let availableMatchCount = 0;
+    let reservedMatchCount = 0;
     let firstMatch = null;
 
     cards.forEach(card => {
@@ -2519,6 +2534,11 @@ function filterAvailablePieceCards(query) {
         if (isMatch) {
             card.style.display = '';
             matchCount++;
+            if (card.dataset.reserved === '1') {
+                reservedMatchCount++;
+            } else {
+                availableMatchCount++;
+            }
             if (!firstMatch && term) firstMatch = card;
         } else {
             card.style.display = 'none';
@@ -2528,10 +2548,10 @@ function filterAvailablePieceCards(query) {
     const badge = document.getElementById('pieceCardsFilterCountBadge');
     if (badge) {
         if (!term) {
-            badge.innerHTML = `<i class="bi bi-qr-code me-1 text-primary"></i>Showing ${cards.length} of ${cards.length} pieces`;
+            badge.innerHTML = `<i class="bi bi-qr-code me-1 text-primary"></i>${cards.length} pieces · ${availableMatchCount} available · ${reservedMatchCount} reserved`;
             badge.className = 'badge bg-white text-dark border font-monospace py-2 px-3 shadow-xs';
         } else {
-            badge.innerHTML = `<i class="bi bi-search me-1 text-success"></i>Found ${matchCount} of ${cards.length} pieces`;
+            badge.innerHTML = `<i class="bi bi-search me-1 text-success"></i>Found ${matchCount} · ${availableMatchCount} available · ${reservedMatchCount} reserved`;
             badge.className = 'badge bg-success-subtle text-success border border-success-subtle font-monospace py-2 px-3 shadow-xs';
         }
     }
