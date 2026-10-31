@@ -50,21 +50,11 @@ if ($metrics['total_spend'] >= 10000) {
             </div>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <!-- Launch POS for this customer -->
-            <?php if (hasPermission('pos', 'create') || hasPermission('pos', 'view')): ?>
-            <a href="<?= url('shop/pos?cust=' . urlencode($cust['name']) . '&phone=' . urlencode($cust['phone'] ?? '')) ?>" 
-               class="btn btn-success rounded-pill px-3 shadow-sm fw-bold">
-                <i class="bi bi-cart-plus-fill me-1"></i> Launch POS Bill
-            </a>
-            <?php endif; ?>
             <?php if (hasPermission('customers', 'edit')): ?>
             <button type="button" class="btn btn-outline-primary rounded-pill px-3 shadow-sm fw-semibold" data-bs-toggle="modal" data-bs-target="#editCustomerModal">
                 <i class="bi bi-pencil-square me-1"></i> Edit Profile
             </button>
             <?php endif; ?>
-            <button type="button" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm" onclick="window.print()">
-                <i class="bi bi-printer me-1"></i> Print
-            </button>
         </div>
     </div>
 
@@ -116,12 +106,6 @@ if ($metrics['total_spend'] >= 10000) {
                             </div>
                         </div>
 
-                        <div class="col-6 col-md-3">
-                            <span class="text-muted small fw-semibold d-block text-uppercase" style="font-size: 11px;">Loyalty Points</span>
-                            <div class="fw-bold text-warning fs-6">
-                                <i class="bi bi-award-fill me-1"></i><?= number_format((int)$cust['loyalty_points']) ?> Points
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -464,10 +448,6 @@ if ($metrics['total_spend'] >= 10000) {
                                         <th class="bg-light text-muted small">GSTIN Number</th>
                                         <td class="font-monospace"><?= e($cust['gst_number'] ?? 'Not registered') ?></td>
                                     </tr>
-                                    <tr>
-                                        <th class="bg-light text-muted small">Loyalty Points</th>
-                                        <td class="fw-bold text-warning"><?= number_format((int)$cust['loyalty_points']) ?> pts</td>
-                                    </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -559,10 +539,6 @@ if ($metrics['total_spend'] >= 10000) {
                         <div class="col-12 col-sm-6">
                             <label class="form-label small fw-bold text-dark mb-1">GSTIN Number</label>
                             <input type="text" name="gst_number" class="form-control form-control-sm font-monospace text-uppercase" value="<?= e($cust['gst_number'] ?? '') ?>">
-                        </div>
-                        <div class="col-12 col-sm-6">
-                            <label class="form-label small fw-bold text-dark mb-1">Loyalty Points</label>
-                            <input type="number" name="loyalty_points" class="form-control form-control-sm" value="<?= (int)$cust['loyalty_points'] ?>" min="0">
                         </div>
                         <div class="col-12">
                             <div class="form-check form-switch mt-1">

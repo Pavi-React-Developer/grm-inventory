@@ -16,16 +16,6 @@
             <h2 class="fw-bold text-dark mb-0">Selled Products Register</h2>
             <p class="text-muted small mb-0">Complete itemized sales ledger, product-level transactions, and piece-level serial QR traceability.</p>
         </div>
-        <div class="d-flex gap-2">
-            <?php if (hasPermission('pos', 'view') || hasPermission('pos', 'create')): ?>
-            <a href="<?= url('shop/pos') ?>" class="btn btn-primary rounded-pill px-4 shadow-sm fw-semibold">
-                <i class="bi bi-plus-circle me-1"></i> Open POS Billing
-            </a>
-            <?php endif; ?>
-            <button onclick="window.print()" class="btn btn-outline-secondary rounded-pill px-3 fw-semibold">
-                <i class="bi bi-printer me-1"></i> Print Ledger
-            </button>
-        </div>
     </div>
 
     <!-- 4 KPI Summary Cards -->
@@ -178,7 +168,7 @@
                         <th class="text-end" style="width: 13%;">Rate &amp; Discount</th>
                         <th class="text-end" style="width: 10%;">Net Total</th>
                         <th class="text-center" style="width: 8%;">Mode</th>
-                        <th class="text-end pe-4" style="width: 8%;">Action</th>
+                        <th class="text-center pe-4" style="width: 8%;">Action</th>
                     </tr>
                 </thead>
                 <tbody id="salesTableBody">
@@ -205,23 +195,14 @@
                                 data-amount="<?= (float)($it['total_amount'] ?? 0) ?>">
                                 <td class="ps-4 text-muted small fw-bold sales-idx"><?= $idx + 1 ?></td>
                                 <td>
-                                    <div class="d-flex align-items-center">
-                                        <?php if (!empty($it['image'])): ?>
-                                            <img src="<?= e($it['image']) ?>" alt="" class="rounded-3 border me-2 flex-shrink-0" style="width: 42px; height: 42px; object-fit: cover;">
-                                        <?php else: ?>
-                                            <div class="rounded-3 bg-light border me-2 flex-shrink-0 d-flex align-items-center justify-content-center text-secondary" style="width: 42px; height: 42px;">
-                                                <i class="bi bi-box-seam"></i>
-                                            </div>
-                                        <?php endif; ?>
-                                        <div>
-                                            <div class="fw-bold text-dark small text-truncate" style="max-width: 220px;" title="<?= e($it['product_name']) ?>">
-                                                <?= e($it['product_name']) ?>
-                                            </div>
-                                            <div class="text-muted font-monospace" style="font-size: 11px;">
-                                                <span class="fw-semibold text-primary"><?= e($it['sku']) ?></span>
-                                                <?= !empty($it['size_name']) ? ' • ' . e($it['size_name']) : '' ?>
-                                                <?= !empty($it['color_name']) ? ' • ' . e($it['color_name']) : '' ?>
-                                            </div>
+                                    <div>
+                                        <div class="fw-bold text-dark small text-truncate" style="max-width: 220px;" title="<?= e($it['product_name']) ?>">
+                                            <?= e($it['product_name']) ?>
+                                        </div>
+                                        <div class="text-muted font-monospace" style="font-size: 11px;">
+                                            <span class="fw-semibold text-primary"><?= e($it['sku']) ?></span>
+                                            <?= !empty($it['size_name']) ? ' • ' . e($it['size_name']) : '' ?>
+                                            <?= !empty($it['color_name']) ? ' • ' . e($it['color_name']) : '' ?>
                                         </div>
                                     </div>
                                 </td>
@@ -299,13 +280,10 @@
                                     ?>
                                     <span class="badge <?= $modeBadge ?> rounded-pill px-2" style="font-size: 10px;"><?= $it['payment_mode'] === 'CASH_UPI' ? 'Cash+UPI' : e($it['payment_mode']) ?></span>
                                 </td>
-                                <td class="text-end pe-4" style="white-space: nowrap;">
-                                    <div class="d-flex justify-content-end gap-1">
+                                <td class="text-center pe-4" style="white-space: nowrap;">
+                                    <div class="d-flex justify-content-center gap-1">
                                         <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 btn-view-sale-item" data-id="<?= $it['id'] ?>" title="View Sold Garment Specs">
                                             <i class="bi bi-eye-fill"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-primary rounded-pill px-2 shadow-sm" onclick="openSoldProductModal(<?= $it['id'] ?>, 'thermal')" title="View Exact Thermal POS Bill">
-                                            <i class="bi bi-receipt"></i>
                                         </button>
                                         <a href="<?= url('shop/pos/invoice/' . $it['sale_id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print POS Invoice">
                                             <i class="bi bi-printer"></i>
@@ -1363,4 +1341,3 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-

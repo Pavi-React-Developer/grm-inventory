@@ -4,15 +4,6 @@
         <span class="text-muted">Process retail POS returns, size &amp; color exchanges, and refunds for Shop customers</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="<?= url('shop/dashboard') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-speedometer2 me-1"></i> Dashboard
-        </a>
-        <a href="<?= url('shop/inventory') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-boxes me-1"></i> Shop Inventory
-        </a>
-        <a href="<?= url('shop/pos') ?>" class="btn btn-outline-primary">
-            <i class="bi bi-cart3 me-1"></i> POS Billing
-        </a>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newReturnModal">
             <i class="bi bi-plus-circle me-1"></i> New Return / Exchange
         </button>
@@ -157,13 +148,12 @@
                         <th>Amount / Balance</th>
                         <th>Status</th>
                         <th>Processed At</th>
-                        <th class="text-end pe-3">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($returns)): ?>
                         <tr>
-                            <td colspan="9" class="text-center py-5 text-muted">
+                            <td colspan="8" class="text-center py-5 text-muted">
                                 <i class="bi bi-inbox fs-1 d-block mb-2 text-secondary opacity-50"></i>
                                 No Shop returns or exchanges found matching your criteria.
                             </td>
@@ -234,11 +224,6 @@
                                     <div class="small text-dark"><?= date('d M Y', strtotime($row['created_at'])) ?></div>
                                     <small class="text-muted"><?= date('h:i A', strtotime($row['created_at'])) ?></small>
                                 </td>
-                                <td class="text-end pe-3">
-                                    <a href="<?= url('shop/returns/invoice/' . $row['id']) ?>" class="btn btn-sm btn-outline-primary" title="Print Return / Exchange Slip" target="_blank">
-                                        <i class="bi bi-printer me-1"></i> Slip
-                                    </a>
-                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -283,6 +268,13 @@
                                 <i class="bi bi-search me-1"></i> Lookup Order
                             </button>
                         </div>
+                    </div>
+                </div>
+
+                <div id="invoiceSelectionContainer" class="card border-0 shadow-sm mb-4 d-none">
+                    <div class="card-body">
+                        <div class="fw-bold text-dark mb-2">Select the invoice to process</div>
+                        <div id="invoiceSelectionList" class="list-group"></div>
                     </div>
                 </div>
 
@@ -367,6 +359,9 @@
                                         </p>
                                     </div>
                                 </div>
+                            </div>
+                            <div id="exchangeAlreadyUsedNotice" class="alert alert-warning py-2 px-3 mt-3 mb-0 d-none" role="alert">
+                                This invoice has already been used for an exchange. Direct return is still available for eligible items.
                             </div>
                         </div>
 
@@ -486,39 +481,6 @@
                                         <!-- Populated via JS -->
                                     </tbody>
                                 </table>
-                            </div>
-                        </div>
-
-                        <!-- Step 2B: Same Product Replacement (New Size/Color) Selection Card (Shown for EXCHANGE_SAME) -->
-                        <div id="sameExchangeSection" class="card border-0 shadow-sm mb-4" style="border-radius:12px; overflow:hidden;">
-                            <div class="card-header bg-white py-2 px-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                <div class="d-flex align-items-center gap-2">
-                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill font-monospace px-2.5 py-1" style="font-size:11px;">
-                                        <i class="bi bi-arrow-left-right me-1"></i>STEP 2B: REPLACEMENT (NEW) SIZE / COLOR SWAP
-                                    </span>
-                                    <span class="text-muted small">Choose new garment variant for each returned item</span>
-                                </div>
-                                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2.5 py-1" style="font-size:11px;">
-                                    Live Shop Stock Available
-                                </span>
-                            </div>
-                            <div class="card-body p-0">
-                                <div class="table-responsive">
-                                    <table class="table table-hover align-middle mb-0" id="sameExchangeTable" style="font-size:13px;">
-                                        <thead style="background:#f0fdf4; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#166534; font-weight:700;">
-                                            <tr>
-                                                <th class="ps-3" style="width:26%;">Old Returning Garment</th>
-                                                <th style="width:34%;">Choose New Replacement Variant (Size / Color)</th>
-                                                <th style="width:22%;">Scan New Piece Tag / Barcode</th>
-                                                <th class="text-end" style="width:12%;">New Price / Diff</th>
-                                                <th class="text-center pe-3" style="width:6%;">Remove</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="sameExchangeTbody">
-                                            <!-- Populated dynamically per checked return item -->
-                                        </tbody>
-                                    </table>
-                                </div>
                             </div>
                         </div>
 
@@ -661,6 +623,10 @@ window.recalculateSplitTotals = function() {
 };
 
 window.selectWaActionCard = function(mode) {
+    if (mode !== 'RETURN' && currentSaleExchangeUsed) {
+        alert('This invoice has already been used for an exchange. An invoice can be exchanged only once.');
+        return;
+    }
     document.getElementById('formReturnTypeInput').value = mode;
 
     // Reset all cards
@@ -688,13 +654,8 @@ window.selectWaActionCard = function(mode) {
     }
 
     const refundModeGroup = document.getElementById('refundModeGroup');
-    const sameSection = document.getElementById('sameExchangeSection');
-
     if (refundModeGroup) {
         refundModeGroup.style.display = (mode === 'RETURN') ? 'block' : 'none';
-    }
-    if (sameSection) {
-        sameSection.style.display = (mode === 'EXCHANGE_SAME') ? 'block' : 'none';
     }
     renderSameExchangeTable();
     recalculateSettlementSummary();
@@ -703,109 +664,18 @@ window.selectWaActionCard = function(mode) {
 let loadedOrderItemsMap = {};
 let currentSwapValues = {};
 let currentSwapTags = {};
+let currentSaleExchangeUsed = false;
 
 window.renderSameExchangeTable = function() {
-    const tbody = document.getElementById('sameExchangeTbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
+    const isExchange = document.getElementById('formReturnTypeInput')?.value === 'EXCHANGE_SAME';
+    document.querySelectorAll('.replacement-scan-controls').forEach(controls => {
+        const itemId = controls.getAttribute('data-item-id');
+        const checkbox = document.querySelector(`.item-select-cb[data-item-id="${itemId}"]`);
+        const isSelected = Boolean(checkbox?.checked);
+        controls.classList.toggle('d-none', !isExchange || !isSelected);
 
-    const checkboxes = document.querySelectorAll('.item-select-cb:checked');
-    if (checkboxes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted small"><i class="bi bi-arrow-left-right fs-4 d-block mb-1 text-secondary opacity-50"></i>Select at least one returning item in Step 2A above to choose replacement variants.</td></tr>';
-        return;
-    }
-
-    checkboxes.forEach(cb => {
-        const itemId = cb.getAttribute('data-item-id');
-        const item = loadedOrderItemsMap[itemId];
-        if (!item) return;
-
-        const qty = parseInt(document.getElementById('qty_' + itemId)?.value || 1) || 1;
-        const unitPrice = parseFloat(item.unit_price || 0);
-
-        let siblingOptions = `<option value="" data-price="${unitPrice}" data-name="${(item.product_name || '').replace(/"/g, '&quot;')}" data-code="${(item.product_code || '').replace(/"/g, '&quot;')}" data-sku="${(item.sku || '').replace(/"/g, '&quot;')}" data-size="${(item.size_name || '').replace(/"/g, '&quot;')}" data-color="${(item.color_name || '').replace(/"/g, '&quot;')}" data-stock="${item.available_stock ?? '20+'}">-- Keep Same / Even Swap (₹${unitPrice.toFixed(2)}) --</option>`;
-        if (item.sibling_variants && item.sibling_variants.length > 0) {
-            item.sibling_variants.forEach(s => {
-                const sPrice = parseFloat(s.price || unitPrice);
-                const isCurrent = (parseInt(s.id) === parseInt(item.variant_id));
-                siblingOptions += `<option value="${s.id}" data-price="${sPrice}" data-name="${(s.product_name || item.product_name || '').replace(/"/g, '&quot;')}" data-code="${(s.product_code || item.product_code || '').replace(/"/g, '&quot;')}" data-sku="${(s.sku || '').replace(/"/g, '&quot;')}" data-size="${(s.size_name || '').replace(/"/g, '&quot;')}" data-color="${(s.color_name || '').replace(/"/g, '&quot;')}" data-stock="${s.available_stock ?? 'Available'}">${s.size_name || 'Free'} / ${s.color_name || 'Standard'} — ₹${sPrice.toFixed(2)} ${isCurrent ? '(Current)' : ''}</option>`;
-            });
-        }
-
-        const prevVal = currentSwapValues[itemId] || '';
-        const prevTag = currentSwapTags[itemId] || '';
-
-        const tr = document.createElement('tr');
-        tr.id = `sameSwapRow_${itemId}`;
-        tr.innerHTML = `
-            <td class="ps-3 align-top py-3">
-                <div class="fw-bold text-dark" style="font-size:13px;">${item.product_name}</div>
-                <div class="small text-muted font-monospace mt-1">
-                    Old: <span class="badge bg-light text-dark border">${item.size_name || '-'} / ${item.color_name || '-'}</span>
-                    <span class="ms-1 badge bg-secondary-subtle text-secondary font-monospace">${item.sku || '-'}</span>
-                </div>
-                <div class="small text-secondary mt-1.5">
-                    Returning: <strong class="text-danger font-monospace" id="sameSwapQtyDisplay_${itemId}">${qty}</strong> pcs @ ₹${unitPrice.toFixed(2)}
-                </div>
-            </td>
-            <td class="align-top py-3">
-                <select name="items[${itemId}][exchange_variant_id]" id="swap_${itemId}" class="form-select form-select-sm border-success fw-semibold shadow-xs" onchange="updateSameSwapRow(${itemId}); recalculateSettlementSummary();" style="font-size:12.5px;">
-                    ${siblingOptions}
-                </select>
-
-                <!-- New Replacement Product Details Card -->
-                <div class="mt-2 p-2 rounded-3 border border-success border-opacity-25 bg-success bg-opacity-10 shadow-2xs" id="swapDetailsBox_${itemId}">
-                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
-                        <div>
-                            <div class="fw-bold text-dark d-flex align-items-center gap-1" style="font-size:12px;">
-                                <i class="bi bi-box-seam text-success"></i>
-                                <span id="swapProdName_${itemId}">${item.product_name}</span>
-                            </div>
-                            <div class="small text-muted font-monospace mt-1" style="font-size:11px;">
-                                New: <span class="badge bg-success text-white" id="swapSizeColorBadge_${itemId}">${item.size_name || '-'} / ${item.color_name || '-'}</span>
-                                <span class="ms-1 badge bg-white text-dark border font-monospace" id="swapSkuBadge_${itemId}">${item.sku || '-'}</span>
-                            </div>
-                        </div>
-                        <div class="text-end">
-                            <span class="badge bg-success-subtle text-success border border-success-subtle font-monospace" id="swapStockBadge_${itemId}" style="font-size:10px;">
-                                <i class="bi bi-shop me-1"></i><span id="swapStockQty_${itemId}">${item.available_stock ? item.available_stock + ' pcs in Shop' : 'Live Shop Stock'}</span>
-                            </span>
-                            <div class="small font-monospace text-success fw-bold mt-1" id="swapUnitPrice_${itemId}" style="font-size:11px;">
-                                ₹${unitPrice.toFixed(2)} / pc
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </td>
-            <td class="align-top py-3">
-                <div class="input-group input-group-sm shadow-xs">
-                    <span class="input-group-text bg-success-subtle text-success border-success" title="Scan Replacement Piece Tag or Barcode"><i class="bi bi-upc-scan"></i></span>
-                    <input type="text" id="swapTagInput_${itemId}" class="form-control form-control-sm font-monospace border-success" placeholder="Scan Swap Tag..." style="font-size:11px;"
-                           onkeydown="if(event.key === 'Enter') { event.preventDefault(); scanSameProductSwap(${itemId}, this.value, this); }">
-                    <button type="button" class="btn btn-sm btn-outline-success px-2 fw-semibold" onclick="scanSameProductSwap(${itemId}, document.getElementById('swapTagInput_${itemId}').value, document.getElementById('swapTagInput_${itemId}'))">OK</button>
-                </div>
-                <div class="scanned-replacement-tags-display d-flex flex-wrap gap-1 mt-1.5" id="swapTagsDisplay_${itemId}"></div>
-            </td>
-            <td class="text-end align-top py-3">
-                <div class="fw-bold font-monospace text-success fs-6" id="newRateText_${itemId}">₹${(unitPrice * qty).toFixed(2)}</div>
-                <small class="badge bg-light text-secondary border font-monospace mt-1" id="newDiffText_${itemId}">Even Swap</small>
-            </td>
-            <td class="text-center pe-3 align-top py-3">
-                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-2 py-1 fw-semibold d-inline-flex align-items-center gap-1 shadow-2xs" style="font-size:11px;" onclick="excludeReturnItem(${itemId})" title="Exclude this item from exchange">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-
-        const swapSel = document.getElementById(`swap_${itemId}`);
-        if (swapSel && prevVal) {
-            swapSel.value = prevVal;
-        }
-        if (prevTag) {
-            addSwapReplacementPieceTag(itemId, prevTag);
-        }
-        updateSameSwapRow(itemId);
+        const variantInput = document.getElementById('swapVariant_' + itemId);
+        if (variantInput) variantInput.disabled = !isExchange || !isSelected;
     });
 };
 
@@ -813,65 +683,15 @@ window.updateSameSwapRow = function(itemId) {
     const item = loadedOrderItemsMap[itemId];
     if (!item) return;
 
-    const qty = parseInt(document.getElementById('qty_' + itemId)?.value || 1) || 1;
-    const oldUnitPrice = parseFloat(item.unit_price || 0);
-    const oldLineTotal = oldUnitPrice * qty;
-
-    const swapSelect = document.getElementById('swap_' + itemId);
-    let newUnitPrice = oldUnitPrice;
-    let newProdName = item.product_name;
-    let newSize = item.size_name || '-';
-    let newColor = item.color_name || '-';
-    let newSku = item.sku || '-';
-    let newStock = item.available_stock ? item.available_stock + ' pcs in Shop' : 'Live Shop Stock';
-
-    if (swapSelect && swapSelect.value) {
-        const opt = swapSelect.options[swapSelect.selectedIndex];
-        newUnitPrice = parseFloat(opt.getAttribute('data-price') || oldUnitPrice);
-        newProdName = opt.getAttribute('data-name') || item.product_name;
-        newSize = opt.getAttribute('data-size') || '-';
-        newColor = opt.getAttribute('data-color') || '-';
-        newSku = opt.getAttribute('data-sku') || '-';
-        const st = opt.getAttribute('data-stock');
-        newStock = (st !== null && st !== '' && st !== 'undefined') ? (st + ' pcs in Shop') : 'Live Shop Stock';
-        currentSwapValues[itemId] = swapSelect.value;
-    } else {
-        currentSwapValues[itemId] = '';
-    }
-
-    // Update replacement preview details card
-    const prodNameEl = document.getElementById('swapProdName_' + itemId);
-    const sizeColorEl = document.getElementById('swapSizeColorBadge_' + itemId);
-    const skuEl = document.getElementById('swapSkuBadge_' + itemId);
-    const stockQtyEl = document.getElementById('swapStockQty_' + itemId);
-    const unitPriceEl = document.getElementById('swapUnitPrice_' + itemId);
-
-    if (prodNameEl) prodNameEl.textContent = newProdName;
-    if (sizeColorEl) sizeColorEl.textContent = `${newSize} / ${newColor}`;
-    if (skuEl) skuEl.textContent = newSku;
-    if (stockQtyEl) stockQtyEl.textContent = newStock;
-    if (unitPriceEl) unitPriceEl.textContent = `₹${newUnitPrice.toFixed(2)} / pc`;
-
-    const newLineTotal = newUnitPrice * qty;
-    const diff = newLineTotal - oldLineTotal;
-
-    const rateEl = document.getElementById('newRateText_' + itemId);
-    const diffEl = document.getElementById('newDiffText_' + itemId);
-    const qtyDisplay = document.getElementById('sameSwapQtyDisplay_' + itemId);
-
-    if (qtyDisplay) qtyDisplay.textContent = qty;
-    if (rateEl) rateEl.textContent = '₹' + newLineTotal.toFixed(2);
-    if (diffEl) {
-        if (Math.abs(diff) <= 0.01) {
-            diffEl.className = 'badge bg-success-subtle text-success border border-success-subtle font-monospace';
-            diffEl.textContent = 'Even Swap';
-        } else if (diff > 0) {
-            diffEl.className = 'badge bg-warning-subtle text-warning-emphasis border border-warning-subtle font-monospace';
-            diffEl.textContent = `+₹${diff.toFixed(2)} Extra`;
-        } else {
-            diffEl.className = 'badge bg-danger-subtle text-danger border border-danger-subtle font-monospace';
-            diffEl.textContent = `-₹${Math.abs(diff).toFixed(2)} Refund`;
-        }
+    const replacement = currentSwapValues[itemId];
+    const nameEl = document.getElementById('swapProdName_' + itemId);
+    const skuEl = document.getElementById('swapSku_' + itemId);
+    const stockEl = document.getElementById('swapStock_' + itemId);
+    if (nameEl) nameEl.textContent = replacement ? replacement.product_name : 'No replacement scanned';
+    if (skuEl) skuEl.textContent = replacement ? `${replacement.sku} · ${replacement.tag_code}` : 'Scan a replacement QR/barcode';
+    if (stockEl) {
+        stockEl.textContent = replacement ? `${replacement.available_stock} pcs in shop` : '';
+        stockEl.classList.toggle('d-none', !replacement);
     }
 };
 
@@ -902,14 +722,8 @@ window.recalculateSettlementSummary = function() {
             const itemId = cb.getAttribute('data-item-id');
             const qty = parseInt(document.getElementById('qty_' + itemId)?.value || 1) || 1;
             const unitPrice = parseFloat(cb.getAttribute('data-unit-price') || document.getElementById('price_' + itemId)?.value || 0) || 0;
-            const swapSelect = document.getElementById('swap_' + itemId);
-            if (swapSelect && swapSelect.value) {
-                const opt = swapSelect.options[swapSelect.selectedIndex];
-                const swapPrice = parseFloat(opt.getAttribute('data-price') || 0);
-                chooseAmount += (swapPrice * qty);
-            } else {
-                chooseAmount += (unitPrice * qty);
-            }
+            const replacement = currentSwapValues[itemId];
+            if (replacement) chooseAmount += replacement.unit_price * qty;
         });
     }
 
@@ -975,17 +789,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    function performLookup() {
+    function performLookup(selectedSaleId = 0) {
         const query = searchInput.value.trim();
-        if (!query) {
+        if (!selectedSaleId && !query) {
             alert('Please enter a shop invoice number, phone, or customer name.');
             return;
         }
 
         btnSearch.disabled = true;
         btnSearch.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Searching...';
+        resultsContainer.style.display = 'none';
+        const invoiceSelection = document.getElementById('invoiceSelectionContainer');
+        const invoiceList = document.getElementById('invoiceSelectionList');
+        invoiceSelection.classList.add('d-none');
+        invoiceList.innerHTML = '';
 
-        fetch('<?= url('shop/returns/lookup') ?>?q=' + encodeURIComponent(query))
+        const lookupUrl = selectedSaleId
+            ? '<?= url('shop/returns/lookup') ?>?sale_id=' + encodeURIComponent(selectedSaleId)
+            : '<?= url('shop/returns/lookup') ?>?q=' + encodeURIComponent(query);
+        fetch(lookupUrl)
             .then(res => res.json())
             .then(res => {
                 btnSearch.disabled = false;
@@ -997,7 +819,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
 
-                const match = Array.isArray(res.data) ? res.data[0] : res.data;
+                const matches = Array.isArray(res.data) ? res.data : [res.data];
+                if (matches.length > 1 && matches.every(match => match.invoice_list_item)) {
+                    matches.forEach(match => {
+                        const sale = match.sale || {};
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3';
+                        const summary = document.createElement('span');
+                        summary.innerHTML = `<strong class="font-monospace">${escapeReturnHtml(sale.invoice_number || '')}</strong>
+                            <span class="small text-muted d-block">${escapeReturnHtml(sale.customer_name || 'Shop Customer')} · ${escapeReturnHtml(sale.created_at || '')}</span>`;
+                        const total = document.createElement('span');
+                        total.className = 'text-nowrap fw-semibold';
+                        total.textContent = '₹' + Number(sale.total_amount || 0).toFixed(2);
+                        button.append(summary, total);
+                        button.addEventListener('click', () => performLookup(Number(sale.id)));
+                        invoiceList.appendChild(button);
+                    });
+                    invoiceSelection.classList.remove('d-none');
+                    return;
+                }
+
+                const match = matches[0];
                 if (!match) {
                     alert(res.message || 'No matching Shop orders found.');
                     resultsContainer.style.display = 'none';
@@ -1006,6 +849,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 const sale = match.sale || match;
                 const items = match.items || res.items || [];
+                currentSaleExchangeUsed = Number(sale.exchange_used || 0) === 1;
+                const exchangeNotice = document.getElementById('exchangeAlreadyUsedNotice');
+                const exchangeCard = document.getElementById('waCard_EXCHANGE_SAME');
+                if (exchangeNotice) exchangeNotice.classList.toggle('d-none', !currentSaleExchangeUsed);
+                if (exchangeCard) {
+                    exchangeCard.style.opacity = currentSaleExchangeUsed ? '0.5' : '1';
+                    exchangeCard.style.cursor = currentSaleExchangeUsed ? 'not-allowed' : 'pointer';
+                    exchangeCard.setAttribute('aria-disabled', currentSaleExchangeUsed ? 'true' : 'false');
+                }
 
                 document.getElementById('formSaleId').value = sale.id;
                 document.getElementById('metaInvoice').textContent = sale.invoice_number;
@@ -1057,6 +909,20 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>
                             <div class="scanned-tags-display d-flex flex-wrap gap-1 mt-1" id="waTagsDisplay_${item.id}"></div>
+                            <input type="hidden" name="items[${item.id}][exchange_variant_id]" id="swapVariant_${item.id}" value="" disabled>
+                            <div class="replacement-scan-controls d-none mt-2" data-item-id="${item.id}">
+                                <div class="small fw-semibold text-success mb-1">Scan replacement piece</div>
+                                <div class="input-group input-group-sm" style="max-width:240px;">
+                                    <span class="input-group-text bg-success-subtle text-success border-success"><i class="bi bi-upc-scan"></i></span>
+                                    <input type="text" id="swapTagInput_${item.id}" class="form-control form-control-sm font-monospace border-success" placeholder="Scan replacement..." style="font-size:11px;"
+                                           onkeydown="if(event.key === 'Enter') { event.preventDefault(); scanSameProductSwap(${item.id}, this.value, this); }">
+                                    <button type="button" class="btn btn-sm btn-outline-success fw-semibold" onclick="scanSameProductSwap(${item.id}, document.getElementById('swapTagInput_${item.id}').value, document.getElementById('swapTagInput_${item.id}'))">Scan</button>
+                                </div>
+                                <div class="small text-danger mt-1 d-none" id="swapScanError_${item.id}"></div>
+                                <div class="small fw-semibold text-dark mt-1" id="swapProdName_${item.id}">No replacement scanned</div>
+                                <div class="small text-muted font-monospace" id="swapSku_${item.id}">Scan a replacement QR/barcode</div>
+                                <small class="badge bg-success-subtle text-success border border-success-subtle mt-1 d-none" id="swapStock_${item.id}"></small>
+                            </div>
                         </td>
                         <td class="text-center fw-bold text-dark">
                             ${item.quantity}
@@ -1096,8 +962,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 resultsContainer.style.display = 'block';
-                renderSameExchangeTable();
-                recalculateSettlementSummary();
+                selectWaActionCard(currentSaleExchangeUsed ? 'RETURN' : 'EXCHANGE_SAME');
             })
             .catch(err => {
                 btnSearch.disabled = false;
@@ -1119,189 +984,117 @@ document.addEventListener('DOMContentLoaded', function() {
         const tag = (rawTag || '').trim();
         if (!tag) return;
 
-        let matchedItemId = null;
-        const checkboxes = document.querySelectorAll('.item-select-cb');
-        
-        checkboxes.forEach(cb => {
-            const itemId = cb.getAttribute('data-item-id');
-            const row = document.getElementById('returnRow_' + itemId);
-            const rowText = row ? row.textContent : '';
-            const tags = rowPieceTagsMap[itemId] || new Set();
-            
-            if (rowText.toLowerCase().includes(tag.toLowerCase()) || [...tags].some(t => t.toLowerCase() === tag.toLowerCase())) {
-                matchedItemId = itemId;
-            }
-        });
+        const saleId = document.getElementById('formSaleId').value;
+        fetch('<?= url('api/shop/returns/lookup-piece') ?>?q=' + encodeURIComponent(tag) + '&sale_id=' + encodeURIComponent(saleId))
+            .then(r => r.json())
+            .then(res => {
+                const payload = (res && res.data) || {};
+                const variant = payload.variant || res.variant || res.product;
+                const itemId = String(res.sale_item_id || payload.sale_item_id || (variant && variant.sale_item_id) || '');
+                const cb = itemId ? document.querySelector(`.item-select-cb[data-item-id="${itemId}"]`) : null;
+                if (!res.success || !cb) {
+                    alert(res.message || `No line item found matching scanned piece "${tag}".`);
+                    return;
+                }
 
-        if (matchedItemId) {
-            const cb = document.querySelector(`.item-select-cb[data-item-id="${matchedItemId}"]`);
-            if (cb && !cb.checked) {
-                cb.checked = true;
-                toggleItemInputs(cb, matchedItemId);
-            }
-            addWaPieceTag(matchedItemId, tag);
-            const scanInput = document.getElementById('scanReturnItemInput');
-            if (scanInput) scanInput.value = '';
-            
-            const row = document.getElementById('returnRow_' + matchedItemId);
-            if (row) {
-                row.classList.add('table-danger');
-                setTimeout(() => row.classList.remove('table-danger'), 1500);
-            }
-            recalculateSettlementSummary();
-        } else {
-            fetch('<?= url('api/shop/returns/lookup-piece') ?>?q=' + encodeURIComponent(tag))
-                .then(r => r.json())
-                .then(res => {
-                    const variant = (res && (res.variant || res.data || res.product));
-                    if (res && res.success && variant) {
-                        const vId = String(variant.variant_id || variant.id);
-                        for (let k in loadedOrderItemsMap) {
-                            if (String(loadedOrderItemsMap[k].variant_id) === vId) {
-                                matchedItemId = k;
-                                break;
-                            }
-                        }
-                    }
-                    if (matchedItemId) {
-                        const cb = document.querySelector(`.item-select-cb[data-item-id="${matchedItemId}"]`);
-                        if (cb && !cb.checked) {
-                            cb.checked = true;
-                            toggleItemInputs(cb, matchedItemId);
-                        }
-                        addWaPieceTag(matchedItemId, tag);
-                        const scanInput = document.getElementById('scanReturnItemInput');
-                        if (scanInput) scanInput.value = '';
-                        const row = document.getElementById('returnRow_' + matchedItemId);
-                        if (row) {
-                            row.classList.add('table-danger');
-                            setTimeout(() => row.classList.remove('table-danger'), 1500);
-                        }
-                        recalculateSettlementSummary();
-                    } else if (checkboxes.length === 1) {
-                        matchedItemId = checkboxes[0].getAttribute('data-item-id');
-                        addWaPieceTag(matchedItemId, tag);
-                        const scanInput = document.getElementById('scanReturnItemInput');
-                        if (scanInput) scanInput.value = '';
-                        recalculateSettlementSummary();
-                    } else {
-                        alert(`No line item found matching scanned piece "${tag}".`);
-                    }
-                })
-                .catch(() => {
-                    if (checkboxes.length === 1) {
-                        matchedItemId = checkboxes[0].getAttribute('data-item-id');
-                        addWaPieceTag(matchedItemId, tag);
-                        const scanInput = document.getElementById('scanReturnItemInput');
-                        if (scanInput) scanInput.value = '';
-                        recalculateSettlementSummary();
-                    } else {
-                        alert(`No line item found matching scanned piece "${tag}".`);
-                    }
-                });
-        }
-    };
+                if (!cb.checked) {
+                    cb.checked = true;
+                    toggleItemInputs(cb, itemId);
+                }
+                addWaPieceTag(itemId, payload.tag_code || res.tag_code || tag);
+                const scanInput = document.getElementById('scanReturnItemInput');
+                if (scanInput) scanInput.value = '';
+
+                const row = document.getElementById('returnRow_' + itemId);
+                if (row) {
+                    row.classList.add('table-danger');
+                    setTimeout(() => row.classList.remove('table-danger'), 1500);
+                }
+                recalculateSettlementSummary();
+            })
+            .catch(err => {
+                console.error('Return-piece lookup failed:', err);
+                alert(`Could not validate scanned piece "${tag}". Please try again.`);
+            });
+        };
 
     window.scanSameProductSwap = function(itemId, rawCode, inputEl) {
         const code = (rawCode || '').trim();
         if (!code) return;
 
-        const swapSelect = document.getElementById('swap_' + itemId);
-        if (!swapSelect) return;
-
-        const cleanCode = code.toLowerCase();
-        let matchedVal = null;
-
-        for (let i = 0; i < swapSelect.options.length; i++) {
-            const opt = swapSelect.options[i];
-            const optVal = opt.value;
-            const optTxt = (opt.textContent || '').toLowerCase();
-            const optSku = (opt.getAttribute('data-sku') || '').toLowerCase();
-            const optSize = (opt.getAttribute('data-size') || '').toLowerCase();
-            const optColor = (opt.getAttribute('data-color') || '').toLowerCase();
-
-            if (optVal && (optTxt.includes(cleanCode) || (optSku && (optSku === cleanCode || cleanCode.includes(optSku) || optSku.includes(cleanCode))) || optSize === cleanCode || optColor === cleanCode)) {
-                matchedVal = optVal;
-                break;
-            }
-        }
-
-        if (matchedVal) {
-            swapSelect.value = matchedVal;
-            if (inputEl) inputEl.value = '';
-            addSwapReplacementPieceTag(itemId, code);
-            updateSameSwapRow(itemId);
-            recalculateSettlementSummary();
-        } else {
-            fetch('<?= url('api/shop/returns/lookup-piece') ?>?q=' + encodeURIComponent(code))
-                .then(r => r.json())
-                .then(res => {
-                    const variant = (res && (res.variant || (res.data && res.data.variant) || res.data || res.product));
-                    if (res && res.success && variant) {
-                        const vId = String(variant.variant_id || variant.id);
-                        const item = loadedOrderItemsMap[itemId];
-                        let found = false;
-
-                        for (let j = 0; j < swapSelect.options.length; j++) {
-                            if (String(swapSelect.options[j].value) === vId) {
-                                swapSelect.selectedIndex = j;
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            if (item && String(item.variant_id) === vId) {
-                                swapSelect.value = "";
-                                found = true;
-                            }
-                        }
-                        if (!found && item && String(item.product_id) === String(variant.product_id)) {
-                            for (let j = 0; j < swapSelect.options.length; j++) {
-                                const opt = swapSelect.options[j];
-                                const optSize = (opt.getAttribute('data-size') || '').toLowerCase();
-                                const optColor = (opt.getAttribute('data-color') || '').toLowerCase();
-                                if (optSize === (variant.size_name || '').toLowerCase() && optColor === (variant.color_name || '').toLowerCase()) {
-                                    swapSelect.selectedIndex = j;
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (found) {
-                            if (inputEl) inputEl.value = '';
-                            const finalTag = (res.tag_code || (res.data && res.data.tag_code) || variant.scanned_piece_tag || code);
-                            addSwapReplacementPieceTag(itemId, finalTag);
-                            updateSameSwapRow(itemId);
-                            recalculateSettlementSummary();
-                            return;
-                        }
-
-                        alert(`Scanned piece "${code}" belongs to "${variant.product_name || 'Product'}" (${variant.size_name || ''} / ${variant.color_name || ''}), which is not a sibling variant for this garment.`);
-                        return;
-                    }
-                    alert(res && res.message ? res.message : `Piece tag or SKU "${code}" not found in catalog.`);
-                })
-                .catch(err => {
-                    console.error("Scan lookup error:", err);
-                    alert(`Error looking up piece "${code}": ` + err.message);
-                });
-        }
-    };
-
-    window.addSwapReplacementPieceTag = function(itemId, raw) {
-        const tag = (raw || '').trim();
-        if (!tag) return;
-        currentSwapTags[itemId] = tag;
-        const display = document.getElementById('swapTagsDisplay_' + itemId);
-        if (!display) return;
-        display.innerHTML = `<span class="badge bg-success font-monospace" style="font-size:10px; cursor:pointer;" title="Click to remove" onclick="removeSwapReplacementPieceTag(${itemId})"><i class="bi bi-qr-code me-1"></i>Swap Tag: ${tag} <i class="bi bi-x ms-1"></i></span>`;
-    };
-
-    window.removeSwapReplacementPieceTag = function(itemId) {
+        const item = loadedOrderItemsMap[itemId];
+        const errorEl = document.getElementById('swapScanError_' + itemId);
+        const submitButton = document.querySelector('#processReturnForm button[type="submit"]');
+        if (!item) return;
+        delete currentSwapValues[itemId];
         delete currentSwapTags[itemId];
-        const display = document.getElementById('swapTagsDisplay_' + itemId);
-        if (display) display.innerHTML = '';
+        const hiddenVariant = document.getElementById('swapVariant_' + itemId);
+        if (hiddenVariant) hiddenVariant.value = '';
+        updateSameSwapRow(itemId);
+        recalculateSettlementSummary();
+        if (errorEl) {
+            errorEl.textContent = '';
+            errorEl.classList.add('d-none');
+        }
+        if (submitButton) submitButton.disabled = true;
+
+        fetch('<?= url('api/shop/returns/lookup-piece') ?>?q=' + encodeURIComponent(code) + '&purpose=replacement')
+            .then(r => r.json())
+            .then(res => {
+                const payload = (res && res.data) || {};
+                const variant = payload.variant || res.variant || res.product;
+                if (!res.success || !variant) {
+                    throw new Error(res.message || 'Scanned replacement was not found.');
+                }
+                if (String(variant.product_id) !== String(item.product_id)) {
+                    throw new Error(`Scan a replacement variant of ${item.product_name}.`);
+                }
+
+                const qty = parseInt(document.getElementById('qty_' + itemId)?.value || 1) || 1;
+                const stock = parseFloat(variant.available_stock || 0);
+                if (stock < qty) {
+                    throw new Error(`Only ${stock} piece(s) are available in shop inventory; ${qty} required.`);
+                }
+
+                const replacementTag = payload.tag_code || res.tag_code || code;
+                currentSwapValues[itemId] = {
+                    variant_id: parseInt(variant.variant_id || variant.id, 10),
+                    product_id: parseInt(variant.product_id, 10),
+                    product_name: variant.product_name || item.product_name,
+                    sku: variant.sku || '',
+                    size_name: variant.size_name || '',
+                    color_name: variant.color_name || '',
+                    available_stock: stock,
+                    unit_price: parseFloat(variant.selling_price || variant.mrp || item.unit_price || 0),
+                    tag_code: replacementTag
+                };
+                currentSwapTags[itemId] = replacementTag;
+                if (hiddenVariant) hiddenVariant.value = currentSwapValues[itemId].variant_id;
+                const nameEl = document.getElementById('swapProdName_' + itemId);
+                const skuEl = document.getElementById('swapSku_' + itemId);
+                const stockEl = document.getElementById('swapStock_' + itemId);
+                if (nameEl) nameEl.textContent = currentSwapValues[itemId].product_name;
+                if (skuEl) skuEl.textContent = `${currentSwapValues[itemId].sku} · ${replacementTag}`;
+                if (stockEl) {
+                    stockEl.textContent = `${stock} pcs in shop`;
+                    stockEl.classList.remove('d-none');
+                }
+                if (inputEl) inputEl.value = '';
+                updateSameSwapRow(itemId);
+                recalculateSettlementSummary();
+            })
+            .catch(err => {
+                console.error('Replacement scan validation failed:', err);
+                if (errorEl) {
+                    errorEl.textContent = err.message;
+                    errorEl.classList.remove('d-none');
+                } else {
+                    alert(err.message);
+                }
+            })
+            .finally(() => {
+                if (submitButton) submitButton.disabled = false;
+            });
     };
 
     window.addWaPieceTag = function(itemId, raw) {
@@ -1397,15 +1190,36 @@ document.addEventListener('DOMContentLoaded', function() {
         if (searchInput) searchInput.value = '';
         const resultsContainer = document.getElementById('lookupResultsContainer');
         if (resultsContainer) resultsContainer.style.display = 'none';
+        const invoiceSelection = document.getElementById('invoiceSelectionContainer');
+        const invoiceList = document.getElementById('invoiceSelectionList');
+        if (invoiceSelection) invoiceSelection.classList.add('d-none');
+        if (invoiceList) invoiceList.innerHTML = '';
         const tbodyRet = document.getElementById('returnItemsTbody');
         if (tbodyRet) tbodyRet.innerHTML = '';
-        const tbodySame = document.getElementById('sameExchangeTbody');
-        if (tbodySame) tbodySame.innerHTML = '';
         loadedOrderItemsMap = {};
         currentSwapValues = {};
         currentSwapTags = {};
+        currentSaleExchangeUsed = false;
+        const exchangeNotice = document.getElementById('exchangeAlreadyUsedNotice');
+        const exchangeCard = document.getElementById('waCard_EXCHANGE_SAME');
+        if (exchangeNotice) exchangeNotice.classList.add('d-none');
+        if (exchangeCard) {
+            exchangeCard.style.opacity = '1';
+            exchangeCard.style.cursor = 'pointer';
+            exchangeCard.setAttribute('aria-disabled', 'false');
+        }
         if (searchInput) searchInput.focus();
     };
+
+    function escapeReturnHtml(value) {
+        return String(value || '').replace(/[&<>"']/g, character => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        })[character]);
+    }
 
     const newReturnModalEl = document.getElementById('newReturnModal');
     if (newReturnModalEl) {
@@ -1415,8 +1229,32 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('processReturnForm').addEventListener('submit', function(e) {
-        Object.keys(rowPieceTagsMap).forEach(itemId => {
-            const tags = [...rowPieceTagsMap[itemId]];
+        const selectedItems = [...document.querySelectorAll('.item-select-cb:checked')];
+        const returnType = document.getElementById('formReturnTypeInput').value;
+        if (selectedItems.length === 0) {
+            e.preventDefault();
+            alert('Select at least one invoice item to return.');
+            return;
+        }
+        if (returnType === 'EXCHANGE_SAME') {
+            const missingScan = selectedItems.find(cb => {
+                const itemId = cb.getAttribute('data-item-id');
+                const replacement = currentSwapValues[itemId];
+                const qty = parseInt(document.getElementById('qty_' + itemId)?.value || 1) || 1;
+                return !replacement || replacement.available_stock < qty;
+            });
+            if (missingScan) {
+                e.preventDefault();
+                const itemId = missingScan.getAttribute('data-item-id');
+                document.getElementById('swapTagInput_' + itemId)?.focus();
+                alert('Scan an available replacement product for every selected item before processing the exchange.');
+                return;
+            }
+        }
+
+        selectedItems.forEach(cb => {
+            const itemId = cb.getAttribute('data-item-id');
+            const tags = rowPieceTagsMap[itemId] ? [...rowPieceTagsMap[itemId]] : [];
             if (tags.length > 0) {
                 tags.forEach(t => {
                     const hidden = document.createElement('input');
@@ -1426,10 +1264,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     this.appendChild(hidden);
                 });
             }
-        });
-
-        Object.keys(currentSwapTags).forEach(itemId => {
-            const swapTag = currentSwapTags[itemId];
+            const swapTag = returnType === 'EXCHANGE_SAME' ? currentSwapTags[itemId] : '';
             if (swapTag) {
                 const hidden = document.createElement('input');
                 hidden.type = 'hidden';

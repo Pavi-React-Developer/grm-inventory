@@ -1019,10 +1019,14 @@ class ShopService {
                 $isComp = $vRow && ((isset($vRow['warehouse_category_type']) && $vRow['warehouse_category_type'] === 'COMPLEMENTARY') || !empty($vRow['is_complementary']) || !empty($vRow['p_is_comp']));
                 $isSeries = $vRow && ((isset($vRow['warehouse_category_type']) && $vRow['warehouse_category_type'] === 'SERIES') || ($vRow['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($vRow['pack_quantity'] ?? 1) > 1);
 
-                $originalUnitPrice = (float)($item['original_price'] ?? $item['unit_price'] ?? 0);
+                $mrp = max(0.0, (float)($item['mrp'] ?? $item['original_price'] ?? $item['unit_price'] ?? 0));
+                $originalUnitPrice = $mrp;
                 $billedPrice = isset($item['billed_price']) ? (float)$item['billed_price'] : (float)($item['unit_price'] ?? $originalUnitPrice);
-                $mrp = (float)($item['mrp'] ?? $originalUnitPrice);
-                $gstRate = (float)($item['gst_percentage'] ?? 5.00);
+                $gstInput = $item['gst_percentage'] ?? 5.00;
+                if (!is_numeric($gstInput) || !is_finite((float)$gstInput) || (float)$gstInput < 0 || (float)$gstInput > 100) {
+                    throw new RuntimeException("GST percentage must be between 0 and 100 for item '{$variantId}'.");
+                }
+                $gstRate = (float)$gstInput;
 
                 if ($isComp) {
                     $billedPrice = 0.00;
@@ -1031,11 +1035,12 @@ class ShopService {
                     $gstRate = 0.00;
                 }
 
-                $itemDiscount = 0.0;
-                if (!$isComp && $billedPrice < $originalUnitPrice) {
-                    $itemDiscount = round(($originalUnitPrice - $billedPrice) * $qty, 2);
-                }
-                $discountPercent = (!$isComp && ($originalUnitPrice * $qty) > 0) ? round(($itemDiscount / ($originalUnitPrice * $qty)) * 100, 2) : 0.0;
+                $itemDiscount = (!$isComp && $billedPrice < $mrp)
+                    ? round(($mrp - $billedPrice) * $qty, 2)
+                    : 0.0;
+                $discountPercent = (!$isComp && ($mrp * $qty) > 0)
+                    ? round(($itemDiscount / ($mrp * $qty)) * 100, 2)
+                    : 0.0;
 
                 // Extract piece tags string & validate against duplicate sales (bypassed if SERIES)
                 $scannedTagsStr = null;
@@ -1360,19 +1365,33 @@ class ShopService {
                        pv.weight as variant_weight, pv.image_url as variant_image,
                        p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
                        p.category_code, p.subcategory_code, p.sub_subcategory_code, p.qr_code_prefix,
+                       COALESCE(wc.category_type, 'NORMAL') as warehouse_category_type,
+                       COALESCE(pv.qr_type, '') as variant_qr_type,
+                       COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                       COALESCE(pv.pack_quantity, 1) as pack_quantity,
                        p.description, p.material, p.hsn_code, p.gst_percentage, p.min_stock, p.max_stock, p.source_type,
                        s.name as size_name, c.name as color_name, 
-                       cat.id as category_id, cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name,
+                       COALESCE(wc.id, cat.id) as category_id,
+                       CASE WHEN wc.id IS NOT NULL THEN CONCAT('warehouse:', wc.id)
+                            WHEN cat.id IS NOT NULL THEN CONCAT('product:', cat.id)
+                            ELSE '' END as category_filter_id,
+                       COALESCE(wc.name, cat.name) as category_name,
+                       COALESCE(wsc.name, subcat.name) as subcategory_name,
+                       COALESCE(wssc.name, subsubcat.name) as sub_subcategory_name,
                        b.name as brand_name, sel.name as seller_name,
                        sb.quantity as available_quantity,
                        (SELECT COALESCE(SUM(quantity), 0) FROM stock_balances WHERE variant_id = sb.variant_id AND location_type = 'SHOP' AND location_id = sb.location_id AND stock_state = 'DAMAGED') as damaged_quantity,
                        (SELECT COALESCE(SUM(si.quantity), 0) FROM sale_items si JOIN sales sl ON si.sale_id = sl.id WHERE si.variant_id = sb.variant_id AND sl.shop_id = sb.location_id AND sl.sale_type = 'SHOP' AND sl.status != 'CANCELLED') as sold_quantity,
                        (SELECT COALESCE(SUM(wri.returned_qty), 0) FROM warehouse_return_items wri JOIN warehouse_returns wr ON wri.warehouse_return_id = wr.id WHERE wri.variant_id = sb.variant_id AND wr.source_type = 'SHOP' AND wr.source_id = sb.location_id) as returned_quantity,
                        (SELECT COALESCE(SUM(ri.quantity), 0) FROM return_items ri JOIN returns r ON ri.return_id = r.id LEFT JOIN sales s ON r.sale_id = s.id WHERE ri.variant_id = sb.variant_id AND (r.source_type = 'SHOP' OR s.shop_id = sb.location_id) AND r.return_type = 'EXCHANGE') as exchanged_quantity,
-                       (SELECT wa.allocation_number FROM allocation_items ai JOIN warehouse_allocations wa ON ai.allocation_id = wa.id WHERE ai.variant_id = sb.variant_id AND (wa.shop_id = sb.location_id OR wa.destination_id = sb.location_id OR wa.destination_type = 'SHOP') ORDER BY wa.id DESC LIMIT 1) as latest_allocation_number
+                       (SELECT wa.allocation_number FROM allocation_items ai JOIN warehouse_allocations wa ON ai.allocation_id = wa.id WHERE ai.variant_id = sb.variant_id AND (wa.shop_id = sb.location_id OR (wa.destination_type = 'SHOP' AND wa.destination_id = sb.location_id)) ORDER BY wa.id DESC LIMIT 1) as latest_allocation_number
                 FROM stock_balances sb
                 JOIN product_variants pv ON sb.variant_id = pv.id
                 JOIN products p ON pv.product_id = p.id
+                LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
+                LEFT JOIN warehouse_subcategories wssc_parent ON wssc.subcategory_id = wssc_parent.id
+                LEFT JOIN warehouse_subcategories wsc ON COALESCE(p.warehouse_subcategory_id, wssc.subcategory_id) = wsc.id
+                LEFT JOIN warehouse_categories wc ON COALESCE(p.warehouse_category_id, wsc.category_id, wssc_parent.category_id) = wc.id
                 LEFT JOIN categories cat ON p.category_id = cat.id
                 LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
                 LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
@@ -1385,14 +1404,23 @@ class ShopService {
         $params = [$shopId];
 
         if (!empty($filters['search'])) {
-            $sql .= " AND (p.name LIKE ? OR pv.sku LIKE ? OR pv.qr_code LIKE ? OR p.code LIKE ? OR cat.name LIKE ? OR s.name LIKE ? OR c.name LIKE ?)";
+            $sql .= " AND (p.name LIKE ? OR pv.sku LIKE ? OR pv.qr_code LIKE ? OR p.code LIKE ? OR COALESCE(wc.name, cat.name) LIKE ? OR s.name LIKE ? OR c.name LIKE ?)";
             $s = '%' . trim($filters['search']) . '%';
             $params = array_merge($params, [$s, $s, $s, $s, $s, $s, $s]);
         }
 
         if (!empty($filters['category_id'])) {
-            $sql .= " AND p.category_id = ?";
-            $params[] = (int)$filters['category_id'];
+            $categoryFilter = (string)$filters['category_id'];
+            if (preg_match('/^warehouse:(\d+)$/', $categoryFilter, $matches)) {
+                $sql .= " AND COALESCE(p.warehouse_category_id, wsc.category_id, wssc_parent.category_id) = ?";
+                $params[] = (int)$matches[1];
+            } elseif (preg_match('/^product:(\d+)$/', $categoryFilter, $matches)) {
+                $sql .= " AND p.category_id = ?";
+                $params[] = (int)$matches[1];
+            } elseif (ctype_digit($categoryFilter)) {
+                $sql .= " AND p.category_id = ?";
+                $params[] = (int)$categoryFilter;
+            }
         }
 
         if (!empty($filters['status'])) {
@@ -1630,9 +1658,15 @@ class ShopService {
                        pv.weight as variant_weight, pv.image_url as variant_image,
                        p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
                        p.category_code, p.subcategory_code, p.sub_subcategory_code, p.qr_code_prefix,
+                       COALESCE(wc.category_type, 'NORMAL') as warehouse_category_type,
+                       COALESCE(pv.qr_type, '') as variant_qr_type,
+                       COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                       COALESCE(pv.pack_quantity, 1) as pack_quantity,
                        p.description, p.material, p.hsn_code, p.gst_percentage, p.min_stock, p.max_stock, p.source_type,
                        s.name as size_name, c.name as color_name, 
-                       cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name,
+                       COALESCE(wc.name, cat.name) as category_name,
+                       COALESCE(wsc.name, subcat.name) as subcategory_name,
+                       COALESCE(wssc.name, subsubcat.name) as sub_subcategory_name,
                        b.name as brand_name, sel.name as seller_name,
                        sb.quantity as available_quantity,
                        (SELECT COALESCE(SUM(quantity), 0) FROM stock_balances WHERE variant_id = sb.variant_id AND location_type = 'SHOP' AND location_id = sb.location_id AND stock_state = 'DAMAGED') as damaged_quantity,
@@ -1642,6 +1676,10 @@ class ShopService {
                 FROM stock_balances sb
                 JOIN product_variants pv ON sb.variant_id = pv.id
                 JOIN products p ON pv.product_id = p.id
+                LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
+                LEFT JOIN warehouse_subcategories wssc_parent ON wssc.subcategory_id = wssc_parent.id
+                LEFT JOIN warehouse_subcategories wsc ON COALESCE(p.warehouse_subcategory_id, wssc.subcategory_id) = wsc.id
+                LEFT JOIN warehouse_categories wc ON COALESCE(p.warehouse_category_id, wsc.category_id, wssc_parent.category_id) = wc.id
                 LEFT JOIN categories cat ON p.category_id = cat.id
                 LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
                 LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
@@ -1658,12 +1696,22 @@ class ShopService {
                                    pv.weight as variant_weight, pv.image_url as variant_image,
                                    p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
                                    p.category_code, p.subcategory_code, p.sub_subcategory_code, p.qr_code_prefix,
+                                   COALESCE(wc.category_type, 'NORMAL') as warehouse_category_type,
+                                   COALESCE(pv.qr_type, '') as variant_qr_type,
+                                   COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                                   COALESCE(pv.pack_quantity, 1) as pack_quantity,
                                    p.description, p.material, p.hsn_code, p.gst_percentage, p.min_stock, p.max_stock, p.source_type,
                                    s.name as size_name, c.name as color_name, 
-                                   cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name,
+                                   COALESCE(wc.name, cat.name) as category_name,
+                                   COALESCE(wsc.name, subcat.name) as subcategory_name,
+                                   COALESCE(wssc.name, subsubcat.name) as sub_subcategory_name,
                                    b.name as brand_name, sel.name as seller_name
                             FROM product_variants pv
                             JOIN products p ON pv.product_id = p.id
+                            LEFT JOIN warehouse_sub_subcategories wssc ON p.warehouse_sub_subcategory_id = wssc.id
+                            LEFT JOIN warehouse_subcategories wssc_parent ON wssc.subcategory_id = wssc_parent.id
+                            LEFT JOIN warehouse_subcategories wsc ON COALESCE(p.warehouse_subcategory_id, wssc.subcategory_id) = wsc.id
+                            LEFT JOIN warehouse_categories wc ON COALESCE(p.warehouse_category_id, wsc.category_id, wssc_parent.category_id) = wc.id
                             LEFT JOIN categories cat ON p.category_id = cat.id
                             LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
                             LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
@@ -1705,52 +1753,21 @@ class ShopService {
                  JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
                  LEFT JOIN allocation_outwards ao ON ao.allocation_id = wa.id
                  WHERE ai.variant_id = ? 
-                   AND (wa.shop_id = ? OR wa.destination_id = ? OR wa.destination_type = 'SHOP'
+                   AND (wa.shop_id = ? OR (wa.destination_type = 'SHOP' AND wa.destination_id = ?)
                         OR wa.id IN (SELECT reference_id FROM stock_transactions WHERE variant_id = ? AND location_type = 'SHOP' AND location_id = ? AND reference_type = 'warehouse_allocations'))
                  ORDER BY wa.id DESC",
                 [$variantId, $shopId, $shopId, $variantId, $shopId]
             );
 
-            // Compute distinct product prefix matching inward & label logic
-            $prefix = '';
-            if (!empty($item['qr_code_prefix'])) {
-                $clean = preg_replace('/[^A-Za-z0-9]/', '', $item['qr_code_prefix']);
-                if (strlen($clean) >= 2) {
-                    $prefix = strtoupper(substr($clean, 0, 4));
-                }
-            }
-            if (empty($prefix) && !empty($item['product_code'])) {
-                if (preg_match('/^([A-Za-z]{2,5})/i', $item['product_code'], $m)) {
-                    $prefix = strtoupper($m[1]);
-                }
-            }
-            if (empty($prefix) && !empty($item['sku'])) {
-                if (preg_match('/^([A-Za-z]{2,5})/i', $item['sku'], $m)) {
-                    $prefix = strtoupper($m[1]);
-                }
-            }
-            if (empty($prefix)) {
-                $c1 = !empty($item['category_code']) ? trim($item['category_code']) : '';
-                $c2 = !empty($item['subcategory_code']) ? trim($item['subcategory_code']) : '';
-                $c3 = !empty($item['sub_subcategory_code']) ? trim($item['sub_subcategory_code']) : '';
-                if ($c1 || $c2 || $c3) {
-                    $comb = strtoupper(substr($c1, 0, 1) . substr($c2, 0, 1) . substr($c3, 0, 1));
-                    if (strlen($comb) >= 2) $prefix = $comb;
-                }
-            }
-            if (empty($prefix)) {
-                $n1 = !empty($item['category_name']) ? trim($item['category_name']) : '';
-                $n2 = !empty($item['subcategory_name']) ? trim($item['subcategory_name']) : '';
-                $n3 = !empty($item['sub_subcategory_name']) ? trim($item['sub_subcategory_name']) : '';
-                if ($n1 !== '') $prefix .= strtoupper($n1[0]);
-                if ($n2 !== '') $prefix .= strtoupper($n2[0]);
-                if ($n3 !== '') $prefix .= strtoupper($n3[0]);
-            }
-            if (empty($prefix) || strlen($prefix) < 2) $prefix = 'GRM';
-
             $savedTags = [];
             $allocRef = '';
             $allocationBatches = [];
+            $isSingleQrProduct = (
+                in_array(strtoupper($item['warehouse_category_type'] ?? ''), ['SERIES', 'COMPLEMENTARY'], true) ||
+                ($item['variant_qr_type'] ?? '') === 'SERIES_BATCH' ||
+                (int)($item['pack_quantity'] ?? 1) > 1 ||
+                !empty($item['is_complementary'])
+            );
 
             foreach ($allocItems as $ai) {
                 if (empty($allocRef)) $allocRef = $ai['allocation_number'];
@@ -1763,9 +1780,6 @@ class ShopService {
                             $tagStr = trim($tagStr);
                             if ($tagStr) {
                                 $batchTags[] = $tagStr;
-                                if (!in_array($tagStr, $savedTags)) {
-                                    $savedTags[] = $tagStr;
-                                }
                             }
                         }
                     } else {
@@ -1774,11 +1788,16 @@ class ShopService {
                             $t = trim($t);
                             if ($t) {
                                 $batchTags[] = $t;
-                                if (!in_array($t, $savedTags)) {
-                                    $savedTags[] = $t;
-                                }
                             }
                         }
+                    }
+                }
+                if ($isSingleQrProduct) {
+                    $batchTags = array_slice($batchTags, 0, 1);
+                }
+                foreach ($batchTags as $tag) {
+                    if (!in_array($tag, $savedTags, true)) {
+                        $savedTags[] = $tag;
                     }
                 }
 
@@ -1788,12 +1807,6 @@ class ShopService {
                 $tagRange = '';
                 if (!empty($batchTags)) {
                     $tagRange = count($batchTags) > 1 ? ($batchTags[0] . ' - ' . end($batchTags)) : $batchTags[0];
-                } else {
-                    $mStr = date('m', strtotime($ai['alloc_date'] ?? 'now'));
-                    $yStr = date('y', strtotime($ai['alloc_date'] ?? 'now'));
-                    $tagStart = sprintf('%s%s%s01', $prefix, $mStr, $yStr);
-                    $tagEnd = sprintf('%s%s%s%02d', $prefix, $mStr, $yStr, max(1, $dispatchedQty));
-                    $tagRange = $dispatchedQty > 1 ? ($tagStart . ' - ' . $tagEnd) : $tagStart;
                 }
 
                 $allocationBatches[] = [
@@ -1828,7 +1841,6 @@ class ShopService {
             );
 
             $soldTagsMap = [];
-            $unassignedSoldCount = 0;
             $totalSoldQuantity = 0;
             foreach ($salesRecords as $sr) {
                 $totalSoldQuantity += (int)($sr['quantity'] ?? 1);
@@ -1839,8 +1851,6 @@ class ShopService {
                             $soldTagsMap[$t] = $sr;
                         }
                     }
-                } else {
-                    $unassignedSoldCount += (int)($sr['quantity'] ?? 1);
                 }
             }
 
@@ -1867,7 +1877,7 @@ class ShopService {
                 if (!empty($rawTagString)) {
                     $tags = array_map('trim', explode(',', $rawTagString));
                     foreach ($tags as $t) {
-                        if (!empty($t) && !str_starts_with($t, 'TP-') && !str_starts_with($t, 'SKU-') && !str_contains($t, '-')) {
+                        if (!empty($t) && !str_starts_with($t, 'TP-') && !str_starts_with($t, 'SKU-')) {
                             $returnedTagsMap[$t] = $rr;
                         }
                     }
@@ -1923,52 +1933,20 @@ class ShopService {
             );
 
             $damagedTagsMap = [];
-            $damagedNumericMap = [];
-            $damagedIndexMap = [];
-            $unassignedDamagedCount = 0;
 
             foreach ($damageRecords as $dr) {
                 if (!empty($dr['tag_code'])) {
                     $rawTag = trim($dr['tag_code']);
                     $damagedTagsMap[$rawTag] = $dr;
-                    $numericSuffix = preg_replace('/^[A-Za-z]+/', '', $rawTag);
-                    if (!empty($numericSuffix)) {
-                        $damagedNumericMap[$numericSuffix] = $dr;
-                        $seqIndex = (int)substr($numericSuffix, -2);
-                        if ($seqIndex > 0) {
-                            $damagedIndexMap[$seqIndex] = $dr;
-                        }
-                    }
-                } else {
-                    $unassignedDamagedCount += (int)($dr['quantity'] ?? 1);
                 }
             }
 
-            $availableQty = max(0, (int)($item['quantity'] ?? 0));
-            $damagedQty = max(0, (int)($item['damaged_quantity'] ?? 0));
-            $returnedQty = max(0, (int)($item['returned_quantity'] ?? 0));
-            $exchangedQty = max(0, (int)($item['exchanged_quantity'] ?? 0));
-            $soldQty = $totalSoldQuantity;
-
-            $unassignedReturnedCount = $returnedQty;
-            $unassignedExchangedCount = $exchangedQty;
-
-            $totalPiecesCount = count($savedTags);
-            $sumCounts = $availableQty + $damagedQty + $returnedQty + $exchangedQty + $soldQty;
-            if ($totalPiecesCount < $sumCounts) {
-                $totalPiecesCount = $sumCounts;
-            }
-            $totalPiecesCount = max(1, $totalPiecesCount);
-
             $pieces = [];
-            $month = date('m');
-            $year = date('y');
-
-            for ($i = 1; $i <= $totalPiecesCount; $i++) {
-                $tag = $savedTags[$i - 1] ?? sprintf('%s%s%s%02d', $prefix, $month, $year, $i);
+            foreach ($savedTags as $index => $tag) {
+                $pieceNumber = $index + 1;
                 $pieceAllocRef = $allocRef;
                 foreach ($allocationBatches as $ab) {
-                    if (in_array($tag, $ab['tags'])) {
+                    if (in_array($tag, $ab['tags'], true)) {
                         $pieceAllocRef = $ab['allocation_number'];
                         break;
                     }
@@ -1985,26 +1963,10 @@ class ShopService {
                 $returnInfo = null;
                 $exchangeInfo = null;
 
-                $tagNumeric = preg_replace('/^[A-Za-z]+/', '', $tag);
-
                 if (isset($damagedTagsMap[$tag])) {
                     $isDamaged = true;
                     $damageInfo = $damagedTagsMap[$tag];
                     $pieceStatus = 'Damaged';
-                } elseif ($tagNumeric && isset($damagedNumericMap[$tagNumeric])) {
-                    $isDamaged = true;
-                    $damageInfo = $damagedNumericMap[$tagNumeric];
-                    $pieceStatus = 'Damaged';
-                    if (!empty($damageInfo['tag_code'])) {
-                        $tag = $damageInfo['tag_code'];
-                    }
-                } elseif (isset($damagedIndexMap[$i])) {
-                    $isDamaged = true;
-                    $damageInfo = $damagedIndexMap[$i];
-                    $pieceStatus = 'Damaged';
-                    if (!empty($damageInfo['tag_code'])) {
-                        $tag = $damageInfo['tag_code'];
-                    }
                 } elseif (isset($returnedTagsMap[$tag])) {
                     // Piece was returned / restocked in Shop Return or Exchange
                     $rInfo = $returnedTagsMap[$tag];
@@ -2041,29 +2003,10 @@ class ShopService {
                     $isSold = true;
                     $saleInfo = $soldTagsMap[$tag];
                     $pieceStatus = 'Sold';
-                } elseif ($unassignedDamagedCount > 0 && $i > $availableQty && $i <= ($availableQty + $damagedQty)) {
-                    $isDamaged = true;
-                    $pieceStatus = 'Damaged';
-                    $unassignedDamagedCount--;
-                } elseif ($unassignedSoldCount > 0 && $i > ($availableQty + $damagedQty) && $i <= ($availableQty + $damagedQty + $soldQty)) {
-                    $isSold = true;
-                    $pieceStatus = 'Sold';
-                    $unassignedSoldCount--;
-                    $saleInfo = $salesRecords[0] ?? null;
-                } elseif ($unassignedReturnedCount > 0 && $i > ($availableQty + $damagedQty + $soldQty) && $i <= ($availableQty + $damagedQty + $soldQty + $returnedQty)) {
-                    $isReturned = true;
-                    $pieceStatus = 'Returned';
-                    $unassignedReturnedCount--;
-                    $returnInfo = $whReturnRecords[0] ?? ($returnRecords[0] ?? null);
-                } elseif ($unassignedExchangedCount > 0 && $i > ($availableQty + $damagedQty + $soldQty + $returnedQty)) {
-                    $isExchanged = true;
-                    $pieceStatus = 'Exchanged';
-                    $unassignedExchangedCount--;
-                    $exchangeInfo = $returnRecords[0] ?? null;
                 }
 
                 $pieces[] = [
-                    'piece_number'         => $i,
+                    'piece_number'         => $pieceNumber,
                     'tag_code'             => $tag,
                     'qr_payload'           => "{$tag}|{$item['sku']}|MRP:{$item['selling_price']}",
                     'product_name'         => $item['product_name'],
@@ -2102,7 +2045,9 @@ class ShopService {
             $item['sales'] = $salesRecords;
             $item['allocation_batches'] = $allocationBatches;
             $item['returns'] = $returnRecords;
+            $item['exchanges'] = $exchangesHistory;
             $item['wh_returns'] = $whReturnRecords;
+            $item['damages'] = $damageRecords;
         }
 
         return $item;
@@ -4169,7 +4114,6 @@ class ShopService {
         $city = trim($data['city'] ?? '');
         $state = trim($data['state'] ?? 'Tamil Nadu');
         $gstNumber = trim($data['gst_number'] ?? '');
-        $loyaltyPoints = (int)($data['loyalty_points'] ?? 0);
         $isActive = isset($data['is_active']) ? (int)$data['is_active'] : 1;
 
         if (empty($name)) {
@@ -4192,7 +4136,7 @@ class ShopService {
             Database::execute(
                 "UPDATE customers 
                  SET name = ?, phone = ?, email = ?, address = ?, city = ?, state = ?, 
-                     gst_number = ?, loyalty_points = ?, is_active = ?, updated_at = NOW()
+                     gst_number = ?, is_active = ?, updated_at = NOW()
                  WHERE id = ?",
                 [
                     $name,
@@ -4202,7 +4146,6 @@ class ShopService {
                     $city ?: null,
                     $state ?: null,
                     $gstNumber ?: null,
-                    $loyaltyPoints,
                     $isActive,
                     $id
                 ]
@@ -4212,8 +4155,8 @@ class ShopService {
         } else {
             $sourceChannel = $data['source_channel'] ?? 'SHOP';
             Database::execute(
-                "INSERT INTO customers (name, phone, email, address, city, state, gst_number, source_channel, loyalty_points, is_active, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+                "INSERT INTO customers (name, phone, email, address, city, state, gst_number, source_channel, is_active, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
                 [
                     $name,
                     $phone,
@@ -4223,7 +4166,6 @@ class ShopService {
                     $state ?: null,
                     $gstNumber ?: null,
                     $sourceChannel,
-                    $loyaltyPoints,
                     $isActive
                 ]
             );

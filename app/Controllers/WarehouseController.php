@@ -1282,6 +1282,32 @@ class WarehouseController {
         }
         unset($b);
 
+        $whAllocClause = $selectedWarehouseId ? " AND wa.warehouse_id = " . (int)$selectedWarehouseId : "";
+        $allocatedRows = Database::fetchAll(
+            "SELECT ai.selected_qr_codes, ai.requested_qty, ai.dispatched_qty,
+                    wa.warehouse_id, wa.status
+             FROM allocation_items ai
+             JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
+             WHERE ai.variant_id = ? AND wa.status NOT IN ('CANCELLED', 'REJECTED')$whAllocClause",
+            [$variantId]
+        );
+        $pendingAllocationQtyByWarehouse = [];
+        foreach ($allocatedRows as $ar) {
+            if (in_array(strtoupper((string)$ar['status']), ['REQUESTED', 'APPROVED', 'PICKING', 'PICKED', 'PACKING', 'PACKED'], true)) {
+                $warehouseId = (int)$ar['warehouse_id'];
+                $pendingQty = max(0, (float)$ar['requested_qty'] - (float)$ar['dispatched_qty']);
+                $pendingAllocationQtyByWarehouse[$warehouseId] = ($pendingAllocationQtyByWarehouse[$warehouseId] ?? 0) + $pendingQty;
+            }
+        }
+        foreach ($pendingAllocationQtyByWarehouse as $warehouseId => $pendingQty) {
+            $deductQty = min((int)($warehouseAvailMap[$warehouseId] ?? 0), (int)$pendingQty);
+            $warehouseAvailMap[$warehouseId] = max(0, (int)($warehouseAvailMap[$warehouseId] ?? 0) - $deductQty);
+            $allWarehouseTotalAvailable = max(0, $allWarehouseTotalAvailable - $deductQty);
+            if (!$selectedWarehouseId || (int)$selectedWarehouseId === (int)$warehouseId) {
+                $totalAvailable = max(0, $totalAvailable - $deductQty);
+            }
+        }
+
         $c1 = !empty($variant['category_name']) ? strtoupper(substr(trim($variant['category_name']), 0, 1)) : (!empty($variant['cat_code']) ? strtoupper(substr(trim($variant['cat_code']), 0, 1)) : '');
         $c2 = !empty($variant['subcategory_name']) ? strtoupper(substr(trim($variant['subcategory_name']), 0, 1)) : (!empty($variant['sub_code']) ? strtoupper(substr(trim($variant['sub_code']), 0, 1)) : '');
         $c3 = !empty($variant['sub_subcategory_name']) ? strtoupper(substr(trim($variant['sub_subcategory_name']), 0, 1)) : (!empty($variant['subsub_code']) ? strtoupper(substr(trim($variant['subsub_code']), 0, 1)) : '');
@@ -1319,15 +1345,7 @@ class WarehouseController {
         $monthStr = sprintf("%02d", date('n', $mfgTime)); // 2-digit month: 09
         $year2Digit = date('y', $mfgTime); // 2-digit year: 26
 
-        // Fetch already allocated/dispatched piece tags for this variant to skip them in active inventory
-        $whAllocClause = $selectedWarehouseId ? " AND wa.warehouse_id = " . (int)$selectedWarehouseId : "";
-        $allocatedRows = Database::fetchAll(
-            "SELECT ai.selected_qr_codes 
-             FROM allocation_items ai
-             JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
-             WHERE ai.variant_id = ? AND wa.status IN ('REQUESTED', 'APPROVED', 'PICKING', 'PACKING', 'DISPATCHED', 'DELIVERED', 'RECEIVED')$whAllocClause",
-            [$variantId]
-        );
+        // Allocated piece tags remain unavailable until their allocation is cancelled or rejected.
         $usedTags = [];
         foreach ($allocatedRows as $ar) {
             if (!empty($ar['selected_qr_codes'])) {
@@ -1828,7 +1846,13 @@ class WarehouseController {
             }
 
             // Fallback: If available stock still exceeds known inward tags, determine highest recorded tag sequence for this prefix/month so it NEVER collides
-            if (!$hasExactProductionTags && count($pieceQRs) < $totalAvailable) {
+            if (
+                !$hasExactProductionTags
+                && empty($inwardedTagsFromTx)
+                && empty($usedTags)
+                && empty($restockedTags)
+                && count($pieceQRs) < $totalAvailable
+            ) {
                 $baseTagPrefix = "{$catPrefix}{$monthStr}{$year2Digit}";
                 $maxSeq = 0;
                 foreach (array_merge($productionPieceTags, $inwardedTagsFromTx, array_keys($usedTags), array_keys($restockedTags)) as $kTag) {

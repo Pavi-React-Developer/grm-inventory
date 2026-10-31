@@ -238,7 +238,7 @@
                                 <th class="ps-3 text-center" style="width: 38px;">#</th>
                                 <th>Item Details</th>
                                 <th class="text-end" style="width: 100px;">Base Price</th>
-                                <th class="text-end" style="width: 90px;">GST</th>
+                                <th class="text-end" style="width: 110px;">GST %</th>
                                 <th class="text-end" style="width: 95px;">Discount</th>
                                 <th class="text-end" style="width: 130px;">Billed Price</th>
                                 <th class="text-center" style="width: 40px;"></th>
@@ -308,7 +308,7 @@
                                     <strong id="displayDiscountDetail" class="text-danger font-monospace">₹0.00</strong>
                                 </div>
                                 <div class="text-muted mt-1 px-1" style="font-size: 10px;">
-                                    <i class="bi bi-check2-all text-success me-1"></i>Calculated from given billing prices
+                                    <i class="bi bi-check2-all text-success me-1"></i>Discount compared against MRP
                                 </div>
                             </div>
                         </div>
@@ -638,6 +638,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Add Product to Cart: EACH PIECE LISTED ONE BY ONE (Quantity = 1 per row)
+    function getCartItemMrp(item) {
+        const mrp = parseFloat(item.mrp);
+        return Number.isFinite(mrp) && mrp >= 0 ? mrp : (parseFloat(item.original_price) || 0);
+    }
+
+    function getCartItemGst(item) {
+        if (item.is_complementary == 1) return 0;
+        const gst = parseFloat(item.gst_percentage);
+        return Number.isFinite(gst) ? Math.min(100, Math.max(0, gst)) : 5.0;
+    }
+
     function addItemToCart(variant) {
         const isComp = (variant.is_complementary == 1 || variant.category_type === 'COMPLEMENTARY');
         const isSeries = (variant.is_series == 1 || variant.category_type === 'SERIES' || variant.qr_type === 'SERIES_BATCH' || parseInt(variant.pack_quantity) > 1);
@@ -651,7 +662,8 @@ document.addEventListener('DOMContentLoaded', function() {
         let mrp = isComp ? 0 : (parseFloat(variant.mrp) || retailPrice);
         if (!isComp && retailPrice <= 0 && mrp > 0) retailPrice = mrp;
         if (!isComp && mrp <= 0 && retailPrice > 0) mrp = retailPrice;
-        const gstRate = isComp ? 0 : (parseFloat(variant.gst_percentage) || 5.0);
+        const variantGst = parseFloat(variant.gst_percentage);
+        const gstRate = isComp ? 0 : (Number.isFinite(variantGst) ? variantGst : 5.0);
 
         // Always push as an individual one-by-one row
         cart.push({
@@ -665,9 +677,9 @@ document.addEventListener('DOMContentLoaded', function() {
             is_complementary: isComp ? 1 : 0,
             is_series: isSeries ? 1 : 0,
             category_type: variant.category_type || 'NORMAL',
-            original_price: retailPrice,
+            original_price: mrp,
             billed_price: retailPrice,
-            mrp: retailPrice,
+            mrp: mrp,
             discount_amount: 0.0,
             discount_percent: 0.0,
             gst_percentage: gstRate,
@@ -739,9 +751,9 @@ document.addEventListener('DOMContentLoaded', function() {
         let totalBilled = 0;
 
         cart.forEach(item => {
-            const orig = parseFloat(item.original_price) || 0;
+            const orig = item.is_complementary == 1 ? 0 : getCartItemMrp(item);
             const billed = parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig;
-            const gstPct = parseFloat(item.gst_percentage) || 5.0;
+            const gstPct = getCartItemGst(item);
 
             const lineTaxable = Math.round((billed / (1 + (gstPct / 100))) * 100) / 100;
             const lineGst = Math.round((billed - lineTaxable) * 100) / 100;
@@ -820,9 +832,9 @@ document.addEventListener('DOMContentLoaded', function() {
         cart.forEach((item, index) => {
             const isComp = (item.is_complementary == 1);
             const isSeries = (item.is_series == 1);
-            const orig = isComp ? 0 : (parseFloat(item.original_price) || 0);
+            const orig = isComp ? 0 : getCartItemMrp(item);
             const billed = isComp ? 0 : (parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig);
-            const gstPercentage = isComp ? 0 : (parseFloat(item.gst_percentage) || 5.0);
+            const gstPercentage = getCartItemGst(item);
             
             const lineTaxable = isComp ? 0 : Math.round((billed / (1 + (gstPercentage / 100))) * 100) / 100;
             const lineGst = isComp ? 0 : Math.round((billed - lineTaxable) * 100) / 100;
@@ -863,7 +875,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     ${item.size_name ? `<span class="badge bg-primary-subtle text-primary" style="font-size:10px;">${escapeHtml(item.size_name)}</span>` : ''} 
                                     ${item.color_name ? `<span class="badge bg-secondary-subtle text-secondary" style="font-size:10px;">${escapeHtml(item.color_name)}</span>` : ''}
                                     ${typeBadgeHtml}
-                                    <span class="badge bg-light text-secondary border font-monospace item-mrp-badge" style="font-size:10px;" title="Original MRP / Retail Price">${isComp ? 'Complementary' : 'MRP: ₹' + orig.toFixed(2)}</span>
+                                    <span class="badge bg-light text-secondary border font-monospace item-mrp-badge" style="font-size:10px;" title="Maximum Retail Price">${isComp ? 'Complementary' : 'MRP: ₹' + getCartItemMrp(item).toFixed(2)}</span>
                                 </div>
                                 ${tagHtml}
                             </div>
@@ -873,7 +885,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         ₹${lineTaxable.toFixed(2)}
                     </td>
                     <td class="text-end item-gst-cell">
-                        <span class="badge bg-info-subtle text-info-emphasis font-monospace" style="font-size: 10px;">${gstPercentage}%</span>
+                        <input type="number" min="0" max="100" step="0.01"
+                               class="form-control form-control-sm text-end font-monospace item-gst-input"
+                               data-cart-id="${item.cart_id}" value="${gstPercentage}"
+                               style="width: 68px; display: inline-block;"
+                               title="${isComp ? 'Complementary item GST is fixed at 0%' : 'Edit GST percentage'}"
+                               ${isComp ? 'readonly' : ''}>
                         <div class="text-muted font-monospace mt-0.5 item-gst-val" style="font-size: 10px;">+₹${lineGst.toFixed(2)}</div>
                     </td>
                     <td class="text-end item-discount-cell" style="width: 105px;">
@@ -906,6 +923,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function attachCartRowEvents() {
+        document.querySelectorAll('.item-gst-input').forEach(inp => {
+            inp.addEventListener('input', function() {
+                const cartId = this.getAttribute('data-cart-id');
+                const item = cart.find(it => it.cart_id === cartId);
+                if (!item || item.is_complementary == 1) return;
+
+                const enteredRate = parseFloat(this.value);
+                item.gst_percentage = Number.isFinite(enteredRate)
+                    ? Math.min(100, Math.max(0, enteredRate))
+                    : 0;
+
+                const billed = Math.max(0, parseFloat(item.billed_price) || 0);
+                const gstPct = getCartItemGst(item);
+                const lineTaxable = Math.round((billed / (1 + (gstPct / 100))) * 100) / 100;
+                const lineGst = Math.round((billed - lineTaxable) * 100) / 100;
+                const row = this.closest('tr');
+                if (row) {
+                    const baseCell = row.querySelector('.item-base-price-cell');
+                    const gstValue = row.querySelector('.item-gst-val');
+                    if (baseCell) baseCell.innerText = `₹${lineTaxable.toFixed(2)}`;
+                    if (gstValue) gstValue.innerText = `+₹${lineGst.toFixed(2)}`;
+                }
+
+                updateSummaryTotals();
+            });
+        });
+
         // Live Input on Item Billed Price (Row-level)
         document.querySelectorAll('.item-billed-price-input').forEach(inp => {
             inp.addEventListener('input', function() {
@@ -934,7 +978,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     item.mrp = enteredVal;
                 }
 
-                const orig = parseFloat(item.original_price) || (parseFloat(item.mrp) || 0);
+                const orig = getCartItemMrp(item);
                 if (orig > 0 && enteredVal < orig) {
                     item.discount_amount = Math.round((orig - enteredVal) * 100) / 100;
                     item.discount_percent = Math.round(((item.discount_amount / orig) * 100) * 10) / 10;
@@ -943,7 +987,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     item.discount_percent = 0;
                 }
 
-                const gstPct = parseFloat(item.gst_percentage) || 5.0;
+                const gstPct = getCartItemGst(item);
                 const lineTaxable = Math.round((enteredVal / (1 + (gstPct / 100))) * 100) / 100;
                 const lineGst = Math.round((enteredVal - lineTaxable) * 100) / 100;
 
@@ -957,15 +1001,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     const mrpBadge = row.querySelector('.item-mrp-badge');
 
                     if (baseCell) baseCell.innerText = `₹${lineTaxable.toFixed(2)}`;
-                    if (gstCell) {
-                        gstCell.innerHTML = `<span class="badge bg-info-subtle text-info-emphasis font-monospace" style="font-size: 10px;">${gstPct}%</span><div class="text-muted font-monospace mt-0.5 item-gst-val" style="font-size: 10px;">+₹${lineGst.toFixed(2)}</div>`;
-                    }
+                    const gstValue = gstCell ? gstCell.querySelector('.item-gst-val') : null;
+                    if (gstValue) gstValue.innerText = `+₹${lineGst.toFixed(2)}`;
                     if (discBadge) {
                         discBadge.innerText = `-₹${item.discount_amount.toFixed(2)}`;
                         discBadge.className = item.discount_amount > 0 ? 'badge bg-danger-subtle text-danger fw-bold font-monospace item-discount-badge' : 'badge bg-light text-muted font-monospace item-discount-badge';
                     }
                     if (discPct) discPct.innerText = `(${item.discount_percent}% off)`;
-                    if (mrpBadge) mrpBadge.innerText = `MRP: ₹${(parseFloat(item.mrp) || orig).toFixed(2)}`;
+                    if (mrpBadge) mrpBadge.innerText = `MRP: ₹${getCartItemMrp(item).toFixed(2)}`;
                 }
 
                 updateSummaryTotals();
@@ -1164,9 +1207,9 @@ document.addEventListener('DOMContentLoaded', function() {
         let totalBilled = 0;
 
         cart.forEach(item => {
-            const orig = parseFloat(item.original_price) || 0;
+            const orig = item.is_complementary == 1 ? 0 : getCartItemMrp(item);
             const billed = parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig;
-            const gstPct = parseFloat(item.gst_percentage) || 5.0;
+            const gstPct = getCartItemGst(item);
 
             const lineTaxable = Math.round((billed / (1 + (gstPct / 100))) * 100) / 100;
             const lineGst = Math.round((billed - lineTaxable) * 100) / 100;

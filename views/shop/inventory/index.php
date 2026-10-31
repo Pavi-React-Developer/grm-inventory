@@ -24,14 +24,6 @@ $currSearch = $filters['search'] ?? '';
             <p class="text-muted small mb-0">Live stock balances, commercial catalog specifications, piece-by-piece QR codes, and stock ledger.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="<?= url('shop/damage') ?>" class="btn btn-outline-danger rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-slash-circle me-1"></i> Damaged Section
-            </a>
-            <?php if (hasPermission('shop_damage', 'create')): ?>
-                <a href="<?= url('shop/damage/create') ?>" class="btn btn-danger rounded-pill px-3 shadow-sm fw-semibold">
-                    <i class="bi bi-shield-x me-1"></i> Report Damage
-                </a>
-            <?php endif; ?>
             <?php if (hasPermission('pos', 'view') || hasPermission('pos', 'create')): ?>
                 <a href="<?= url('shop/pos') ?>" class="btn btn-outline-primary rounded-pill px-3 shadow-sm fw-semibold">
                     <i class="bi bi-receipt me-1"></i> Launch POS Terminal
@@ -350,7 +342,7 @@ $currSearch = $filters['search'] ?? '';
                     <select name="category_id" id="inventoryCategorySelect" class="form-select">
                         <option value="">All Categories (<?= count($categories ?? []) ?>)</option>
                         <?php foreach ($categories as $cat): ?>
-                            <option value="<?= (int)$cat['id'] ?>" <?= $currCategory === (string)$cat['id'] ? 'selected' : '' ?>>
+                            <option value="<?= e($cat['filter_id']) ?>" <?= $currCategory === (string)$cat['filter_id'] ? 'selected' : '' ?>>
                                 <?= e($cat['name']) ?>
                             </option>
                         <?php endforeach; ?>
@@ -386,109 +378,22 @@ $currSearch = $filters['search'] ?? '';
         </div>
     </div>
 
-    <!-- 3. Nav Tabs: Live Stock Balances vs Warehouse Inward Allocations -->
-    <?php $currTab = $activeTab ?? ($_GET['tab'] ?? 'stock'); ?>
+    <?php $currTab = 'stock'; ?>
     <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white overflow-hidden">
         <div class="card-header bg-white border-bottom pt-3 pb-0 px-4">
             <ul class="nav nav-tabs card-header-tabs" id="shopInventoryTabs" role="tablist">
                 <li class="nav-item">
-                    <a class="nav-link fw-semibold <?= $currTab === 'stock' ? 'active text-primary border-primary border-bottom-0' : 'text-muted' ?>" 
-                       href="<?= url('shop/inventory?tab=stock') ?>">
+                    <a class="nav-link fw-semibold active text-primary border-primary border-bottom-0" href="<?= url('shop/inventory') ?>">
                         <i class="bi bi-box-seam me-1"></i> Live Product Stock Balances (<?= count($inventory ?? []) ?> items)
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link fw-semibold <?= $currTab === 'allocations' ? 'active text-success border-success border-bottom-0' : 'text-muted' ?>" 
-                       href="<?= url('shop/inventory?tab=allocations') ?>">
-                        <i class="bi bi-truck me-1"></i> Warehouse Inward Allocations (<?= count($allocations ?? []) ?> records)
                     </a>
                 </li>
             </ul>
         </div>
 
         <div class="card-body p-0">
-            <?php if ($currTab === 'allocations'): ?>
-                <!-- ========================================================================= -->
-                <!-- TAB 2: WAREHOUSE INWARD ALLOCATIONS (GRN LEDGER) -->
-                <!-- ========================================================================= -->
-                <div class="p-3 border-bottom bg-light bg-opacity-50 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div>
-                        <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-truck me-2 text-primary"></i>Warehouse Inward Passes &amp; Allocations</h6>
-                        <small class="text-muted">Direct inward dispatch passes and consignments received from central warehouse</small>
-                    </div>
-                    <a href="<?= url('shop/inward') ?>" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm fw-semibold">
-                        <i class="bi bi-box-arrow-in-down me-1"></i> Inward Receiving &amp; QR Scanner
-                    </a>
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th class="ps-4">Allocation Ref #</th>
-                                <th>Source Warehouse</th>
-                                <th>Total Quantity</th>
-                                <th>Received Quantity</th>
-                                <th>Damaged</th>
-                                <th>Status</th>
-                                <th>Date &amp; Time</th>
-                                <th class="text-end pe-4">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (empty($allocations)): ?>
-                                <tr>
-                                    <td colspan="8" class="text-center py-5 text-muted">
-                                        <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
-                                        No warehouse allocations recorded for this shop yet.
-                                    </td>
-                                </tr>
-                            <?php else: foreach ($allocations as $a): 
-                                $aNum = $a['allocation_number'] ?? ('#' . $a['id']);
-                                $wName = $a['warehouse_name'] ?? 'Main Central Warehouse';
-                                $tQty = (float)($a['total_quantity'] ?? 0);
-                                $rQty = (float)($a['total_received_quantity'] ?? 0);
-                                $dQty = (float)($a['total_damaged_quantity'] ?? 0);
-                                $status = $a['status'] ?? 'PENDING';
-                                $statusBadge = match($status) {
-                                    'COMPLETED', 'RECEIVED' => 'bg-success text-white',
-                                    'PARTIAL_RECEIVED' => 'bg-warning text-dark',
-                                    'DISPATCHED', 'IN_TRANSIT' => 'bg-info text-dark',
-                                    default => 'bg-secondary text-white'
-                                };
-                                $date = !empty($a['created_at']) ? date('d M Y, h:i A', strtotime($a['created_at'])) : '-';
-                            ?>
-                                <tr>
-                                    <td class="ps-4 fw-bold font-monospace text-dark">
-                                        <span class="badge bg-primary me-1"><i class="bi bi-box-arrow-in-down"></i></span>
-                                        <?= e($aNum) ?>
-                                    </td>
-                                    <td><i class="bi bi-building me-1 text-secondary"></i><?= e($wName) ?></td>
-                                    <td><span class="fw-bold text-dark"><?= number_format($tQty) ?> pcs</span></td>
-                                    <td><span class="fw-bold text-success"><?= number_format($rQty) ?> pcs</span></td>
-                                    <td>
-                                        <?php if ($dQty > 0): ?>
-                                            <span class="badge bg-danger text-white"><?= number_format($dQty) ?> pcs</span>
-                                        <?php else: ?>
-                                            <span class="text-muted">0 pcs</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><span class="badge <?= $statusBadge ?>"><?= e($status) ?></span></td>
-                                    <td><small class="text-muted"><?= e($date) ?></small></td>
-                                    <td class="text-end pe-4">
-                                        <a href="<?= url('shop/inward/view/' . $a['id']) ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-semibold">
-                                            <i class="bi bi-eye me-1"></i> View GRN
-                                        </a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-
-            <?php else: ?>
-                <!-- ========================================================================= -->
-                <!-- TAB 1: LIVE PRODUCT STOCK BALANCES -->
-                <!-- ========================================================================= -->
+            <!-- ========================================================================= -->
+            <!-- TAB 1: LIVE PRODUCT STOCK BALANCES -->
+            <!-- ========================================================================= -->
                 <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center gap-2">
                         <h5 class="fw-bold text-dark mb-0"><i class="bi bi-boxes me-2 text-primary"></i>Stock Ledger</h5>
@@ -555,8 +460,22 @@ $currSearch = $filters['search'] ?? '';
                                     $imgUrl = !empty($item['variant_image']) ? $item['variant_image'] : (!empty($item['product_image']) ? $item['product_image'] : '');
                                     
                                     $statusKey = $isOut ? 'out_of_stock' : ($isLow ? 'low_stock' : 'in_stock');
-                                    $catId = (int)($item['category_id'] ?? 0);
+                                    $catId = (string)($item['category_filter_id'] ?? '');
                                     $searchHaystack = strtolower(($item['product_name'] ?? '') . ' ' . ($item['sku'] ?? '') . ' ' . ($item['product_code'] ?? '') . ' ' . ($item['category_name'] ?? '') . ' ' . ($item['subcategory_name'] ?? '') . ' ' . ($item['size_name'] ?? '') . ' ' . ($item['color_name'] ?? ''));
+                                    $warehouseCategoryType = strtoupper(trim((string)($item['warehouse_category_type'] ?? '')));
+                                    $variantQrType = strtoupper(trim((string)($item['variant_qr_type'] ?? '')));
+                                    $isComplementary = !empty($item['is_complementary']) || $warehouseCategoryType === 'COMPLEMENTARY';
+                                    $isSeries = !$isComplementary && (
+                                        $warehouseCategoryType === 'SERIES'
+                                        || $variantQrType === 'SERIES_BATCH'
+                                        || (int)($item['pack_quantity'] ?? 1) > 1
+                                    );
+                                    $productType = $isComplementary ? 'COMPLEMENTARY' : ($isSeries ? 'SERIES' : 'NORMAL');
+                                    $productTypeBadge = match ($productType) {
+                                        'COMPLEMENTARY' => 'bg-info-subtle text-info-emphasis border-info-subtle',
+                                        'SERIES' => 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+                                        default => 'bg-secondary-subtle text-secondary border-secondary-subtle',
+                                    };
                                     ?>
                                     <tr class="inv-item-row" 
                                         id="inv-row-<?= (int)$item['variant_id'] ?>" 
@@ -609,6 +528,11 @@ $currSearch = $filters['search'] ?? '';
                                                     </span>
                                                 </div>
                                             <?php endif; ?>
+                                            <div class="mt-1">
+                                                <span class="badge <?= $productTypeBadge ?> border font-monospace" style="font-size: 9px;" title="Product QR type">
+                                                    <?= e($productType) ?>
+                                                </span>
+                                            </div>
                                         </td>
                                         <td>
                                             <span class="badge bg-light text-dark border fw-semibold"><?= e($item['category_name'] ?? 'General') ?></span>
@@ -691,7 +615,6 @@ $currSearch = $filters['search'] ?? '';
                         </tbody>
                     </table>
                 </div>
-            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -728,14 +651,10 @@ $currSearch = $filters['search'] ?? '';
                     <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
                         <div class="card-body p-3 p-md-4 bg-white">
                             <div class="row g-3 align-items-center">
-                                <div class="col-md-4 text-center">
-                                    <div id="modalImageContainer" class="position-relative d-inline-block w-100">
-                                        <!-- Image loaded dynamically -->
-                                    </div>
-                                </div>
-                                <div class="col-md-8">
+                                <div class="col-12">
                                     <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
                                         <span class="badge bg-primary-subtle text-primary border" id="modalCategoryBadge">-</span>
+                                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle font-monospace" id="modalProductTypeBadge">NORMAL</span>
                                         <span class="badge bg-info-subtle text-info-emphasis border" id="modalSourceBadge">-</span>
                                         <span class="badge bg-light text-dark border" id="modalBrandBadge">-</span>
                                     </div>
@@ -788,98 +707,50 @@ $currSearch = $filters['search'] ?? '';
                         </div>
                     </div>
 
-                    <!-- 2. Technical Specifications Grid -->
-                    <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
-                        <div class="card-header bg-white py-3 border-0">
-                            <h6 class="fw-bold text-dark mb-0"><i class="bi bi-card-checklist text-primary me-2"></i>Technical Specifications &amp; Compliance</h6>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-bordered align-middle mb-0 small">
-                                    <tbody>
-                                        <tr>
-                                            <th class="bg-light text-muted w-25">Material / Fabric</th>
-                                            <td class="fw-semibold text-dark" id="modalMaterial">-</td>
-                                            <th class="bg-light text-muted w-25">HSN Code &amp; GST</th>
-                                            <td id="modalHsnGst">-</td>
-                                        </tr>
-                                        <tr>
-                                            <th class="bg-light text-muted">Category Hierarchy</th>
-                                            <td id="modalCategoryHierarchy" class="fw-semibold text-dark">-</td>
-                                            <th class="bg-light text-muted">Stock Thresholds</th>
-                                            <td id="modalStockThresholds">-</td>
-                                        </tr>
-                                        <tr>
-                                            <th class="bg-light text-muted">Production / Cost</th>
-                                            <td id="modalCostPrice">-</td>
-                                            <th class="bg-light text-muted">Damaged Units</th>
-                                            <td id="modalDamagedUnits" class="text-danger fw-bold">0 pcs</td>
-                                        </tr>
-                                        <tr>
-                                            <th class="bg-light text-muted">Description</th>
-                                            <td colspan="3" class="text-secondary" id="modalDescription">-</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                    <!-- Product history tabs -->
+                    <ul class="nav nav-tabs flex-nowrap overflow-auto mb-3" id="shopStockHistoryTabs" role="tablist">
+                        <li class="nav-item"><button class="nav-link active text-nowrap" id="modal-tab-pieces-btn" data-bs-toggle="tab" data-bs-target="#modal-tab-pieces" type="button" role="tab">Piece QR &amp; Tag Codes (<span id="modalPiecesTabCount">0 In Stock / 0 Total</span>)</button></li>
+                        <li class="nav-item"><button class="nav-link text-nowrap" id="modal-tab-ledger-btn" data-bs-toggle="tab" data-bs-target="#modal-tab-ledger" type="button" role="tab">Stock Ledger (<span id="modalTxCount">0</span>)</button></li>
+                        <li class="nav-item"><button class="nav-link text-nowrap" id="modal-tab-inward-btn" data-bs-toggle="tab" data-bs-target="#modal-tab-inward" type="button" role="tab">Warehouse Inwards (<span id="modalInwardCount">0</span>)</button></li>
+                        <li class="nav-item"><button class="nav-link text-nowrap" id="modal-tab-sales-btn" data-bs-toggle="tab" data-bs-target="#modal-tab-sales" type="button" role="tab">Shop POS Sales (<span id="modalSalesCount">0</span>)</button></li>
+                        <li class="nav-item"><button class="nav-link text-nowrap" id="modal-tab-returns-btn" data-bs-toggle="tab" data-bs-target="#modal-tab-returns" type="button" role="tab">Returns &amp; Exchanges (<span id="modalReturnsCount">0</span>)</button></li>
+                        <li class="nav-item"><button class="nav-link text-nowrap" id="modal-tab-damages-btn" data-bs-toggle="tab" data-bs-target="#modal-tab-damages" type="button" role="tab">Damage &amp; Quarantine (<span id="modalDamagesCount">0</span>)</button></li>
+                        <li class="nav-item"><button class="nav-link text-nowrap" id="modal-tab-whreturns-btn" data-bs-toggle="tab" data-bs-target="#modal-tab-whreturns" type="button" role="tab">Warehouse Returns (<span id="modalWhReturnsCount">0</span>)</button></li>
+                    </ul>
+
+                    <div class="tab-content" id="shopStockHistoryTabContent">
+                        <div class="tab-pane fade show active" id="modal-tab-pieces" role="tabpanel">
+                            <div class="card border-0 shadow-sm rounded-4 bg-white">
+                                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                    <h6 class="fw-bold text-dark mb-0"><i class="bi bi-grid-3x3-gap-fill text-danger me-2"></i>Piece QR Labels (<span id="modalPiecesTotalCount">0</span> pcs)</h6>
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-2"><i class="bi bi-check2-circle me-1"></i>Allocated Piece Tags</span>
+                                </div>
+                                <div class="card-body p-3 bg-light bg-opacity-50">
+                                    <div class="row g-3" id="modalIndividualPiecesGrid"></div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-
-                    <!-- 3. ALL INDIVIDUAL PIECE QR CODES GRID -->
-                    <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
-                        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <div>
-                                <h6 class="fw-bold text-dark mb-0">
-                                    <i class="bi bi-grid-3x3-gap-fill text-danger me-2"></i>All Individual Inward Pieces &amp; QR Codes (<span id="modalPiecesTotalCount">0</span> pcs)
-                                </h6>
-                                <small class="text-muted">Itemized piece-by-piece QR tag cards with complete product, category, size and pricing information</small>
-                            </div>
-                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-2">
-                                <i class="bi bi-check2-circle me-1"></i>All Units Ready for POS Sale
-                            </span>
-                        </div>
-                        <div class="card-body p-3 bg-light bg-opacity-50">
-                            <div class="row g-3" id="modalIndividualPiecesGrid">
-                                <!-- Populated dynamically by JS -->
+                        <div class="tab-pane fade" id="modal-tab-ledger" role="tabpanel">
+                            <div class="card border-0 shadow-sm rounded-4 bg-white">
+                                <div class="card-header bg-white py-3 border-0"><h6 class="fw-bold text-dark mb-0"><i class="bi bi-clock-history text-primary me-2"></i>Recent Stock Movements at Shop</h6></div>
+                                <div class="card-body p-0 table-responsive" style="max-height: 360px;">
+                                    <table class="table table-sm table-hover align-middle mb-0 small">
+                                        <thead class="table-light"><tr><th class="ps-3">Date</th><th>Type</th><th>Qty</th><th>Balance</th><th class="pe-3">Notes / Ref</th></tr></thead>
+                                        <tbody id="modalTransactionsTableBody"></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-                    <!-- 4. Recent Stock Movements Table at Shop -->
-                    <div class="card border-0 shadow-sm rounded-4 bg-white">
-                        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
-                            <h6 class="fw-bold text-dark mb-0"><i class="bi bi-clock-history text-primary me-2"></i>Recent Stock Movements at Shop</h6>
-                            <span class="badge bg-light text-dark border" id="modalTxCount">0 Transactions</span>
-                        </div>
-                        <div class="card-body p-0 table-responsive" style="max-height: 220px;">
-                            <table class="table table-sm table-hover align-middle mb-0 small">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="ps-3">Date</th>
-                                        <th>Type</th>
-                                        <th>Qty</th>
-                                        <th>Balance</th>
-                                        <th class="pe-3">Notes / Ref</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="modalTransactionsTableBody">
-                                    <!-- Dynamic rows -->
-                                </tbody>
-                            </table>
-                        </div>
+                        <div class="tab-pane fade" id="modal-tab-inward" role="tabpanel"><div class="card border-0 shadow-sm rounded-4 bg-white"><div class="card-body p-0 table-responsive"><table class="table table-sm table-hover align-middle mb-0 small"><thead class="table-light"><tr><th class="ps-3">Allocation</th><th>Outward</th><th>Date</th><th>Quantity</th><th>Status</th><th>QR Tags</th></tr></thead><tbody id="modalInwardsTableBody"></tbody></table></div></div></div>
+                        <div class="tab-pane fade" id="modal-tab-sales" role="tabpanel"><div class="card border-0 shadow-sm rounded-4 bg-white"><div class="card-body p-0 table-responsive"><table class="table table-sm table-hover align-middle mb-0 small"><thead class="table-light"><tr><th class="ps-3">Invoice</th><th>Date</th><th>Customer</th><th>Quantity</th><th>Scanned QR Tags</th></tr></thead><tbody id="modalSalesTableBody"></tbody></table></div></div></div>
+                        <div class="tab-pane fade" id="modal-tab-returns" role="tabpanel"><div class="card border-0 shadow-sm rounded-4 bg-white"><div class="card-body p-0 table-responsive"><table class="table table-sm table-hover align-middle mb-0 small"><thead class="table-light"><tr><th class="ps-3">Return #</th><th>Date</th><th>Type</th><th>Quantity</th><th>Condition / Reason</th><th>Status</th></tr></thead><tbody id="modalReturnsTableBody"></tbody></table></div></div></div>
+                        <div class="tab-pane fade" id="modal-tab-damages" role="tabpanel"><div class="card border-0 shadow-sm rounded-4 bg-white"><div class="card-body p-0 table-responsive"><table class="table table-sm table-hover align-middle mb-0 small"><thead class="table-light"><tr><th class="ps-3">Damage #</th><th>Date</th><th>QR Tag</th><th>Quantity</th><th>Reason</th><th>Status</th></tr></thead><tbody id="modalDamagesTableBody"></tbody></table></div></div></div>
+                        <div class="tab-pane fade" id="modal-tab-whreturns" role="tabpanel"><div class="card border-0 shadow-sm rounded-4 bg-white"><div class="card-body p-0 table-responsive"><table class="table table-sm table-hover align-middle mb-0 small"><thead class="table-light"><tr><th class="ps-3">Return #</th><th>Date</th><th>Quantity</th><th>Reason</th><th>Status</th></tr></thead><tbody id="modalWhReturnsTableBody"></tbody></table></div></div></div>
                     </div>
                 </div>
             </div>
 
             <div class="modal-footer bg-white border-0 py-3 d-flex justify-content-between align-items-center">
-                <div>
-                    <?php if (hasPermission('shop_damage', 'create')): ?>
-                    <a href="#" id="modalReportDamageLink" class="btn btn-sm btn-outline-danger rounded-pill px-3 shadow-xs fw-semibold">
-                        <i class="bi bi-shield-x me-1"></i> Report Damage / Defect
-                    </a>
-                    <?php endif; ?>
-                </div>
                 <div class="d-flex gap-2">
                     <a href="#" id="modalFullDetailLink" class="btn btn-sm btn-outline-primary rounded-pill px-3">
                         <i class="bi bi-box-arrow-up-right me-1"></i> Full Page View
@@ -1277,9 +1148,7 @@ function openProductDetailModal(variantId) {
             }
 
             const item = data.item;
-            const imgUrl = item.variant_image || item.product_image || '';
             const qty = parseFloat(item.quantity) || 0;
-            const damagedQty = parseFloat(item.damaged_quantity) || 0;
             const minStock = parseFloat(item.min_stock) || 5;
             const isLow = qty <= minStock && qty > 0;
             const isOut = qty <= 0;
@@ -1292,6 +1161,24 @@ function openProductDetailModal(variantId) {
             document.getElementById('modalProductName').textContent = item.product_name || 'Retail Product';
             document.getElementById('modalProductCode').textContent = item.product_code || item.sku;
             document.getElementById('modalCategoryBadge').textContent = item.category_name || 'General';
+            const warehouseCategoryType = (item.warehouse_category_type || '').toUpperCase().trim();
+            const variantQrType = (item.variant_qr_type || '').toUpperCase().trim();
+            const isComplementary = Boolean(parseInt(item.is_complementary, 10)) || warehouseCategoryType === 'COMPLEMENTARY';
+            const isSeries = !isComplementary && (
+                warehouseCategoryType === 'SERIES'
+                || variantQrType === 'SERIES_BATCH'
+                || (parseInt(item.pack_quantity, 10) || 1) > 1
+            );
+            const productType = isComplementary ? 'COMPLEMENTARY' : (isSeries ? 'SERIES' : 'NORMAL');
+            const productTypeBadge = document.getElementById('modalProductTypeBadge');
+            productTypeBadge.textContent = productType;
+            productTypeBadge.className = `badge border font-monospace ${
+                productType === 'COMPLEMENTARY'
+                    ? 'bg-info-subtle text-info-emphasis border-info-subtle'
+                    : productType === 'SERIES'
+                        ? 'bg-warning-subtle text-warning-emphasis border-warning-subtle'
+                        : 'bg-secondary-subtle text-secondary border-secondary-subtle'
+            }`;
             document.getElementById('modalSourceBadge').textContent = item.source_type || 'OWN_PRODUCTION';
             document.getElementById('modalBrandBadge').textContent = item.brand_name ? `Brand: ${item.brand_name}` : 'GRM Collection';
 
@@ -1300,7 +1187,6 @@ function openProductDetailModal(variantId) {
             if (item.subcategory_name) catPath += ` › ${escapeHtml(item.subcategory_name)}`;
             if (item.sub_subcategory_name) catPath += ` › ${escapeHtml(item.sub_subcategory_name)}`;
             document.getElementById('modalCategoryPath').innerHTML = `Category: <strong class="text-dark">${catPath}</strong>`;
-            document.getElementById('modalCategoryHierarchy').innerHTML = catPath;
 
             // Inward Ref
             document.getElementById('modalInwardRef').textContent = item.inward_reference || 'Inward Stock';
@@ -1333,40 +1219,17 @@ function openProductDetailModal(variantId) {
                 <span class="badge bg-secondary px-2 py-1">${escapeHtml(item.color_name || 'Std')}</span>
             `;
 
-            // Image Container
-            const imgBox = document.getElementById('modalImageContainer');
-            if (imgBox) {
-                if (imgUrl) {
-                    imgBox.innerHTML = `
-                        <img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(item.product_name)}" 
-                             class="img-fluid rounded-4 shadow-sm border bg-white" 
-                             style="max-height: 200px; width: 100%; object-fit: cover;">
-                    `;
-                } else {
-                    imgBox.innerHTML = `
-                        <div class="rounded-4 bg-light border d-flex flex-column align-items-center justify-content-center shadow-sm p-4" style="min-height: 180px;">
-                            <i class="bi bi-box-seam text-primary opacity-50" style="font-size: 3.5rem;"></i>
-                            <span class="text-muted small mt-1">No Image Available</span>
-                        </div>
-                    `;
-                }
-            }
-
-            // Specs Table
-            document.getElementById('modalMaterial').textContent = item.material || 'N/A';
-            document.getElementById('modalHsnGst').innerHTML = `${escapeHtml(item.hsn_code || 'N/A')} ${item.gst_percentage ? `<span class="badge bg-secondary-subtle text-secondary ms-1">${parseFloat(item.gst_percentage)}% GST</span>` : ''}`;
-            document.getElementById('modalStockThresholds').textContent = `Min: ${item.min_stock || 0} pcs | Max: ${item.max_stock || 1000} pcs`;
-            document.getElementById('modalCostPrice').textContent = cost > 0 ? `₹${cost.toFixed(2)}` : 'N/A';
-            document.getElementById('modalDamagedUnits').textContent = `${damagedQty} pcs`;
-            document.getElementById('modalDescription').textContent = item.description || 'No description provided for this catalog product.';
-
-
             // RENDER ALL INDIVIDUAL PIECE CARDS
             const piecesGrid = document.getElementById('modalIndividualPiecesGrid');
             const piecesCountEl = document.getElementById('modalPiecesTotalCount');
             const pieces = item.individual_pieces || [];
             
             if (piecesCountEl) piecesCountEl.textContent = pieces.length;
+            const availablePieceCount = pieces.filter(piece => {
+                const status = (piece.status || '').toUpperCase();
+                return status === 'AVAILABLE' || status === 'IN STOCK';
+            }).length;
+            document.getElementById('modalPiecesTabCount').textContent = `${availablePieceCount} In Stock / ${pieces.length} Total`;
 
             if (piecesGrid) {
                 if (pieces.length === 0) {
@@ -1379,10 +1242,6 @@ function openProductDetailModal(variantId) {
                 } else {
                     let phtml = '';
                     pieces.forEach((p, idx) => {
-                        const pieceImg = p.product_image 
-                            ? `<img src="${escapeHtml(p.product_image)}" class="rounded border shadow-sm flex-shrink-0" style="width: 48px; height: 48px; object-fit: cover;">`
-                            : `<div class="rounded bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center flex-shrink-0 shadow-sm" style="width: 48px; height: 48px;"><i class="bi bi-box-seam fs-5"></i></div>`;
-
                         const isRestocked = p.is_restocked || (p.status && p.status.toLowerCase() === 'in stock' && p.return_number);
                         const isExchanged = p.is_exchanged || (p.status && p.status.toLowerCase() === 'exchanged');
                         const isSold = (p.is_sold || (p.status && p.status.toLowerCase() === 'sold')) && !isRestocked;
@@ -1409,69 +1268,70 @@ function openProductDetailModal(variantId) {
                             cardBg = 'border-info border-opacity-50 bg-info-subtle bg-opacity-25';
                         }
 
+                        const categoryHierarchy = [p.category_name, p.subcategory_name, p.sub_subcategory_name]
+                            .filter(Boolean)
+                            .map(escapeHtml)
+                            .join(' › ');
+                        const mrp = parseFloat(p.mrp) || 0;
+                        const price = parseFloat(p.selling_price) || 0;
+                        let pieceActionHtml = '';
+                        if (isSold) {
+                            pieceActionHtml = `<a href="${p.sale_id ? `<?= url('shop/pos/invoice/') ?>/${p.sale_id}` : `<?= url('shop/pos/history') ?>`}" class="btn btn-sm btn-primary py-1 px-2" target="_blank" title="View POS Invoice"><i class="bi bi-receipt"></i></a>`;
+                        } else if (isDamaged) {
+                            pieceActionHtml = `<a href="<?= url('shop/damage') ?>" class="btn btn-sm btn-danger py-1 px-2" title="View in Damage Module"><i class="bi bi-exclamation-octagon"></i></a>`;
+                        } else if (isReturned) {
+                            pieceActionHtml = `<a href="<?= url('shop/return-to-warehouse') ?>" class="btn btn-sm btn-warning py-1 px-2" title="View Return Consignments"><i class="bi bi-truck"></i></a>`;
+                        } else if (isExchanged) {
+                            pieceActionHtml = `<a href="<?= url('shop/returns?tab=exchanges') ?>" class="btn btn-sm btn-info py-1 px-2" title="View Returns & Exchanges"><i class="bi bi-arrow-repeat"></i></a>`;
+                        }
                         phtml += `
-                            <div class="col-md-6 col-lg-4">
-                                <div class="card border shadow-sm rounded-3 h-100 ${cardBg} hover-shadow p-3">
-                                    <div class="d-flex align-items-start justify-content-between mb-2">
-                                        <span class="badge bg-dark bg-opacity-10 text-dark border font-monospace" style="font-size: 0.75rem;">
+                            <div class="col-md-6 col-xl-4">
+                                <div class="card border shadow-sm rounded-3 h-100 ${cardBg} hover-shadow p-2">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="badge bg-light text-muted border font-monospace" style="font-size: 0.68rem;">
                                             Piece #${p.piece_number} of ${pieces.length}
                                         </span>
                                         ${statusBadge}
                                     </div>
 
-                                    <div class="d-flex align-items-center gap-2 mb-2">
-                                        ${pieceImg}
-                                        <div class="overflow-hidden">
-                                            <div class="fw-bold text-dark text-truncate small">${escapeHtml(p.product_name)}</div>
-                                            <div class="font-monospace text-primary fw-semibold" style="font-size: 11px;">${escapeHtml(p.sku)}</div>
-                                            <div class="text-muted text-truncate" style="font-size: 10px;">${escapeHtml(p.category_name)} › ${escapeHtml(p.subcategory_name || '')}</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="d-flex justify-content-between align-items-center p-2 rounded bg-light border mb-2 small">
-                                        <div>
-                                            <span class="badge bg-dark font-monospace text-white me-1" style="font-size: 10px;">${escapeHtml(p.size_name)}</span>
-                                            <span class="badge bg-secondary font-monospace" style="font-size: 10px;">${escapeHtml(p.color_name)}</span>
-                                        </div>
-                                        <div class="fw-bold text-success">₹${p.selling_price.toFixed(2)}</div>
-                                    </div>
-
-                                    <!-- QR Code Block -->
-                                    <div class="d-flex align-items-center justify-content-between pt-2 border-top">
-                                        <div class="d-flex align-items-center gap-2">
-                                            <div id="piece_qr_canvas_${idx}" class="border p-1 bg-white rounded shadow-sm"></div>
-                                            <div>
-                                                <small class="text-muted d-block" style="font-size: 9px;">Piece QR Tag</small>
-                                                <span class="badge bg-dark font-monospace text-white" style="font-size: 11px;">
-                                                    <i class="bi bi-qr-code me-1 text-warning"></i>${escapeHtml(p.tag_code)}
-                                                </span>
+                                    <div class="p-2 border rounded-3 bg-white mb-2">
+                                        <div class="d-flex align-items-start gap-2">
+                                            <div class="text-center flex-shrink-0" style="width: 80px;">
+                                                <div id="piece_qr_canvas_${idx}" class="bg-white p-1 rounded border shadow-sm d-flex align-items-center justify-content-center mx-auto" style="width: 72px; height: 72px;"></div>
+                                                <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-break" style="font-size: 0.62rem; letter-spacing: 0.2px;" title="${escapeHtml(p.tag_code)}">
+                                                    ${escapeHtml(p.tag_code)}
+                                                </div>
+                                            </div>
+                                            <div class="overflow-hidden flex-grow-1" style="font-size: 0.76rem; margin-top: 1px;">
+                                                <div class="fw-bold text-uppercase text-dark text-truncate" style="font-size: 0.80rem; letter-spacing: 0.2px;">
+                                                    ${escapeHtml(p.brand_name || item.brand_name || 'GRM WAREHOUSE')}
+                                                </div>
+                                                ${categoryHierarchy ? `
+                                                    <div class="mt-1 mb-1">
+                                                        <span class="badge bg-light text-primary border font-monospace px-1 py-1 text-truncate d-inline-block mw-100" style="font-size: 0.65rem;" title="${categoryHierarchy}">
+                                                            <i class="bi bi-diagram-3-fill me-1 text-warning"></i>${categoryHierarchy}
+                                                        </span>
+                                                    </div>
+                                                ` : ''}
+                                                <div class="fw-semibold text-secondary text-truncate mt-1" style="font-size: 0.76rem;">
+                                                    ${escapeHtml(p.size_name || 'Free')}-${escapeHtml(p.color_name || 'Std')}
+                                                </div>
+                                                ${mrp > price ? `
+                                                    <div class="text-muted text-decoration-line-through mt-1" style="font-size: 0.68rem;">MRP: ₹${mrp.toFixed(2)}</div>
+                                                    <div class="fw-bold text-success mt-1" style="font-size: 0.78rem;">Discount Price: ₹${price.toFixed(2)}</div>
+                                                ` : `
+                                                    <div class="fw-bold text-success mt-1" style="font-size: 0.78rem;">Discount Price: ₹${(price > 0 ? price : mrp).toFixed(2)}</div>
+                                                `}
                                             </div>
                                         </div>
+                                    </div>
+
+                                    <div class="d-flex justify-content-end gap-1 mt-auto pt-1 border-top">
                                         <div class="d-flex gap-1">
                                             <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" onclick="navigator.clipboard.writeText('${escapeHtml(p.tag_code)}'); alert('Copied QR Tag: ${escapeHtml(p.tag_code)}');" title="Copy QR Tag">
                                                 <i class="bi bi-copy"></i>
                                             </button>
-                                            ${isSold ? `
-                                                <a href="${p.sale_id ? `<?= url('shop/pos/invoice/') ?>/${p.sale_id}` : `<?= url('shop/pos/history') ?>`}" class="btn btn-sm btn-primary py-1 px-2" target="_blank" title="View POS Invoice">
-                                                    <i class="bi bi-receipt"></i>
-                                                </a>
-                                            ` : (isDamaged ? `
-                                                <a href="<?= url('shop/damage') ?>" class="btn btn-sm btn-danger py-1 px-2" title="View in Damage Module">
-                                                    <i class="bi bi-exclamation-octagon"></i>
-                                                </a>
-                                            ` : (isReturned ? `
-                                                <a href="<?= url('shop/return-to-warehouse') ?>" class="btn btn-sm btn-warning py-1 px-2" title="View Return Consignments">
-                                                    <i class="bi bi-truck"></i>
-                                                </a>
-                                            ` : (isExchanged ? `
-                                                <a href="<?= url('shop/returns?tab=exchanges') ?>" class="btn btn-sm btn-info py-1 px-2" title="View Returns & Exchanges">
-                                                    <i class="bi bi-arrow-repeat"></i>
-                                                </a>
-                                            ` : `
-                                                <a href="<?= url('shop/damage/create?variant_id=') ?>${item.variant_id || variantId}&piece_tag=${encodeURIComponent(p.tag_code)}" class="btn btn-sm btn-outline-danger py-1 px-2" title="Report / Quarantine Damaged Piece">
-                                                    <i class="bi bi-slash-circle"></i>
-                                                </a>
-                                            `)))}
+                                            ${pieceActionHtml}
                                         </div>
                                     </div>
 
@@ -1513,9 +1373,9 @@ function openProductDetailModal(variantId) {
                                 cEl.innerHTML = '';
                                 try {
                                     new QRCode(cEl, {
-                                        text: p.qr_payload,
-                                        width: 44,
-                                        height: 44,
+                                        text: p.tag_code,
+                                        width: 72,
+                                        height: 72,
                                         colorDark: "#0f172a",
                                         colorLight: "#ffffff",
                                         correctLevel: QRCode.CorrectLevel.M
@@ -1532,7 +1392,7 @@ function openProductDetailModal(variantId) {
             const txCountEl = document.getElementById('modalTxCount');
             if (txBody) {
                 const txs = item.transactions || [];
-                if (txCountEl) txCountEl.textContent = `${txs.length} Transactions`;
+                if (txCountEl) txCountEl.textContent = txs.length;
                 if (txs.length === 0) {
                     txBody.innerHTML = `<tr><td colspan="5" class="text-center py-3 text-muted">No stock transactions logged yet.</td></tr>`;
                 } else {
@@ -1555,6 +1415,83 @@ function openProductDetailModal(variantId) {
                 }
             }
 
+            const renderHistoryRows = (bodyId, countId, records, columnCount, rowRenderer) => {
+                const body = document.getElementById(bodyId);
+                const count = document.getElementById(countId);
+                const rows = Array.isArray(records) ? records : [];
+                if (count) count.textContent = rows.length;
+                if (body) {
+                    body.innerHTML = rows.length
+                        ? rows.map(rowRenderer).join('')
+                        : `<tr><td colspan="${columnCount}" class="text-center py-4 text-muted">No records found.</td></tr>`;
+                }
+            };
+
+            const allocationBatches = item.allocation_batches || [];
+            renderHistoryRows('modalInwardsTableBody', 'modalInwardCount', allocationBatches, 6, batch => `
+                <tr>
+                    <td class="ps-3 fw-semibold font-monospace">${escapeHtml(batch.allocation_number || '-')}</td>
+                    <td class="font-monospace">${escapeHtml(batch.outward_number || 'DIRECT')}</td>
+                    <td>${escapeHtml(batch.alloc_date || '-')}</td>
+                    <td>${parseInt(batch.quantity, 10) || 0} pcs</td>
+                    <td>${escapeHtml(batch.status || '-')}</td>
+                    <td class="font-monospace">${escapeHtml((batch.tags || []).join(', ') || '-')}</td>
+                </tr>
+            `);
+
+            const sales = item.sales || [];
+            renderHistoryRows('modalSalesTableBody', 'modalSalesCount', sales, 5, sale => `
+                <tr>
+                    <td class="ps-3 fw-semibold font-monospace">${escapeHtml(sale.invoice_number || '-')}</td>
+                    <td>${escapeHtml(sale.created_at || '-')}</td>
+                    <td>${escapeHtml(sale.customer_name || 'Retail Customer')}</td>
+                    <td>${parseInt(sale.quantity, 10) || 0} pcs</td>
+                    <td class="font-monospace">${escapeHtml(sale.scanned_qr_codes || '-')}</td>
+                </tr>
+            `);
+
+            const returnRecords = (item.returns || []).map(record => ({...record, record_type: record.return_type || 'RETURN'}));
+            const exchangeRecords = (item.exchanges || []).map(record => ({
+                return_number: record.exchange_number,
+                created_at: record.exchange_date || record.created_at,
+                record_type: 'EXCHANGE',
+                quantity: record.quantity || 1,
+                item_reason: record.piece_tag || '',
+                status: record.exchange_status || record.status
+            }));
+            const returnAndExchangeRecords = [...returnRecords, ...exchangeRecords];
+            renderHistoryRows('modalReturnsTableBody', 'modalReturnsCount', returnAndExchangeRecords, 6, record => `
+                <tr>
+                    <td class="ps-3 fw-semibold font-monospace">${escapeHtml(record.return_number || '-')}</td>
+                    <td>${escapeHtml(record.created_at || '-')}</td>
+                    <td>${escapeHtml(record.record_type || '-')}</td>
+                    <td>${parseInt(record.quantity, 10) || 0} pcs</td>
+                    <td>${escapeHtml(record.item_condition || record.item_reason || record.reason || '-')}</td>
+                    <td>${escapeHtml(record.status || '-')}</td>
+                </tr>
+            `);
+
+            renderHistoryRows('modalDamagesTableBody', 'modalDamagesCount', item.damages || [], 6, damage => `
+                <tr>
+                    <td class="ps-3 fw-semibold font-monospace">${escapeHtml(damage.damage_number || '-')}</td>
+                    <td>${escapeHtml(damage.created_at || '-')}</td>
+                    <td class="font-monospace">${escapeHtml(damage.tag_code || '-')}</td>
+                    <td>${parseInt(damage.quantity, 10) || 0} pcs</td>
+                    <td>${escapeHtml(damage.damage_reason || damage.defect_type || '-')}</td>
+                    <td>${escapeHtml(damage.status || '-')}</td>
+                </tr>
+            `);
+
+            renderHistoryRows('modalWhReturnsTableBody', 'modalWhReturnsCount', item.wh_returns || [], 5, record => `
+                <tr>
+                    <td class="ps-3 fw-semibold font-monospace">${escapeHtml(record.return_number || '-')}</td>
+                    <td>${escapeHtml(record.created_at || '-')}</td>
+                    <td>${parseInt(record.returned_qty, 10) || 0} pcs</td>
+                    <td>${escapeHtml(record.reason || '-')}</td>
+                    <td>${escapeHtml(record.status || '-')}</td>
+                </tr>
+            `);
+
             // Connect modal Edit Price button
             const btnEdit = document.getElementById('modalBtnEditPrice');
             if (btnEdit) {
@@ -1563,18 +1500,15 @@ function openProductDetailModal(variantId) {
                 };
             }
 
-            // Update full page link and report damage link
+            // Update full page link
             const fullLink = document.getElementById('modalFullDetailLink');
             if (fullLink) {
                 fullLink.href = `<?= url('shop/inventory/detail') ?>/${item.variant_id || variantId}`;
             }
-            const reportDmgLink = document.getElementById('modalReportDamageLink');
-            if (reportDmgLink) {
-                reportDmgLink.href = `<?= url('shop/damage/create?variant_id=') ?>${item.variant_id || variantId}`;
-            }
 
             if (spinner) spinner.classList.add('d-none');
             if (content) content.classList.remove('d-none');
+            bootstrap.Tab.getOrCreateInstance(document.getElementById('modal-tab-pieces-btn')).show();
         })
         .catch(err => {
             console.error(err);

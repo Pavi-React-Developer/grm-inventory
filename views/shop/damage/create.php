@@ -18,7 +18,7 @@
     </div>
 </div>
 
-<form method="POST" action="<?= url('shop/damage/store') ?>" enctype="multipart/form-data" id="damageEntryForm">
+<form method="POST" action="<?= url('shop/damage/store') ?>" id="damageEntryForm">
     <?= CSRF::input() ?>
     <input type="hidden" name="items" id="hiddenItemsJson" value="[]">
     <input type="hidden" name="shop_id" value="<?= (int)$shop['id'] ?>">
@@ -27,17 +27,7 @@
     <div class="card border-0 shadow-sm rounded-4 mb-4 bg-gradient overflow-hidden" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: #fff;">
         <div class="card-body p-4">
             <div class="row g-3 align-items-center">
-                <div class="col-lg-4">
-                    <label class="form-label text-white-50 small fw-bold text-uppercase mb-1">
-                        <i class="bi bi-geo-alt-fill text-danger me-1"></i> Retail Shop Location
-                    </label>
-                    <div class="p-2.5 bg-dark rounded-3 border border-secondary d-flex align-items-center justify-content-between">
-                        <span class="fw-bold text-white fs-6"><?= e($shop['name']) ?></span>
-                        <span class="badge bg-danger"><?= e($shop['code'] ?? 'SHOP-01') ?></span>
-                    </div>
-                </div>
-
-                <div class="col-lg-8">
+                <div class="col-12">
                     <label class="form-label text-white-50 small fw-bold text-uppercase mb-1">
                         <i class="bi bi-upc-scan text-warning me-1"></i> Scan Piece QR Tag / Barcode or Type SKU / Product Name
                     </label>
@@ -51,9 +41,6 @@
                                    autocomplete="off" autofocus>
                             <button type="button" class="btn btn-warning px-4 fw-bold d-flex align-items-center gap-1" id="btnLookupScan" title="Lookup / Add to Queue">
                                 <i class="bi bi-plus-circle"></i> <span>Add to Queue</span>
-                            </button>
-                            <button type="button" class="btn btn-outline-light px-3" data-bs-toggle="modal" data-bs-target="#cameraScanModal" title="Open Camera Scanner">
-                                <i class="bi bi-camera-video me-1"></i> Camera
                             </button>
                         </div>
                         <!-- Live Instant Auto-Suggest Dropdown on Typing -->
@@ -116,23 +103,22 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0" id="queueTable">
+                <table class="table table-hover table-sm align-middle mb-0" id="queueTable">
                     <thead class="table-light text-muted small text-uppercase">
                         <tr>
-                            <th class="ps-3" style="width: 50px;">#</th>
-                            <th style="min-width: 240px;">Product &amp; SKU</th>
-                            <th style="min-width: 140px;">Scanned Tag</th>
-                            <th style="min-width: 160px;">Defect Type</th>
-                            <th style="min-width: 180px;">Damage Reason / Notes</th>
-                            <th class="text-center" style="width: 120px;">Damaged Qty</th>
-                            <th class="text-end" style="width: 120px;">Unit Cost</th>
-                            <th class="text-end" style="width: 130px;">Total Loss</th>
-                            <th class="text-center pe-3" style="width: 60px;">Action</th>
+                            <th class="ps-3 text-nowrap" style="width: 48px;">#</th>
+                            <th class="text-nowrap" style="min-width: 220px;">Product &amp; SKU</th>
+                            <th class="text-nowrap" style="min-width: 140px;">Scanned Tag</th>
+                            <th class="text-nowrap" style="min-width: 180px;">Damage Reason / Notes</th>
+                            <th class="text-center text-nowrap" style="width: 110px;">Damaged Qty</th>
+                            <th class="text-end text-nowrap" style="width: 110px;">Unit Cost</th>
+                            <th class="text-end text-nowrap" style="width: 120px;">Total Loss</th>
+                            <th class="text-center text-nowrap pe-3" style="width: 60px;">Action</th>
                         </tr>
                     </thead>
                     <tbody id="queueTableBody">
                         <tr id="emptyQueueRow">
-                            <td colspan="9" class="text-center py-5 text-muted">
+                            <td colspan="8" class="text-center py-5 text-muted">
                                 <div class="py-4">
                                     <i class="bi bi-qr-code text-danger opacity-25" style="font-size: 4rem;"></i>
                                     <h6 class="fw-semibold text-dark mt-2">No items added to damage queue yet</h6>
@@ -146,48 +132,23 @@
         </div>
     </div>
 
-    <!-- 3. ACTIONS, EVIDENCE PHOTO & SUBMISSION BAR -->
+    <!-- 3. ACTIONS & SUBMISSION BAR -->
     <div class="card border-0 shadow-sm rounded-4 mb-4">
-        <div class="card-body p-4">
-            <div class="row g-4 align-items-center">
-                <div class="col-lg-4">
-                    <label class="form-label small fw-bold text-uppercase text-muted mb-1">
-                        <i class="bi bi-gear-fill me-1 text-primary"></i> Action / Disposition Workflow
-                    </label>
-                    <select name="action_type" id="actionTypeSelect" class="form-select fw-semibold border-2">
-                        <option value="damage" selected>🔴 Move to Quarantine Damaged Stock (Quarantine Pool)</option>
-                        <option value="return_wh">📦 Mark for Return to Main Warehouse</option>
-                    </select>
-                    <small class="text-muted d-block mt-1">
-                        Quarantine items remain tracked under Shop Damaged Stock ledger until resolved.
-                    </small>
+        <div class="card-body p-3 p-md-4">
+            <div class="p-3 bg-light rounded-3 border d-flex flex-wrap justify-content-between align-items-center gap-3 w-100 ms-lg-auto mb-3" style="max-width: 700px;">
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted">Total Damaged Units:</small>
+                    <strong class="text-dark fs-6" id="summaryTotalUnits">0 pcs</strong>
                 </div>
-
-                <div class="col-lg-4">
-                    <label class="form-label small fw-bold text-uppercase text-muted mb-1">
-                        <i class="bi bi-camera me-1 text-success"></i> Attach Defect Photo (Optional)
-                    </label>
-                    <input type="file" name="photo" class="form-control" accept="image/*">
-                    <small class="text-muted d-block mt-1">Upload proof photo of the tear, stain, or broken piece.</small>
-                </div>
-
-                <div class="col-lg-4">
-                    <div class="p-3 bg-light rounded-3 border text-end">
-                        <div class="d-flex justify-content-between text-muted small mb-1">
-                            <span>Total Damaged Units:</span>
-                            <span class="fw-bold text-dark fs-6" id="summaryTotalUnits">0 pcs</span>
-                        </div>
-                        <div class="d-flex justify-content-between text-muted small">
-                            <span>Total Estimated Loss:</span>
-                            <span class="fw-bold text-danger fs-5" id="summaryTotalLoss">₹0.00</span>
-                        </div>
-                    </div>
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted">Total Estimated Loss:</small>
+                    <strong class="text-danger fs-5" id="summaryTotalLoss">₹0.00</strong>
                 </div>
             </div>
 
-            <div class="border-top pt-3 mt-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="border-top pt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <a href="<?= url('shop/damage') ?>" class="btn btn-light rounded-pill px-4">Cancel</a>
-                <button type="submit" class="btn btn-danger btn-lg rounded-pill px-5 fw-bold shadow-sm" id="btnSubmitDamage" disabled>
+                <button type="submit" class="btn btn-danger rounded-pill px-4 px-md-5 fw-bold shadow-sm" id="btnSubmitDamage" disabled>
                     <i class="bi bi-check2-circle me-1"></i> Confirm &amp; Move to Damage Section
                 </button>
             </div>
@@ -195,35 +156,10 @@
     </div>
 </form>
 
-<!-- Camera Scanner Modal -->
-<div class="modal fade" id="cameraScanModal" tabindex="-1" aria-labelledby="cameraScanModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content rounded-4 border-0 shadow">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title fs-6 fw-bold" id="cameraScanModalLabel">
-                    <i class="bi bi-camera-video me-2 text-warning"></i>Scan Piece QR Tag / Barcode
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center p-3">
-                <div id="cameraReader" style="width: 100%; min-height: 260px; background: #000; border-radius: 8px;"></div>
-                <p class="text-muted small mt-2 mb-0">Point your camera steadily at the piece tag or barcode.</p>
-            </div>
-            <div class="modal-footer bg-light py-2">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Load html5-qrcode for Camera Scanning -->
-<script src="https://unpkg.com/html5-qrcode"></script>
-
 <script>
     const LOOKUP_API_URL = "<?= url('api/shop/damage/lookup-scan') ?>";
     const SHOP_ID = <?= (int)$shop['id'] ?>;
     let queueItems = [];
-    let html5QrCode = null;
 
     document.addEventListener('DOMContentLoaded', () => {
         const scanInput = document.getElementById('scanInput');
@@ -326,10 +262,12 @@
             .then(r => r.json())
             .then(res => {
                 if (res.success) {
-                    feedback.classList.remove('alert-info');
-                    feedback.classList.add('alert-success');
-                    feedbackMsg.textContent = `Found: ${res.product_name} (${res.sku})`;
-                    addItemToQueue(res);
+                    const added = addItemToQueue(res);
+                    feedback.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger');
+                    feedback.classList.add(added ? 'alert-success' : 'alert-warning');
+                    feedbackMsg.textContent = added
+                        ? `Found: ${res.product_name} (${res.sku})`
+                        : 'This product is already in the damage queue or is not allowed for damage scanning.';
                     document.getElementById('scanInput').value = '';
                     document.getElementById('liveSearchResults').classList.add('d-none');
                     setTimeout(() => feedback.classList.add('d-none'), 2000);
@@ -347,10 +285,23 @@
     }
 
     function addItemToQueue(prod) {
-        // Check if item already exists with matching tag
+        const categoryType = String(prod.category_type || 'NORMAL').toUpperCase();
+        const isComplementary = Boolean(parseInt(prod.is_complementary, 10)) || categoryType === 'COMPLEMENTARY';
+        const isSeries = !isComplementary && (
+            categoryType === 'SERIES'
+            || String(prod.qr_type || '').toUpperCase() === 'SERIES_BATCH'
+            || (parseInt(prod.pack_quantity, 10) || 1) > 1
+        );
+        const productType = isComplementary ? 'COMPLEMENTARY' : (isSeries ? 'SERIES' : 'NORMAL');
+        const quantityEditable = productType !== 'NORMAL';
+        if (!quantityEditable) return false;
         const existingIdx = queueItems.findIndex(x => x.variant_id === prod.variant_id && x.tag_code === prod.tag_code);
         if (existingIdx !== -1) {
-            queueItems[existingIdx].quantity += 1;
+            if (!quantityEditable) return false;
+            queueItems[existingIdx].quantity = Math.min(
+                (parseInt(queueItems[existingIdx].available_qty, 10) || 1),
+                queueItems[existingIdx].quantity + 1
+            );
             queueItems[existingIdx].total_loss = queueItems[existingIdx].quantity * queueItems[existingIdx].cost_per_unit;
         } else {
             queueItems.push({
@@ -359,8 +310,9 @@
                 sku: prod.sku,
                 size_name: prod.size_name,
                 color_name: prod.color_name,
-                product_image: prod.product_image,
                 tag_code: prod.tag_code || '',
+                product_type: productType,
+                quantity_editable: quantityEditable,
                 defect_type: 'OTHER',
                 damage_reason: 'Shop Floor Defect / Damage',
                 defect_notes: '',
@@ -371,6 +323,7 @@
             });
         }
         renderQueue();
+        return true;
     }
 
     function renderQueue() {
@@ -384,7 +337,7 @@
         if (queueItems.length === 0) {
             tbody.innerHTML = `
                 <tr id="emptyQueueRow">
-                    <td colspan="9" class="text-center py-5 text-muted">
+                    <td colspan="8" class="text-center py-5 text-muted">
                         <div class="py-4">
                             <i class="bi bi-qr-code text-danger opacity-25" style="font-size: 4rem;"></i>
                             <h6 class="fw-semibold text-dark mt-2">No items added to damage queue yet</h6>
@@ -413,34 +366,20 @@
                 <tr>
                     <td class="ps-3 fw-bold text-muted">${idx + 1}</td>
                     <td>
-                        <div class="d-flex align-items-center gap-2">
-                            ${item.product_image ? `<img src="${escapeHtml(item.product_image)}" class="rounded border" style="width: 38px; height: 38px; object-fit: cover;">` : `<div class="rounded border bg-light d-flex align-items-center justify-content-center text-muted" style="width: 38px; height: 38px;"><i class="bi bi-box-seam"></i></div>`}
-                            <div>
-                                <div class="fw-bold text-dark">${escapeHtml(item.product_name)}</div>
-                                <div class="small font-monospace text-primary">${escapeHtml(item.sku)}</div>
-                                <small class="text-muted">${escapeHtml(item.size_name)} / ${escapeHtml(item.color_name)} · Shop Stock: ${item.available_qty} pcs</small>
-                            </div>
+                        <div>
+                            <div class="fw-bold text-dark">${escapeHtml(item.product_name)}</div>
+                            <div class="small font-monospace text-primary">${escapeHtml(item.sku)}</div>
+                            <small class="text-muted">${escapeHtml(item.size_name)} / ${escapeHtml(item.color_name)} · Shop Stock: ${item.available_qty} pcs</small>
                         </div>
                     </td>
                     <td>
                         <input type="text" class="form-control form-control-sm font-monospace" value="${escapeHtml(item.tag_code)}" placeholder="Optional tag..." onchange="updateItemField(${idx}, 'tag_code', this.value)">
                     </td>
                     <td>
-                        <select class="form-select form-select-sm" onchange="updateItemField(${idx}, 'defect_type', this.value)">
-                            <option value="OTHER" ${item.defect_type === 'OTHER' ? 'selected' : ''}>📌 Other Defect</option>
-                            <option value="FABRIC_DEFECT" ${item.defect_type === 'FABRIC_DEFECT' ? 'selected' : ''}>🧵 Fabric Defect / Tear</option>
-                            <option value="COLOR_FADE" ${item.defect_type === 'COLOR_FADE' ? 'selected' : ''}>🎨 Color Fade / Discolor</option>
-                            <option value="STITCHING_ERROR" ${item.defect_type === 'STITCHING_ERROR' ? 'selected' : ''}>🪡 Stitching Error</option>
-                            <option value="WATER_STAIN" ${item.defect_type === 'WATER_STAIN' ? 'selected' : ''}>💧 Water / Oil Stain</option>
-                            <option value="SHOP_SOIL" ${item.defect_type === 'SHOP_SOIL' ? 'selected' : ''}>🏬 Shop Soil / Dust</option>
-                            <option value="PACKAGING_DAMAGE" ${item.defect_type === 'PACKAGING_DAMAGE' ? 'selected' : ''}>📦 Packaging Crushed</option>
-                        </select>
-                    </td>
-                    <td>
                         <input type="text" class="form-control form-control-sm" value="${escapeHtml(item.damage_reason)}" placeholder="Reason..." onchange="updateItemField(${idx}, 'damage_reason', this.value)">
                     </td>
                     <td class="text-center">
-                        <input type="number" min="1" class="form-control form-control-sm text-center fw-bold text-danger" value="${item.quantity}" onchange="updateItemQty(${idx}, this.value)">
+                        <input type="number" min="1" max="${parseInt(item.available_qty, 10) || 1}" class="form-control form-control-sm text-center fw-bold text-danger ${item.quantity_editable ? '' : 'bg-light'}" value="${item.quantity}" ${item.quantity_editable ? '' : 'readonly inputmode="none" title="Normal products are reported one piece per QR tag"'} onchange="updateItemQty(${idx}, this.value)">
                     </td>
                     <td class="text-end font-monospace">
                         ₹${parseFloat(item.cost_per_unit).toFixed(2)}
@@ -473,7 +412,10 @@
     }
 
     function updateItemQty(idx, val) {
-        const q = Math.max(1, parseInt(val) || 1);
+        const item = queueItems[idx];
+        if (!item || !item.quantity_editable) return;
+        const maxQty = Math.max(1, parseInt(item.available_qty, 10) || 1);
+        const q = Math.min(maxQty, Math.max(1, parseInt(val, 10) || 1));
         if (queueItems[idx]) {
             queueItems[idx].quantity = q;
             queueItems[idx].total_loss = q * queueItems[idx].cost_per_unit;
@@ -503,31 +445,4 @@
             .replace(/'/g, '&#039;');
     }
 
-    // Camera scanner modal handlers
-    const cameraModal = document.getElementById('cameraScanModal');
-    if (cameraModal) {
-        cameraModal.addEventListener('shown.bs.modal', () => {
-            html5QrCode = new Html5Qrcode("cameraReader");
-            html5QrCode.start(
-                { facingMode: "environment" },
-                { fps: 10, qrbox: { width: 250, height: 250 } },
-                (decodedText) => {
-                    html5QrCode.stop().then(() => {
-                        const modalInst = bootstrap.Modal.getInstance(cameraModal);
-                        if (modalInst) modalInst.hide();
-                        performLookup(decodedText);
-                    });
-                },
-                () => {}
-            ).catch(err => {
-                console.error("Camera scanner init failed:", err);
-            });
-        });
-
-        cameraModal.addEventListener('hidden.bs.modal', () => {
-            if (html5QrCode && html5QrCode.isScanning) {
-                html5QrCode.stop().catch(() => {});
-            }
-        });
-    }
 </script>

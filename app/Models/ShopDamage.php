@@ -9,84 +9,27 @@
 class ShopDamage {
 
     /**
-     * Resolve and dynamically expand all piece tags to match the damaged quantity.
+     * Return only the piece tags explicitly recorded for this damage case.
      */
     public static function resolvePieceTags(array $d): array {
-        $rawTags = $d['tag_code'] ?? '';
-        $tagsList = [];
-        if (!empty($rawTags)) {
-            $parts = explode(',', $rawTags);
-            foreach ($parts as $p) {
-                $p = trim($p);
-                if ($p) $tagsList[] = $p;
+        $rawTags = trim((string)($d['tag_code'] ?? ''));
+        if ($rawTags === '') {
+            return [];
+        }
+
+        $decoded = json_decode($rawTags, true);
+        $parts = is_array($decoded) ? $decoded : explode(',', $rawTags);
+        $tags = [];
+        foreach ($parts as $part) {
+            $tag = is_array($part)
+                ? trim((string)($part['tag_code'] ?? $part['qr_code'] ?? ''))
+                : trim((string)$part);
+            if ($tag !== '') {
+                $tags[$tag] = $tag;
             }
         }
 
-        // If no tags directly on record, check allocation_items if linked to an inward allocation
-        if (empty($tagsList) && !empty($d['variant_id'])) {
-            $allocId = !empty($d['allocation_id']) ? (int)$d['allocation_id'] : (!empty($d['reference_id']) ? (int)$d['reference_id'] : 0);
-            if ($allocId > 0) {
-                $ai = Database::fetchOne(
-                    "SELECT selected_qr_codes FROM allocation_items WHERE allocation_id = ? AND variant_id = ? LIMIT 1",
-                    [$allocId, (int)$d['variant_id']]
-                );
-                if (!empty($ai['selected_qr_codes'])) {
-                    $decoded = json_decode($ai['selected_qr_codes'], true);
-                    if (is_array($decoded)) {
-                        foreach ($decoded as $t) {
-                            $tagStr = is_array($t) ? ($t['tag_code'] ?? ($t['qr_code'] ?? '')) : (string)$t;
-                            $tagStr = trim($tagStr);
-                            if ($tagStr) $tagsList[] = $tagStr;
-                        }
-                    } else {
-                        $parts = explode(',', $ai['selected_qr_codes']);
-                        foreach ($parts as $p) {
-                            $p = trim($p);
-                            if ($p) $tagsList[] = $p;
-                        }
-                    }
-                }
-            }
-        }
-
-        $targetQty = max(1, (int)($d['quantity'] ?? 1));
-
-        if (count($tagsList) < $targetQty) {
-            $firstTag = $tagsList[0] ?? '';
-            $prefix = '';
-            $seqStart = 1;
-            if ($firstTag && preg_match('/^([A-Za-z0-9]+?)(\d{1,4})$/i', $firstTag, $m)) {
-                $prefix = $m[1];
-                $seqStart = (int)$m[2];
-            } else {
-                $pfx = '';
-                if (!empty($d['qr_code_prefix'])) {
-                    $clean = preg_replace('/[^A-Za-z0-9]/', '', $d['qr_code_prefix']);
-                    if (strlen($clean) >= 2) $pfx = strtoupper(substr($clean, 0, 4));
-                }
-                if (empty($pfx) && !empty($d['product_code'])) {
-                    if (preg_match('/^([A-Za-z]{2,5})/i', $d['product_code'], $m)) $pfx = strtoupper($m[1]);
-                }
-                if (empty($pfx) && !empty($d['sku'])) {
-                    if (preg_match('/^([A-Za-z]{2,5})/i', $d['sku'], $m)) $pfx = strtoupper($m[1]);
-                }
-                if (empty($pfx)) {
-                    $c1 = !empty($d['category_name']) ? strtoupper($d['category_name'][0]) : 'G';
-                    $c2 = !empty($d['subcategory_name']) ? strtoupper($d['subcategory_name'][0]) : 'R';
-                    $c3 = !empty($d['sub_subcategory_name']) ? strtoupper($d['sub_subcategory_name'][0]) : 'M';
-                    $pfx = $c1 . $c2 . $c3;
-                }
-                $prefix = $pfx . date('my');
-                $seqStart = 1;
-            }
-
-            while (count($tagsList) < $targetQty) {
-                $idx = count($tagsList);
-                $tagsList[] = sprintf('%s%02d', $prefix, $seqStart + $idx);
-            }
-        }
-
-        return $tagsList;
+        return array_values($tags);
     }
 
     /**

@@ -18,12 +18,6 @@ $activeSource = $filters['source_type'] ?? '';
         <span class="text-muted">Central quarantine register for transit damages from Inward GRN and shop floor / bin defect identification</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="<?= url('shop/inventory') ?>" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm fw-semibold">
-            <i class="bi bi-boxes me-1"></i> Shop Inventory
-        </a>
-        <a href="<?= url('shop/inward') ?>" class="btn btn-outline-primary rounded-pill px-3 shadow-sm fw-semibold">
-            <i class="bi bi-box-arrow-in-down me-1"></i> Shop Inward GRN
-        </a>
         <?php if (hasPermission('shop_damage', 'create')): ?>
         <a href="<?= url('shop/damage/create') ?>" class="btn btn-danger rounded-pill shadow-sm px-3.5 py-2 fw-semibold d-inline-flex align-items-center gap-2">
             <i class="bi bi-qr-code-scan fs-6"></i>
@@ -117,7 +111,7 @@ $activeSource = $filters['source_type'] ?? '';
                     <input type="text" name="search" class="form-control border-start-0 ps-0" placeholder="Damage #, Allocation #, Tag, SKU..." value="<?= e($filters['search'] ?? '') ?>">
                 </div>
             </div>
-            <div class="col-lg-3 col-md-6">
+            <div class="col-lg-4 col-md-6">
                 <label class="form-label small fw-semibold text-muted mb-1"><i class="bi bi-funnel me-1"></i> Damage Source</label>
                 <select name="source_type" class="form-select">
                     <option value="">-- All Source Types --</option>
@@ -128,19 +122,7 @@ $activeSource = $filters['source_type'] ?? '';
                     <option value="OTHER" <?= ($filters['source_type'] ?? '') === 'OTHER' ? 'selected' : '' ?>>📌 Other</option>
                 </select>
             </div>
-            <div class="col-lg-3 col-md-6">
-                <label class="form-label small fw-semibold text-muted mb-1"><i class="bi bi-tag me-1"></i> Status</label>
-                <select name="status" class="form-select">
-                    <option value="">-- All Lifecycle Statuses --</option>
-                    <option value="LOGGED" <?= ($filters['status'] ?? '') === 'LOGGED' ? 'selected' : '' ?>>🔴 Quarantined / Logged</option>
-                    <option value="INSPECTED" <?= ($filters['status'] ?? '') === 'INSPECTED' ? 'selected' : '' ?>>🔍 Inspected</option>
-                    <option value="RETURN_TO_WH" <?= ($filters['status'] ?? '') === 'RETURN_TO_WH' ? 'selected' : '' ?>>📦 Return to Warehouse</option>
-                    <option value="REPAIRED" <?= ($filters['status'] ?? '') === 'REPAIRED' ? 'selected' : '' ?>>🪡 Repaired / Restored</option>
-                    <option value="SALVAGED" <?= ($filters['status'] ?? '') === 'SALVAGED' ? 'selected' : '' ?>>♻️ Salvaged</option>
-                    <option value="WRITTEN_OFF" <?= ($filters['status'] ?? '') === 'WRITTEN_OFF' ? 'selected' : '' ?>>❌ Written Off / Scrapped</option>
-                </select>
-            </div>
-            <div class="col-lg-2 col-md-6 d-flex gap-2">
+            <div class="col-lg-4 col-md-6 d-flex gap-2">
                 <button type="submit" class="btn btn-primary flex-grow-1"><i class="bi bi-filter me-1"></i> Filter</button>
                 <?php if (!empty($filters['search']) || !empty($filters['source_type']) || !empty($filters['status'])): ?>
                     <a href="<?= url('shop/damage') ?>" class="btn btn-outline-secondary" title="Reset Filters"><i class="bi bi-x-circle"></i></a>
@@ -164,7 +146,6 @@ $activeSource = $filters['source_type'] ?? '';
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light text-muted small text-uppercase">
                 <tr>
-                    <th class="ps-3">Case / Damage #</th>
                     <th>Date &amp; Source</th>
                     <th>Product &amp; SKU</th>
                     <th>Piece Tag / QR</th>
@@ -172,13 +153,12 @@ $activeSource = $filters['source_type'] ?? '';
                     <th class="text-center">Qty</th>
                     <th class="text-end">Est. Loss</th>
                     <th class="text-center">Status</th>
-                    <th class="text-end pe-3">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($damages)): ?>
                     <tr>
-                        <td colspan="9" class="text-center py-5">
+                        <td colspan="7" class="text-center py-5">
                             <div class="py-4">
                                 <div class="bg-danger bg-opacity-10 text-danger rounded-circle p-4 d-inline-flex mb-3 shadow-xs">
                                     <i class="bi bi-check-circle-fill fs-1 text-success"></i>
@@ -214,20 +194,8 @@ $activeSource = $filters['source_type'] ?? '';
                             'CUSTOMER_RETURN'    => 'bg-info-subtle text-info-emphasis border border-info-subtle',
                             default              => 'bg-light text-dark border'
                         };
-                    ?>
+                        ?>
                         <tr>
-                            <td class="ps-3">
-                                <a href="<?= url('shop/damage/view/' . $d['id']) ?>" class="badge bg-light text-danger border border-danger-subtle font-monospace px-2.5 py-1.5 fs-7 fw-bold text-decoration-none shadow-2xs d-inline-flex align-items-center gap-1">
-                                    <i class="bi bi-shield-x"></i> <?= e($d['damage_number']) ?>
-                                </a>
-                                <?php if (!empty($d['allocation_number'])): ?>
-                                    <div class="mt-1">
-                                        <a href="<?= url('shop/inward/view/' . ($d['allocation_id'] ?? $d['reference_id'])) ?>" class="badge bg-light text-secondary border font-monospace text-decoration-none" style="font-size: 0.68rem;" title="View Inward Allocation">
-                                            <i class="bi bi-box-arrow-in-down me-1"></i><?= e($d['allocation_number']) ?>
-                                        </a>
-                                    </div>
-                                <?php endif; ?>
-                            </td>
                             <td>
                                 <div class="small fw-semibold text-dark"><?= date('d M Y, h:i A', strtotime($d['created_at'])) ?></div>
                                 <span class="badge <?= $sourceBadgeClass ?> mt-1" style="font-size: 0.7rem;">
@@ -236,13 +204,6 @@ $activeSource = $filters['source_type'] ?? '';
                             </td>
                             <td>
                                 <div class="d-flex align-items-center gap-2">
-                                    <?php if (!empty($d['product_image'])): ?>
-                                        <img src="<?= e($d['product_image']) ?>" alt="<?= e($d['product_name']) ?>" class="rounded border flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
-                                    <?php else: ?>
-                                        <div class="rounded border bg-light d-flex align-items-center justify-content-center flex-shrink-0 text-muted" style="width: 36px; height: 36px;">
-                                            <i class="bi bi-box-seam"></i>
-                                        </div>
-                                    <?php endif; ?>
                                     <div class="min-w-0">
                                         <div class="fw-bold text-dark text-truncate" style="max-width: 200px;" title="<?= e($d['product_name']) ?>">
                                             <?= e($d['product_name']) ?>
@@ -294,11 +255,6 @@ $activeSource = $filters['source_type'] ?? '';
                                 <span class="badge <?= $statusBadgeClass ?> px-2.5 py-1.5 shadow-2xs">
                                     <?= e($d['status']) ?>
                                 </span>
-                            </td>
-                            <td class="text-end pe-3">
-                                <a href="<?= url('shop/damage/view/' . $d['id']) ?>" class="btn btn-sm btn-outline-primary px-3 py-1 shadow-2xs rounded-pill fw-semibold d-inline-flex align-items-center gap-1">
-                                    <i class="bi bi-eye"></i> View
-                                </a>
                             </td>
                         </tr>
                     <?php endforeach; ?>

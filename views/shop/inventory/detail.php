@@ -1,6 +1,5 @@
 <?php
 // views/shop/inventory/detail.php — Full Page Product & Stock Ledger Detail for Shop Channel (Exact WhatsApp & Website Style)
-$imgUrl = !empty($item['variant_image']) ? $item['variant_image'] : (!empty($item['product_image']) ? $item['product_image'] : '');
 $availQty = (float)($item['available_quantity'] ?? $item['quantity'] ?? 0);
 $damagedQty = (float)($item['damaged_quantity'] ?? 0);
 $minStock = (int)($item['min_stock'] ?? 5);
@@ -209,102 +208,21 @@ $metrics = $metrics ?? [
             <p class="text-muted small mb-0 font-monospace">Product Code: <?= htmlspecialchars($item['product_code'] ?? 'N/A') ?> | Tag Range: <span class="fw-semibold text-primary"><?= htmlspecialchars($tagRangeStr) ?></span></p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-outline-success rounded-pill px-3 shadow-sm fw-semibold" 
-                    onclick="openEditPriceModal(<?= (int)$item['variant_id'] ?>, <?= htmlspecialchars(json_encode($item['sku']), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($item['product_name']), ENT_QUOTES, 'UTF-8') ?>, <?= (float)$sellingPrice ?>, <?= (float)$mrp ?>, <?= (float)$cost ?>)">
-                <i class="bi bi-tag me-1"></i> Edit Price
-            </button>
-            <button type="button" class="btn btn-outline-primary rounded-pill px-3 shadow-sm fw-semibold" onclick="printAllPieceTags()">
-                <i class="bi bi-printer me-1"></i> Print Piece QR Labels
-            </button>
-            <a href="<?= url('shop/damage/create?variant_id=' . $item['variant_id']) ?>" class="btn btn-outline-danger rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-shield-x me-1"></i> Report Damage
-            </a>
-            <a href="<?= url('shop/returns') ?>" class="btn btn-outline-info rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-arrow-left-right me-1"></i> Return / Exchange
-            </a>
-            <a href="<?= url('shop/pos?sku=' . urlencode($item['sku'])) ?>" class="btn btn-primary rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-receipt me-1"></i> Launch POS Terminal
-            </a>
-            <button type="button" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm fw-semibold" data-bs-toggle="modal" data-bs-target="#requestStockModal">
-                <i class="bi bi-box-arrow-in-down me-1"></i> Request Warehouse Stock
-            </button>
             <a href="<?= url('shop/inventory') ?>" class="btn btn-outline-secondary rounded-pill px-3 fw-semibold">
                 <i class="bi bi-arrow-left me-1"></i> Back to Inventory
             </a>
         </div>
     </div>
 
-    <!-- Product Hero & Metrics Row -->
+    <!-- Product Stock Summary -->
     <div class="row g-4 mb-4">
-        <!-- 1. Product Image & Piece QR Card -->
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm rounded-4 h-100 overflow-hidden bg-white">
-                <div class="card-body p-4 text-center bg-light bg-opacity-50 d-flex flex-column justify-content-between">
-                    <div>
-                        <div class="position-relative d-inline-block mb-3">
-                            <?php if ($imgUrl): ?>
-                                <img src="<?= htmlspecialchars($imgUrl) ?>" alt="<?= htmlspecialchars($item['product_name']) ?>" 
-                                     class="img-fluid rounded-4 shadow-sm border bg-white" 
-                                     style="max-height: 220px; width: 100%; object-fit: cover;">
-                            <?php else: ?>
-                                <div class="rounded-4 bg-white border d-flex flex-column align-items-center justify-content-center shadow-sm p-4" style="min-height: 180px;">
-                                    <i class="bi bi-box-seam text-primary opacity-50" style="font-size: 3.5rem;"></i>
-                                    <span class="text-muted small mt-2 fw-semibold">No Image Uploaded</span>
-                                </div>
-                            <?php endif; ?>
-
-                            <?php if ($discount > 0): ?>
-                                <span class="position-absolute top-0 end-0 badge bg-danger rounded-pill m-2 px-2 py-1 shadow-sm" id="detailPageDiscountBadge">
-                                    <?= $discount ?>% OFF
-                                </span>
-                            <?php else: ?>
-                                <span class="position-absolute top-0 end-0 badge bg-danger rounded-pill m-2 px-2 py-1 shadow-sm d-none" id="detailPageDiscountBadge"></span>
-                            <?php endif; ?>
-                        </div>
-
-                        <!-- Category Badges -->
-                        <div class="d-flex justify-content-center flex-wrap gap-1 mb-3">
-                            <?php if (!empty($item['category_name'])): ?>
-                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle"><?= htmlspecialchars($item['category_name']) ?></span>
-                            <?php endif; ?>
-                            <?php if (!empty($item['subcategory_name'])): ?>
-                                <span class="badge bg-light text-dark border">› <?= htmlspecialchars($item['subcategory_name']) ?></span>
-                            <?php endif; ?>
-                            <?php if (!empty($item['size_name'])): ?>
-                                <span class="badge bg-light text-dark border">Size: <?= htmlspecialchars($item['size_name']) ?></span>
-                            <?php endif; ?>
-                            <?php if (!empty($item['color_name'])): ?>
-                                <span class="badge bg-light text-dark border">Color: <?= htmlspecialchars($item['color_name']) ?></span>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-
-                    <!-- Master SKU QR Code Canvas -->
-                    <div class="p-3 bg-white rounded-3 border shadow-sm">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="small fw-bold text-muted text-uppercase"><i class="bi bi-qr-code me-1 text-primary"></i>Master SKU QR</span>
-                            <span class="badge bg-light text-secondary border font-monospace"><?= htmlspecialchars($item['qr_code_prefix'] ?? 'PREFIX') ?></span>
-                        </div>
-                        <div id="productQrCanvas" class="d-flex justify-content-center my-2"></div>
-                        <span class="badge bg-dark text-white font-monospace px-3 py-1"><?= htmlspecialchars($item['qr_code'] ?: $item['sku']) ?></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 2. Commercials & Stock Balances Summary -->
-        <div class="col-lg-8">
-            <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="row g-3">
                 <!-- 1. Selling Price -->
                 <div class="col-sm-6 col-xl-3">
                     <div class="card border-0 shadow-sm rounded-4 h-100 p-3 bg-white border-start border-success border-4 position-relative">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <small class="text-muted fw-semibold d-block text-uppercase" style="font-size: 11px;">Selling Price</small>
-                            <button type="button" class="btn btn-sm btn-link text-muted p-0 text-decoration-none" 
-                                    onclick="openEditPriceModal(<?= (int)$item['variant_id'] ?>, <?= htmlspecialchars(json_encode($item['sku']), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($item['product_name']), ENT_QUOTES, 'UTF-8') ?>, <?= (float)$sellingPrice ?>, <?= (float)$mrp ?>, <?= (float)$cost ?>)" 
-                                    title="Quick Edit Selling Price & MRP">
-                                <i class="bi bi-pencil-square fs-6 text-success"></i>
-                            </button>
                         </div>
                         <h3 class="fw-bold text-success mb-0 mt-1" id="detailPageSellingPrice">₹<?= number_format($sellingPrice, 2) ?></h3>
                         <small class="text-muted text-decoration-line-through <?= $mrp > $sellingPrice ? '' : 'd-none' ?>" id="detailPageMrp">MRP: ₹<?= number_format($mrp, 2) ?></small>
@@ -356,42 +274,6 @@ $metrics = $metrics ?? [
                 </div>
             </div>
 
-            <!-- Product Specifications Card -->
-            <div class="card border-0 shadow-sm rounded-4 bg-white p-4">
-                <h6 class="fw-bold text-dark mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>Garment Catalog Specifications</h6>
-                <div class="row g-3">
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">Material / Fabric</small>
-                        <span class="fw-semibold text-dark"><?= htmlspecialchars($item['material'] ?? '100% Cotton / Combed') ?></span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">HSN Code</small>
-                        <span class="fw-semibold font-monospace text-dark"><?= htmlspecialchars($item['hsn_code'] ?? '61091000') ?></span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">GST Tax Rate</small>
-                        <span class="fw-semibold text-dark"><?= (float)($item['gst_percentage'] ?? 5) ?>% GST</span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">Production Cost</small>
-                        <span class="fw-semibold text-dark">₹<?= number_format((float)($item['production_cost'] ?? 0), 2) ?></span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">Reorder Min / Max</small>
-                        <span class="fw-semibold text-dark"><?= (int)($item['min_stock'] ?? 5) ?> / <?= (int)($item['max_stock'] ?? 100) ?> pcs</span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">Piece QR Range</small>
-                        <span class="badge bg-light text-primary border font-monospace"><?= htmlspecialchars($tagRangeStr) ?></span>
-                    </div>
-                    <?php if (!empty($item['description'])): ?>
-                        <div class="col-12 mt-2">
-                            <small class="text-muted d-block">Description / Style Notes</small>
-                            <div class="p-2 bg-light rounded text-dark small"><?= nl2br(htmlspecialchars($item['description'])) ?></div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -586,7 +468,7 @@ $metrics = $metrics ?? [
                                 if ($isWarehouseReturned) $filterType .= ' RETURNED';
 
                                 $pieceNo = $pt['piece_number'] ?? ($pt['piece_no'] ?? ($idx + 1));
-                                $qrPayloadStr = $pt['qr_payload'] ?? ($pt['tag_code'] . '|' . $item['sku'] . '|MRP:' . $mrp . '|Disc:' . $sellingPrice);
+                                $qrPayloadStr = $pt['tag_code'];
                             ?>
                                 <div class="<?= implode(' ', $cardClasses) ?>" data-status="<?= htmlspecialchars($filterType) ?>" data-tag="<?= htmlspecialchars(strtolower($pt['tag_code'])) ?>" data-search="<?= htmlspecialchars(strtolower($pt['tag_code'] . ' ' . $qrPayloadStr . ' ' . ($pt['inward_reference'] ?? '') . ' ' . ($pt['invoice_number'] ?? '') . ' ' . ($pt['damage_number'] ?? ''))) ?>">
                                     <div class="card h-100 rounded-4 shadow-sm border <?= $cardBorder ?> bg-white overflow-hidden position-relative">
@@ -594,40 +476,60 @@ $metrics = $metrics ?? [
                                             <span class="badge <?= $isExchanged ? 'text-white' : ($isWarehouseReturned ? 'bg-secondary' : ($isSold ? 'bg-secondary' : 'bg-dark')) ?> font-monospace" style="<?= $isExchanged ? 'background-color: #6b21a8;' : '' ?>">Piece #<?= $pieceNo ?></span>
                                             <?= $stBadge ?>
                                         </div>
-                                        <div class="card-body p-3">
-                                            <div class="row g-2 align-items-center">
-                                                <!-- Dynamic QR Canvas for this Piece -->
-                                                <div class="col-4 text-center position-relative">
-                                                    <div class="p-1 bg-white border rounded shadow-sm d-inline-block position-relative">
-                                                        <div id="pieceQr_<?= $pieceNo ?>" class="piece-qr-canvas" data-payload="<?= htmlspecialchars($qrPayloadStr) ?>"></div>
-                                                        <?php if ($isExchanged): ?>
-                                                            <span class="exchanged-watermark-overlay">SWAPPED</span>
-                                                        <?php elseif ($isWarehouseReturned): ?>
-                                                            <span class="returned-watermark-overlay">RETURNED</span>
-                                                        <?php elseif ($isSold): ?>
-                                                            <span class="sold-watermark-overlay">SOLD</span>
+                                        <div class="card-body p-2">
+                                            <div class="p-2 border rounded-3 bg-white">
+                                                <div class="row g-2 align-items-start">
+                                                    <div class="col-4 text-center position-relative">
+                                                        <div class="p-1 bg-white border rounded shadow-sm d-inline-block position-relative">
+                                                            <div id="pieceQr_<?= $pieceNo ?>" class="piece-qr-canvas" data-payload="<?= htmlspecialchars($qrPayloadStr) ?>"></div>
+                                                            <?php if ($isExchanged): ?>
+                                                                <span class="exchanged-watermark-overlay">SWAPPED</span>
+                                                            <?php elseif ($isWarehouseReturned): ?>
+                                                                <span class="returned-watermark-overlay">RETURNED</span>
+                                                            <?php elseif ($isSold): ?>
+                                                                <span class="sold-watermark-overlay">SOLD</span>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                        <div class="badge bg-dark text-white font-monospace mt-1 px-1 py-1 w-100 text-break" style="font-size: 10px;">
+                                                            <?= htmlspecialchars($pt['tag_code']) ?>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-8 overflow-hidden">
+                                                        <div class="fw-bold text-uppercase text-dark text-truncate small">
+                                                            <?= htmlspecialchars($pt['brand_name'] ?? $item['brand_name'] ?? $item['product_name']) ?>
+                                                        </div>
+                                                        <?php
+                                                            $categoryHierarchy = array_filter([
+                                                                $pt['category_name'] ?? $item['category_name'] ?? '',
+                                                                $pt['subcategory_name'] ?? $item['subcategory_name'] ?? '',
+                                                                $pt['sub_subcategory_name'] ?? $item['sub_subcategory_name'] ?? '',
+                                                            ]);
+                                                        ?>
+                                                        <?php if ($categoryHierarchy): ?>
+                                                            <div class="small text-primary text-truncate mt-1" title="<?= htmlspecialchars(implode(' › ', $categoryHierarchy)) ?>">
+                                                                <?= htmlspecialchars(implode(' › ', $categoryHierarchy)) ?>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                        <div class="d-flex gap-1 mt-1">
+                                                            <span class="badge bg-dark text-white"><?= htmlspecialchars($pt['size_name'] ?? 'Free') ?></span>
+                                                            <span class="badge bg-secondary text-white"><?= htmlspecialchars($pt['color_name'] ?? 'Std') ?></span>
+                                                        </div>
+                                                        <?php if ($mrp > $sellingPrice): ?>
+                                                            <div class="small text-muted text-decoration-line-through mt-1">MRP: ₹<?= number_format($mrp, 2) ?></div>
+                                                            <div class="small fw-bold text-success">Discount Price: ₹<?= number_format($sellingPrice, 2) ?></div>
+                                                        <?php else: ?>
+                                                            <div class="small fw-bold text-success mt-1">Discount Price: ₹<?= number_format($sellingPrice > 0 ? $sellingPrice : $mrp, 2) ?></div>
                                                         <?php endif; ?>
                                                     </div>
-                                                    <small class="d-block text-muted mt-1 font-monospace" style="font-size: 10px;"><?= ($isSold || $isExchanged || $isWarehouseReturned) ? 'Billed QR' : 'Scannable QR' ?></small>
                                                 </div>
-                                                <!-- Piece Info -->
-                                                <div class="col-8">
-                                                    <div class="d-flex align-items-center justify-content-between mb-1">
-                                                        <span class="text-muted small fw-semibold">Serial Tag:</span>
-                                                        <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-1" title="Copy Tag Code" onclick="copyTagCode('<?= htmlspecialchars($pt['tag_code']) ?>')">
-                                                            <i class="bi bi-clipboard"></i> Copy
-                                                        </button>
-                                                    </div>
-                                                    <div class="fw-bold font-monospace <?= $isExchanged ? 'exchanged-tag-box' : ($isWarehouseReturned ? 'returned-tag-box' : ($isSold ? 'sold-tag-box' : 'text-primary bg-light')) ?> fs-6 mb-1 p-1 rounded border text-center">
-                                                        🏷️ <?= htmlspecialchars($pt['tag_code']) ?>
-                                                    </div>
-                                                    <div class="small text-muted mb-1 font-monospace text-truncate" style="font-size: 11px;" title="<?= htmlspecialchars($qrPayloadStr) ?>">
-                                                        <span class="text-dark fw-semibold">Payload:</span> <?= htmlspecialchars($qrPayloadStr) ?>
-                                                    </div>
-                                                    <div class="small text-muted" style="font-size: 11px;">
-                                                        <i class="bi bi-box-seam me-1"></i>Batch: <span class="fw-semibold text-dark"><?= htmlspecialchars($pt['inward_reference'] ?? $item['latest_allocation_number'] ?? 'Inward GRN') ?></span>
-                                                    </div>
-                                                </div>
+                                            </div>
+                                            <div class="d-flex justify-content-between align-items-center mt-2">
+                                                <small class="text-muted text-truncate" style="font-size: 10px;" title="<?= htmlspecialchars($pt['inward_reference'] ?? $item['latest_allocation_number'] ?? 'Inward GRN') ?>">
+                                                    <i class="bi bi-box-seam me-1"></i><?= htmlspecialchars($pt['inward_reference'] ?? $item['latest_allocation_number'] ?? 'Inward GRN') ?>
+                                                </small>
+                                                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-1" title="Copy Tag Code" onclick="copyTagCode('<?= htmlspecialchars($pt['tag_code']) ?>')">
+                                                    <i class="bi bi-clipboard"></i>
+                                                </button>
                                             </div>
 
                                             <!-- Status Specific Metadata & Actions -->
@@ -754,7 +656,7 @@ $metrics = $metrics ?? [
                                         if ($isExchanged) $filterType .= ' EXCHANGED';
 
                                         $pieceNo = $pt['piece_number'] ?? ($pt['piece_no'] ?? ($idx + 1));
-                                        $qrPayloadStr = $pt['qr_payload'] ?? ($pt['tag_code'] . '|' . $item['sku'] . '|MRP:' . $mrp . '|Disc:' . $sellingPrice);
+                                                $qrPayloadStr = $pt['tag_code'];
                                     ?>
                                         <tr class="<?= implode(' ', $rowClasses) ?>" data-status="<?= htmlspecialchars($filterType) ?>" data-tag="<?= htmlspecialchars(strtolower($pt['tag_code'])) ?>" data-search="<?= htmlspecialchars(strtolower($pt['tag_code'] . ' ' . $qrPayloadStr . ' ' . ($pt['inward_reference'] ?? '') . ' ' . ($pt['invoice_number'] ?? '') . ' ' . ($pt['damage_number'] ?? ''))) ?>">
                                             <td class="text-muted small fw-semibold"><?= $pieceNo ?></td>
@@ -1378,21 +1280,7 @@ let currentEditPriceModal = null;
 let currentPrintModal = null;
 
 document.addEventListener('DOMContentLoaded', function() {
-    // 1. Render Master Product QR Code
-    const productQrContainer = document.getElementById('productQrCanvas');
-    if (productQrContainer && typeof QRCode !== 'undefined') {
-        productQrContainer.innerHTML = '';
-        new QRCode(productQrContainer, {
-            text: "<?= htmlspecialchars($item['qr_code'] ?: $item['sku']) ?>",
-            width: 110,
-            height: 110,
-            colorDark: "#0f172a",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.M
-        });
-    }
-
-    // 2. Render all individual Piece QR Codes (Cards & Table)
+    // Render individual piece QR codes for card and table views.
     renderAllPieceQrCanvases();
 });
 
@@ -1407,8 +1295,8 @@ function renderAllPieceQrCanvases() {
             try {
                 new QRCode(el, {
                     text: payload,
-                    width: 72,
-                    height: 72,
+                    width: 52,
+                    height: 52,
                     colorDark: "#0f172a",
                     colorLight: "#ffffff",
                     correctLevel: QRCode.CorrectLevel.M
@@ -1663,7 +1551,7 @@ window.printAllPieceTags = function() {
 
     allPieceTagsData.forEach((pt, idx) => {
         const pieceNo = pt.piece_number ?? (pt.piece_no ?? (idx + 1));
-        const payload = pt.qr_payload ?? (pt.tag_code + '|<?= addslashes($item['sku']) ?>|MRP:<?= $mrp ?>|Disc:<?= $sellingPrice ?>');
+        const payload = pt.tag_code;
         
         const col = document.createElement('div');
         col.className = 'col-sm-6 col-md-4 col-lg-3';

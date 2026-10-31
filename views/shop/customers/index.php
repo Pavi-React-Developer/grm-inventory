@@ -16,18 +16,6 @@
             </h3>
             <small class="text-muted">Manage complete customer profiles, lifetime purchase history, and shopping activity</small>
         </div>
-        <div class="d-flex align-items-center gap-2">
-            <?php if (hasPermission('pos', 'view') || hasPermission('pos', 'create')): ?>
-            <a href="<?= url('shop/pos') ?>" class="btn btn-outline-primary rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-qr-code-scan me-1"></i> Open POS Terminal
-            </a>
-            <?php endif; ?>
-            <?php if (hasPermission('customers', 'create')): ?>
-            <button type="button" class="btn btn-primary rounded-pill px-4 shadow-sm fw-semibold" data-bs-toggle="modal" data-bs-target="#customerModal" onclick="openCreateCustomerModal()">
-                <i class="bi bi-person-plus-fill me-1"></i> Add New Customer
-            </button>
-            <?php endif; ?>
-        </div>
     </div>
 
     <!-- KPI Metric Cards Grid -->
@@ -105,7 +93,7 @@
         <div class="card-body p-3">
             <form method="GET" action="<?= url('shop/customers') ?>" class="row g-2 align-items-center" id="filterForm" onsubmit="return true;">
                 <!-- Search Input -->
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-8">
                     <div class="input-group input-group-sm">
                         <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
                         <input type="text" name="q" id="customerSearchInput" class="form-control bg-light border-start-0" 
@@ -116,7 +104,7 @@
                 </div>
 
                 <!-- City / Region Filter -->
-                <div class="col-6 col-md-3">
+                <div class="col-12 col-md-4">
                     <select name="city" id="customerCitySelect" class="form-select form-select-sm bg-light">
                         <option value="">All Cities</option>
                         <?php foreach ($metrics['cities'] as $ct): ?>
@@ -125,16 +113,6 @@
                     </select>
                 </div>
 
-                <!-- Sort Order -->
-                <div class="col-6 col-md-3">
-                    <select name="sort" id="customerSortSelect" class="form-select form-select-sm bg-light">
-                        <option value="recent" <?= ($filters['sort'] === 'recent') ? 'selected' : '' ?>>Recently Active</option>
-                        <option value="spend_desc" <?= ($filters['sort'] === 'spend_desc') ? 'selected' : '' ?>>Highest Spend (₹)</option>
-                        <option value="orders_desc" <?= ($filters['sort'] === 'orders_desc') ? 'selected' : '' ?>>Most Invoices</option>
-                        <option value="name_asc" <?= ($filters['sort'] === 'name_asc') ? 'selected' : '' ?>>Name (A-Z)</option>
-                        <option value="oldest" <?= ($filters['sort'] === 'oldest') ? 'selected' : '' ?>>Oldest First</option>
-                    </select>
-                </div>
             </form>
         </div>
     </div>
@@ -148,9 +126,6 @@
                     <?= count($customers) ?> <?= count($customers) === 1 ? 'Customer' : 'Customers' ?> Found
                 </span>
             </div>
-            <button type="button" class="btn btn-sm btn-light border rounded-pill px-3 shadow-none text-muted" onclick="window.print()">
-                <i class="bi bi-printer me-1"></i> Print / Export
-            </button>
         </div>
 
         <div class="table-responsive">
@@ -343,12 +318,6 @@
                             <input type="text" name="gst_number" id="modalCustGst" class="form-control form-control-sm font-monospace text-uppercase" placeholder="33AAAAA0000A1Z5">
                         </div>
 
-                        <!-- Loyalty Points -->
-                        <div class="col-12 col-sm-6">
-                            <label class="form-label small fw-bold text-dark mb-1">Loyalty Reward Points</label>
-                            <input type="number" name="loyalty_points" id="modalCustPoints" class="form-control form-control-sm" value="0" min="0">
-                        </div>
-
                         <!-- Active Status Checkbox -->
                         <div class="col-12">
                             <div class="form-check form-switch mt-1">
@@ -411,7 +380,6 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('modalCustCity').value = this.getAttribute('data-city') || '';
             document.getElementById('modalCustState').value = this.getAttribute('data-state') || 'Tamil Nadu';
             document.getElementById('modalCustGst').value = this.getAttribute('data-gst') || '';
-            document.getElementById('modalCustPoints').value = this.getAttribute('data-points') || 0;
             document.getElementById('modalCustStatus').checked = this.getAttribute('data-status') == '1';
 
             customerModal.show();
@@ -421,7 +389,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Instant Client-Side Letter-by-Letter Search & Filter Engine
     const searchInput = document.getElementById('customerSearchInput');
     const citySelect = document.getElementById('customerCitySelect');
-    const sortSelect = document.getElementById('customerSortSelect');
     const tableBody = document.getElementById('customerTableBody');
     const countBadge = document.getElementById('customerCountBadge');
     const btnClear = document.getElementById('btnClearCustSearch');
@@ -432,7 +399,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const query = (searchInput ? searchInput.value : '').trim().toLowerCase();
         const cityVal = (citySelect ? citySelect.value : '').trim().toLowerCase();
-        const sortVal = sortSelect ? sortSelect.value : 'recent';
 
         if (btnClear) {
             if (query) btnClear.classList.remove('d-none');
@@ -461,20 +427,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Client-side instant sorting
         if (visibleRows.length > 0 && tableBody) {
             visibleRows.sort((a, b) => {
-                const nameA = a.getAttribute('data-name') || '';
-                const nameB = b.getAttribute('data-name') || '';
-                const spendA = parseFloat(a.getAttribute('data-spend') || 0);
-                const spendB = parseFloat(b.getAttribute('data-spend') || 0);
-                const ordersA = parseInt(a.getAttribute('data-orders') || 0);
-                const ordersB = parseInt(b.getAttribute('data-orders') || 0);
                 const dateA = a.getAttribute('data-date') || '';
                 const dateB = b.getAttribute('data-date') || '';
-
-                if (sortVal === 'name_asc') return nameA.localeCompare(nameB);
-                if (sortVal === 'spend_desc') return spendB - spendA;
-                if (sortVal === 'orders_desc') return ordersB - ordersA;
-                if (sortVal === 'oldest') return dateA.localeCompare(dateB);
-                return dateB.localeCompare(dateA); // recent
+                return dateB.localeCompare(dateA);
             });
             visibleRows.forEach((r, idx) => {
                 const idxEl = r.querySelector('.cust-idx');
