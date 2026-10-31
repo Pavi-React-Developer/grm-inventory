@@ -1,5 +1,4 @@
 <?php
-// views/shop/pos/index.php — QR Code Driven Retail POS Terminal (Piece-by-Piece Single Listing & Employee Assignment)
 ?>
 <style>
 .item-billed-price-wrap {
@@ -60,7 +59,6 @@
         </div>
     </div>
 
-    <!-- 💥 EXCHANGE CREDIT APPLIED BANNER -->
     <div id="exchangeCreditBanner" class="alert alert-success border-0 rounded-4 shadow-sm mb-3 py-2 px-3 d-none align-items-center justify-content-between">
         <div class="d-flex align-items-center">
             <i class="bi bi-arrow-left-right fs-4 text-success me-2"></i>
@@ -76,7 +74,6 @@
     </div>
 
     <div class="row g-3">
-        <!-- LEFT COLUMN: QR Scanner & Scanned Product Stream -->
         <div class="col-lg-5">
             <!-- QR Scanner Box Card -->
             <div class="card border-0 shadow-sm rounded-4 mb-3 bg-white border-top border-4 border-primary">
@@ -592,7 +589,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success && data.data) {
                     const variant = data.data;
 
-                    // 1. Check if this physical piece tag was already billed in a past invoice (bypass if SERIES)
+                    // 1. Damaged piece tags cannot be billed.
+                    if (variant.is_damaged) {
+                        playDuplicateAlert();
+                        scanStatus.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> <strong class="text-danger">DAMAGED ITEM:</strong> Piece Tag <code>${escapeHtml(variant.scanned_piece_tag || code)}</code> is recorded in Damage #<strong>${escapeHtml(variant.damage_number)}</strong>. Cannot bill this product.`;
+                        scanStatus.className = 'text-danger fw-bold';
+                        highlightLastScanned(variant, 'danger');
+                        return;
+                    }
+
+                    // 2. Check if this physical piece tag was already billed in a past invoice (bypass if SERIES)
                     const isSeries = (variant.is_series == 1 || variant.category_type === 'SERIES' || variant.qr_type === 'SERIES_BATCH' || parseInt(variant.pack_quantity) > 1);
                     if (variant.already_sold_invoice && !isSeries) {
                         playDuplicateAlert();
@@ -602,7 +608,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
 
-                    // 2. Check if this unique piece tag is ALREADY in the current active cart (bypass if SERIES)
+                    // 3. Check if this unique piece tag is ALREADY in the current active cart (bypass if SERIES)
                     if (variant.scanned_piece_tag && scannedPieceTags.has(variant.scanned_piece_tag) && !isSeries) {
                         playDuplicateAlert();
                         scanStatus.innerHTML = `<i class="bi bi-shield-slash-fill text-warning me-1"></i> <strong class="text-dark">DUPLICATE SCAN BLOCKED:</strong> Piece Tag <code class="text-danger fw-bold">${escapeHtml(variant.scanned_piece_tag)}</code> is already in the bill! Each physical garment has a unique serial QR and can only be scanned once.`;
@@ -613,7 +619,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
 
-                    // 3. Valid new piece scan -> Add to cart as a separate individual row (one by one)
+                    // 4. Valid new piece scan -> Add to cart as a separate individual row (one by one)
                     playBeep(980, 0.12);
                     addItemToCart(variant);
                     showLastScanned(variant);

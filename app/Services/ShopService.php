@@ -829,6 +829,31 @@ class ShopService {
         return null;
     }
 
+    private static function findDamageForPieceTag(int $variantId, string $pieceTag): ?array {
+        $normalizedTag = strtoupper(trim($pieceTag));
+        if ($normalizedTag === '') {
+            return null;
+        }
+
+        $damageRecords = Database::fetchAll(
+            "SELECT id, damage_number, tag_code
+             FROM shop_damages
+             WHERE variant_id = ? AND tag_code IS NOT NULL
+             ORDER BY id DESC",
+            [$variantId]
+        );
+
+        foreach ($damageRecords as $damage) {
+            foreach (ShopDamage::resolvePieceTags($damage) as $damageTag) {
+                if (strtoupper(trim($damageTag)) === $normalizedTag) {
+                    return $damage;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private static function formatVariantForPOS(
         array $variant, 
         int $shopId, 
@@ -860,6 +885,14 @@ class ShopService {
         }
 
         $variant['scanned_piece_tag'] = $scannedTag;
+
+        $damageRecord = !empty($scannedTag)
+            ? self::findDamageForPieceTag((int)$variant['id'], $scannedTag)
+            : null;
+        if ($damageRecord) {
+            $variant['is_damaged'] = 1;
+            $variant['damage_number'] = $damageRecord['damage_number'];
+        }
 
         // Image priority: variant image -> product image -> null
         $variant['image'] = !empty($variant['variant_image']) ? $variant['variant_image'] : ($variant['product_image'] ?? null);
@@ -1050,6 +1083,11 @@ class ShopService {
                     foreach ($tagsArray as $t) {
                         $t = trim($t);
                         if (empty($t)) continue;
+
+                        $damageRecord = self::findDamageForPieceTag($variantId, $t);
+                        if ($damageRecord) {
+                            throw new RuntimeException("Piece QR '{$t}' is recorded as damaged in Damage #{$damageRecord['damage_number']}. Damaged products cannot be billed.");
+                        }
                         
                         if (!$isSeries) {
                             // Check if already sold in any past non-cancelled sale
