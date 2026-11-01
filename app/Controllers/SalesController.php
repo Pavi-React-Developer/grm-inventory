@@ -6,6 +6,8 @@
 
 require_once BASE_PATH . '/app/Services/StockService.php';
 require_once BASE_PATH . '/app/Services/CloudinaryService.php';
+require_once BASE_PATH . '/app/Models/ShopDamage.php';
+require_once BASE_PATH . '/app/Models/ChannelDamage.php';
 
 class SalesController {
 
@@ -13,12 +15,359 @@ class SalesController {
         Response::redirect(url('warehouse/website-orders'));
     }
 
-    private function enhanceVariantsWithDynamicTokens(array $variants): array {
+    private function getSalesChannelLocationIds(string $channelType): array {
+        if ($channelType === 'WEBSITE') {
+            $channels = Database::fetchAll(
+                "SELECT id FROM sales_channels
+                 WHERE LOWER(name) LIKE '%website%' OR LOWER(code) LIKE '%website%'
+                    OR channel_type = 'WEBSITE' OR code IN ('online 2', 'WE-01')"
+            );
+            $fallbackIds = [1, 2, 4];
+        } else {
+            $channels = Database::fetchAll(
+                "SELECT id FROM sales_channels
+                 WHERE LOWER(name) LIKE '%whatsapp%' OR LOWER(code) LIKE '%whatsapp%'
+                    OR channel_type = 'WHATSAPP' OR code IN ('online 1', 'WA-01')"
+            );
+            $fallbackIds = [3];
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', array_column($channels, 'id')))));
+        return $ids ?: $fallbackIds;
+    }
+
+    private function getSalesChannelAvailableStock(array $channelIds): array {
+        if (empty($channelIds)) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($channelIds), '?'));
+        $rows = Database::fetchAll(
+            "SELECT variant_id, SUM(quantity) AS available_stock
+             FROM stock_balances
+             WHERE location_type = 'CHANNEL'
+               AND location_id IN ($placeholders)
+               AND stock_state = 'AVAILABLE'
+             GROUP BY variant_id",
+            $channelIds
+        );
+
+        $stockByVariant = [];
+        foreach ($rows as $row) {
+            $stockByVariant[(int)$row['variant_id']] = (float)$row['available_stock'];
+        }
+        return $stockByVariant;
+    }
+
+    private function findPreviousSaleForPieceTag(string $tag): ?array {
+        return Database::fetchOne(
+            "SELECT s.invoice_number
+             FROM sale_items si
+             JOIN sales s ON s.id = si.sale_id
+             WHERE COALESCE(s.status, '') != 'CANCELLED'
+               AND FIND_IN_SET(?, REPLACE(si.scanned_qr_codes, ', ', ',')) > 0
+             LIMIT 1",
+            [$tag]
+        );
+    }
+
+    private function assertSalesChannelTagsAvailable(array $tags, bool $isSeries): void {
+        if ($isSeries) {
+            return;
+        }
+
+        foreach ($tags as $tag) {
+            $alreadySold = $this->findPreviousSaleForPieceTag($tag);
+            if ($alreadySold) {
+                throw new RuntimeException("Piece Serial Tag '{$tag}' was already sold in Invoice #{$alreadySold['invoice_number']}. It cannot be billed again.");
+            }
+        }
+    }
+
+    private function getAllocationPieceCodes(?string $rawCodes): array {
+        if (!$rawCodes) {
+            return [];
+        }
+
+        $decoded = json_decode($rawCodes, true);
+        $values = is_array($decoded) ? $decoded : explode(',', $rawCodes);
+        $codes = [];
+        foreach ($values as $value) {
+            $code = is_array($value)
+                ? (string)($value['tag_code'] ?? $value['qr_code'] ?? $value['code'] ?? '')
+                : (string)$value;
+            $code = strtoupper(trim($code));
+            if ($code !== '' && !in_array($code, $codes, true)) {
+                $codes[] = $code;
+            }
+        }
+        return $codes;
+    }
+
+    private function assertChannelPieceTagsReceived(array $tags, int $variantId, string $channelType, array $channelIds): void {
+        if (empty($tags)) {
+            return;
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $channelIds))));
+        if (!$ids) {
+            throw new RuntimeException("No {$channelType} stock channel is configured for piece QR validation.");
+        }
+        $idPlaceholders = implode(',', array_fill(0, count($ids), '?'));
+        $scopeParts = [
+            "wa.channel_id IN ({$idPlaceholders})",
+            "(wa.destination_type = 'CHANNEL' AND wa.destination_id IN ({$idPlaceholders}))",
+        ];
+        $params = [$variantId, ...$ids, ...$ids];
+        $destinationAliases = array_map(static fn(int $id): string => 'CHANNEL_' . $id, $ids);
+        if ($destinationAliases) {
+            $aliasPlaceholders = implode(',', array_fill(0, count($destinationAliases), '?'));
+            $scopeParts[] = "wa.destination_type IN ({$aliasPlaceholders})";
+            array_push($params, ...$destinationAliases);
+        }
+        $channelType = strtoupper($channelType);
+        if (in_array($channelType, ['WHATSAPP', 'WEBSITE'], true)) {
+            $scopeParts[] = 'wa.destination_type = ?';
+            $params[] = $channelType;
+        }
+
+        $rows = Database::fetchAll(
+            "SELECT ai.selected_qr_codes, ai.received_qr_codes, ai.received_qty, ai.damaged_qty
+             FROM allocation_items ai
+             JOIN warehouse_allocations wa ON wa.id = ai.allocation_id
+             WHERE ai.variant_id = ? AND wa.status != 'CANCELLED'
+               AND (" . implode(' OR ', $scopeParts) . ")",
+            $params
+        );
+
+        $availableReceivedTags = [];
+        foreach ($rows as $row) {
+            $selectedTags = $this->getAllocationPieceCodes($row['selected_qr_codes'] ?? null);
+            $receivedTags = $this->getAllocationPieceCodes($row['received_qr_codes'] ?? null);
+            if (!$receivedTags && $selectedTags) {
+                $receivedCount = max(0, (int)($row['received_qty'] ?? 0));
+                $damagedCount = max(0, (int)($row['damaged_qty'] ?? 0));
+                $receivedTags = array_slice($selectedTags, 0, $receivedCount + $damagedCount);
+            }
+            foreach ($receivedTags as $tag) {
+                $availableReceivedTags[$tag] = true;
+            }
+        }
+
+        foreach ($tags as $tag) {
+            if (!isset($availableReceivedTags[strtoupper(trim($tag))])) {
+                throw new RuntimeException("Piece QR '{$tag}' is not an inwarded piece for this {$channelType} product. Scan a QR tag assigned to received {$channelType} stock.");
+            }
+        }
+    }
+
+    private function validateSalesChannelItems(array $items, string $channelType, array $channelIds): array {
+        if (empty($items)) {
+            throw new RuntimeException('Please select at least one item for the order.');
+        }
+
+        $preparedItems = [];
+        $requestedByVariant = [];
+        $seenPieceTags = [];
+        $damageTagsByVariant = [];
+        $availableStockByVariant = $this->getSalesChannelAvailableStock($channelIds);
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                throw new RuntimeException('The order contains an invalid product row. Please remove it and try again.');
+            }
+
+            $variantId = (int)($item['variant_id'] ?? 0);
+            $quantity = filter_var($item['quantity'] ?? null, FILTER_VALIDATE_INT);
+            if ($variantId <= 0 || $quantity === false || $quantity <= 0) {
+                throw new RuntimeException('Each order item must have a valid product and a quantity greater than zero.');
+            }
+
+            $variant = Database::fetchOne(
+                "SELECT pv.id, pv.sku, pv.qr_type, pv.pack_quantity, pv.is_complementary AS variant_is_complementary,
+                        pv.mrp, pv.selling_price, p.is_complementary AS product_is_complementary,
+                        COALESCE(wc.category_type, 'NORMAL') AS category_type
+                 FROM product_variants pv
+                 JOIN products p ON p.id = pv.product_id
+                 LEFT JOIN warehouse_categories wc ON wc.id = p.warehouse_category_id
+                 WHERE pv.id = ? AND pv.is_active = 1",
+                [$variantId]
+            );
+            if (!$variant) {
+                throw new RuntimeException("Product variant #{$variantId} is no longer active. Refresh the order and try again.");
+            }
+
+            $categoryType = strtoupper((string)$variant['category_type']);
+            $isComplementary = $categoryType === 'COMPLEMENTARY'
+                || !empty($variant['variant_is_complementary'])
+                || !empty($variant['product_is_complementary']);
+            $isSeries = $categoryType === 'SERIES'
+                || strtoupper((string)$variant['qr_type']) === 'SERIES_BATCH'
+                || (int)($variant['pack_quantity'] ?? 1) > 1;
+
+            $tagValue = $item['scanned_qr_codes'] ?? '';
+            if (!is_string($tagValue)) {
+                throw new RuntimeException("Invalid piece QR data for product '{$variant['sku']}'.");
+            }
+            $tagValue = trim($tagValue);
+            $tags = array_values(array_unique(array_filter(array_map('trim', explode(',', $tagValue)))));
+            if (!$isSeries) {
+                $this->assertChannelPieceTagsReceived($tags, $variantId, $channelType, $channelIds);
+            }
+            foreach ($tags as $tag) {
+                if (!$isSeries && isset($seenPieceTags[strtoupper($tag)])) {
+                    throw new RuntimeException("Piece QR '{$tag}' is included more than once in this order.");
+                }
+
+                if (!isset($damageTagsByVariant[$variantId])) {
+                    $damageTagsByVariant[$variantId] = [];
+                    $damageRecords = Database::fetchAll(
+                        "SELECT 'CHANNEL' AS damage_source, damage_number, tag_code FROM channel_damages
+                         WHERE variant_id = ? AND tag_code IS NOT NULL AND tag_code != ''
+                         UNION ALL
+                         SELECT 'SHOP' AS damage_source, damage_number, tag_code FROM shop_damages
+                         WHERE variant_id = ? AND tag_code IS NOT NULL AND tag_code != ''",
+                        [$variantId, $variantId]
+                    );
+                    foreach ($damageRecords as $damageRecord) {
+                        $resolvedTags = ($damageRecord['damage_source'] ?? '') === 'CHANNEL'
+                            ? ChannelDamage::resolvePieceTags($damageRecord)
+                            : ShopDamage::resolvePieceTags($damageRecord);
+                        foreach ($resolvedTags as $damageTag) {
+                            $damageTagsByVariant[$variantId][strtoupper($damageTag)] = $damageRecord['damage_number'] ?? 'recorded damage';
+                        }
+                    }
+                }
+
+                if (isset($damageTagsByVariant[$variantId][strtoupper($tag)])) {
+                    $damageNumber = $damageTagsByVariant[$variantId][strtoupper($tag)];
+                    throw new RuntimeException("Piece QR '{$tag}' is recorded as damaged in {$damageNumber}. Damaged products cannot be billed.");
+                }
+
+                if (!$isSeries) {
+                    $alreadySold = $this->findPreviousSaleForPieceTag($tag);
+                    if ($alreadySold) {
+                        throw new RuntimeException("Piece Serial Tag '{$tag}' was already sold in Invoice #{$alreadySold['invoice_number']}. It cannot be billed again.");
+                    }
+                    $seenPieceTags[strtoupper($tag)] = true;
+                }
+            }
+
+            $requestedByVariant[$variantId] = ($requestedByVariant[$variantId] ?? 0) + $quantity;
+            $availableStock = $availableStockByVariant[$variantId] ?? 0.0;
+            if ($requestedByVariant[$variantId] > $availableStock) {
+                $sku = $variant['sku'] ?: "#{$variantId}";
+                throw new RuntimeException("Insufficient {$channelType} stock for '{$sku}'. Available: {$availableStock}, Required: {$requestedByVariant[$variantId]}.");
+            }
+
+            $price = $item['unit_price'] ?? 0;
+            $mrp = $item['mrp'] ?? $price;
+            if (!is_numeric($price) || !is_finite((float)$price) || (float)$price < 0
+                || !is_numeric($mrp) || !is_finite((float)$mrp) || (float)$mrp < 0) {
+                throw new RuntimeException("Invalid price entered for product '{$variant['sku']}'.");
+            }
+            $price = $isComplementary ? 0.0 : (float)$price;
+            $mrp = $isComplementary ? 0.0 : (float)$mrp;
+            $gstRate = $item['gst_percentage'] ?? 5.0;
+            if (!is_numeric($gstRate) || !is_finite((float)$gstRate) || (float)$gstRate < 0 || (float)$gstRate > 100) {
+                throw new RuntimeException("Invalid GST percentage for product '{$variant['sku']}'. Enter a rate from 0 to 100.");
+            }
+            $gstRate = $isComplementary ? 0.0 : (float)$gstRate;
+
+            $preparedItems[] = [
+                'variant_id'       => $variantId,
+                'quantity'         => $quantity,
+                'unit_price'        => $price,
+                'mrp'               => $mrp,
+                'gst_percentage'    => $gstRate,
+                'is_series'         => $isSeries,
+                'scanned_qr_codes' => $tags ? implode(',', $tags) : '',
+            ];
+        }
+
+        if (empty($preparedItems)) {
+            throw new RuntimeException('The order contains no valid items.');
+        }
+        return $preparedItems;
+    }
+
+    private function deductSalesChannelStock(
+        int $variantId,
+        int $quantity,
+        array $channelIds,
+        string $channelType,
+        int $saleId,
+        ?int $userId,
+        string $notes
+    ): void {
+        $placeholders = implode(',', array_fill(0, count($channelIds), '?'));
+        $balances = Database::fetchAll(
+            "SELECT location_id, quantity
+             FROM stock_balances
+             WHERE variant_id = ? AND location_type = 'CHANNEL'
+               AND location_id IN ($placeholders) AND stock_state = 'AVAILABLE' AND quantity > 0
+             ORDER BY location_id ASC
+             FOR UPDATE",
+            array_merge([$variantId], $channelIds)
+        );
+
+        $remaining = $quantity;
+        foreach ($balances as $balance) {
+            if ($remaining <= 0) {
+                break;
+            }
+            $deduct = min($remaining, (int)$balance['quantity']);
+            if ($deduct <= 0) {
+                continue;
+            }
+            StockService::decrease(
+                $variantId,
+                'CHANNEL',
+                (int)$balance['location_id'],
+                'AVAILABLE',
+                (float)$deduct,
+                'SALE',
+                'sales',
+                $saleId,
+                $userId,
+                $notes
+            );
+            $remaining -= $deduct;
+        }
+
+        if ($remaining > 0) {
+            throw new RuntimeException("{$channelType} stock changed while the order was being saved. Please refresh stock and retry.");
+        }
+    }
+
+    private function enhanceVariantsWithDynamicTokens(array $variants, array $channelIds, string $channelType): array {
+        $channelIds = array_values(array_unique(array_filter(array_map('intval', $channelIds))));
+        if (!$channelIds) {
+            return $variants;
+        }
+        $idPlaceholders = implode(',', array_fill(0, count($channelIds), '?'));
+        $scopeParts = [
+            "wa.channel_id IN ({$idPlaceholders})",
+            "(wa.destination_type = 'CHANNEL' AND wa.destination_id IN ({$idPlaceholders}))",
+        ];
+        $params = [...$channelIds, ...$channelIds];
+        $destinationAliases = array_map(static fn(int $id): string => 'CHANNEL_' . $id, $channelIds);
+        $aliasPlaceholders = implode(',', array_fill(0, count($destinationAliases), '?'));
+        $scopeParts[] = "wa.destination_type IN ({$aliasPlaceholders})";
+        array_push($params, ...$destinationAliases);
+        $channelType = strtoupper($channelType);
+        if (in_array($channelType, ['WHATSAPP', 'WEBSITE'], true)) {
+            $scopeParts[] = 'wa.destination_type = ?';
+            $params[] = $channelType;
+        }
+
         $allocTags = Database::fetchAll(
-            "SELECT ai.variant_id, ai.selected_qr_codes
+            "SELECT ai.variant_id, ai.selected_qr_codes, ai.received_qr_codes, ai.received_qty, ai.damaged_qty
              FROM allocation_items ai
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
-             WHERE ai.selected_qr_codes IS NOT NULL AND ai.selected_qr_codes != ''"
+             WHERE ai.selected_qr_codes IS NOT NULL AND ai.selected_qr_codes != ''
+               AND wa.status != 'CANCELLED' AND (" . implode(' OR ', $scopeParts) . ")",
+            $params
         );
 
         $variantTagsMap = [];
@@ -27,24 +376,19 @@ class SalesController {
             if (!isset($variantTagsMap[$vid])) {
                 $variantTagsMap[$vid] = [];
             }
-            $tags = explode(',', $at['selected_qr_codes']);
-            foreach ($tags as $t) {
-                $trimmed = trim($t);
-                if ($trimmed && !in_array($trimmed, $variantTagsMap[$vid])) {
-                    $variantTagsMap[$vid][] = $trimmed;
+            $selectedTags = $this->getAllocationPieceCodes($at['selected_qr_codes'] ?? null);
+            $receivedTags = $this->getAllocationPieceCodes($at['received_qr_codes'] ?? null);
+            if (!$receivedTags && $selectedTags) {
+                $receivedCount = max(0, (int)($at['received_qty'] ?? 0));
+                $damagedCount = max(0, (int)($at['damaged_qty'] ?? 0));
+                $receivedTags = array_slice($selectedTags, 0, $receivedCount + $damagedCount);
+            }
+            foreach ($receivedTags as $tag) {
+                if (!in_array($tag, $variantTagsMap[$vid], true)) {
+                    $variantTagsMap[$vid][] = $tag;
                 }
             }
         }
-
-        // Group variants by product_id to calculate sequence offset for deterministic piece tags
-        $productVariantGroups = [];
-        foreach ($variants as $vItem) {
-            $pId = (int)($vItem['product_id'] ?? 0);
-            $productVariantGroups[$pId][] = (int)$vItem['id'];
-        }
-
-        $nowMonth = sprintf('%02d', date('n'));
-        $nowYear  = date('y');
 
         foreach ($variants as &$v) {
             $vid = (int)$v['id'];
@@ -68,19 +412,6 @@ class SalesController {
                 $catPrefix = 'TTS';
             }
             $v['dynamic_prefix'] = strtolower($catPrefix);
-
-            // Compute sequential piece tags for this variant matching the controller offset logic
-            $siblingIds = $productVariantGroups[$pId] ?? [$vid];
-            $varIndex = array_search($vid, $siblingIds);
-            if ($varIndex === false) $varIndex = 0;
-            $varOffset = $varIndex * 20;
-
-            for ($seq = 1; $seq <= 20; $seq++) {
-                $pTag = $catPrefix . $nowMonth . $nowYear . sprintf("%02d", $varOffset + $seq);
-                if (!in_array($pTag, $tagsList)) {
-                    $tagsList[] = $pTag;
-                }
-            }
 
             $v['piece_tags'] = $tagsList;
 
@@ -208,7 +539,13 @@ class SalesController {
             }
         }
         unset($v);
-        $variants = $this->enhanceVariantsWithDynamicTokens($variants);
+        $channelIds = $this->getSalesChannelLocationIds('WEBSITE');
+        $availableStockByVariant = $this->getSalesChannelAvailableStock($channelIds);
+        foreach ($variants as &$variant) {
+            $variant['available_stock'] = $availableStockByVariant[(int)$variant['id']] ?? 0;
+        }
+        unset($variant);
+        $variants = $this->enhanceVariantsWithDynamicTokens($variants, $channelIds, 'WEBSITE');
 
         $currentUserId = Session::get('user_id');
         $currentUser = $currentUserId ? Database::fetchOne("SELECT full_name FROM users WHERE id = ?", [$currentUserId]) : null;
@@ -284,6 +621,20 @@ class SalesController {
 
         if (empty($items) || !is_array($items)) {
             Session::flash('error', 'Please select at least one item for the order.');
+            Response::redirect(url('sales/website/create'));
+            return;
+        }
+
+        $channelIds = $this->getSalesChannelLocationIds('WEBSITE');
+        try {
+            $items = $this->validateSalesChannelItems($items, 'WEBSITE', $channelIds);
+        } catch (\PDOException $e) {
+            error_log("Website order validation failed: " . $e->getMessage());
+            Session::flash('error', 'Unable to verify website order stock right now. Please try again.');
+            Response::redirect(url('sales/website/create'));
+            return;
+        } catch (RuntimeException $e) {
+            Session::flash('error', $e->getMessage());
             Response::redirect(url('sales/website/create'));
             return;
         }
@@ -377,6 +728,7 @@ class SalesController {
                     'quantity'         => $qty,
                     'unit_price'       => $price,
                     'mrp'              => $mrp,
+                    'is_series'        => $itm['is_series'],
                     'total'            => $lineGross,
                     'taxable_amount'   => $lineTaxable,
                     'cgst_amount'      => $lineCgst,
@@ -402,66 +754,51 @@ class SalesController {
         $shop = Database::fetchOne("SELECT id FROM shops LIMIT 1");
         $shopId = $shop ? (int)$shop['id'] : null;
 
-        Database::execute(
-            "INSERT INTO sales (invoice_number, sale_type, shop_id, customer_id, customer_address, subtotal, discount_amount, taxable_amount, gst_percentage, gst_amount, cgst_amount, sgst_amount, shipping_cost, total_amount, paid_amount, payment_mode, payment_status, status, sales_channel, biller_id, billing_staff_id, employee_name, employee_code, biller_name, notes, created_at)
-             VALUES (?, 'WEBSITE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DELIVERED', 'WEBSITE', ?, ?, ?, ?, ?, ?, NOW())",
-            [$invoiceNumber, $shopId, $customerId ?: null, $fullAddress, $taxableSubtotal, $discountAmount, $taxableSubtotal, $gstPercentage, $gstAmount, $cgstAmount, $sgstAmount, $shippingCost, $grandTotalAmount, ($paymentStatus === 'PAID' ? $grandTotalAmount : 0.0), $paymentMode, $paymentStatus, $billerId ?: null, $billingStaffId ?: null, $employeeName, $employeeCode, $billerName, $notes]
-        );
-        $saleId = (int)Database::lastInsertId();
-
-        foreach ($orderItems as $oi) {
+        $stockUserId = $billerId > 0 && Database::fetchOne("SELECT id FROM users WHERE id = ?", [$billerId])
+            ? $billerId
+            : null;
+        try {
+            Database::beginTransaction();
             Database::execute(
-                "INSERT INTO sale_items (sale_id, variant_id, quantity, unit_price, mrp, gst_percentage, cgst_amount, sgst_amount, total_amount, scanned_qr_codes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [$saleId, $oi['variant_id'], $oi['quantity'], $oi['unit_price'], $oi['mrp'], $gstPercentage, $oi['cgst_amount'], $oi['sgst_amount'], $oi['total'], $oi['scanned_qr_codes']]
+                "INSERT INTO sales (invoice_number, sale_type, shop_id, customer_id, customer_address, subtotal, discount_amount, taxable_amount, gst_percentage, gst_amount, cgst_amount, sgst_amount, shipping_cost, total_amount, paid_amount, payment_mode, payment_status, status, sales_channel, biller_id, billing_staff_id, employee_name, employee_code, biller_name, notes, created_at)
+                 VALUES (?, 'WEBSITE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DELIVERED', 'WEBSITE', ?, ?, ?, ?, ?, ?, NOW())",
+                [$invoiceNumber, $shopId, $customerId ?: null, $fullAddress, $taxableSubtotal, $discountAmount, $taxableSubtotal, $gstPercentage, $gstAmount, $cgstAmount, $sgstAmount, $shippingCost, $grandTotalAmount, ($paymentStatus === 'PAID' ? $grandTotalAmount : 0.0), $paymentMode, $paymentStatus, $billerId ?: null, $billingStaffId ?: null, $employeeName, $employeeCode, $billerName, $notes]
             );
+            $saleId = (int)Database::lastInsertId();
 
-            // Automatically deduct stock from Central Inventory with auto-sync fallback
-            $tagNote = !empty($oi['scanned_qr_codes']) ? " [Piece Tags: {$oi['scanned_qr_codes']}]" : "";
-            if ($shopId) {
-                try {
-                    StockService::decrease(
-                        $oi['variant_id'],
-                        'SHOP',
-                        $shopId,
-                        'AVAILABLE',
-                        (float)$oi['quantity'],
-                        'SALE',
-                        'sales',
-                        $saleId,
-                        $billerId ?: 1,
-                        "Website Sale: {$invoiceNumber}{$tagNote}"
-                    );
-                } catch (\Throwable $ex) {
-                    try {
-                        StockService::increase(
-                            $oi['variant_id'],
-                            'SHOP',
-                            $shopId,
-                            'AVAILABLE',
-                            (float)$oi['quantity'],
-                            'ADJUSTMENT',
-                            'sales',
-                            $saleId,
-                            $billerId ?: 1,
-                            "Auto-stock sync for Website sale {$invoiceNumber}"
-                        );
-                        StockService::decrease(
-                            $oi['variant_id'],
-                            'SHOP',
-                            $shopId,
-                            'AVAILABLE',
-                            (float)$oi['quantity'],
-                            'SALE',
-                            'sales',
-                            $saleId,
-                            $billerId ?: 1,
-                            "Website Sale: {$invoiceNumber}{$tagNote}"
-                        );
-                    } catch (\Throwable $ex2) {
-                        error_log("Website sale stock deduction fallback: " . $ex2->getMessage());
-                    }
-                }
+            foreach ($orderItems as $oi) {
+                $tagNote = !empty($oi['scanned_qr_codes']) ? " [Piece Tags: {$oi['scanned_qr_codes']}]" : "";
+                $this->deductSalesChannelStock(
+                    $oi['variant_id'],
+                    $oi['quantity'],
+                    $channelIds,
+                    'WEBSITE',
+                    $saleId,
+                    $stockUserId,
+                    "Website Sale: {$invoiceNumber}{$tagNote}"
+                );
+                $this->assertSalesChannelTagsAvailable(
+                    array_filter(array_map('trim', explode(',', (string)$oi['scanned_qr_codes']))),
+                    (bool)$oi['is_series']
+                );
+                Database::execute(
+                    "INSERT INTO sale_items (sale_id, variant_id, quantity, unit_price, mrp, gst_percentage, cgst_amount, sgst_amount, total_amount, scanned_qr_codes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [$saleId, $oi['variant_id'], $oi['quantity'], $oi['unit_price'], $oi['mrp'], $gstPercentage, $oi['cgst_amount'], $oi['sgst_amount'], $oi['total'], $oi['scanned_qr_codes']]
+                );
             }
+            Database::commit();
+        } catch (\PDOException $e) {
+            Database::rollback();
+            error_log("Website order creation failed: " . $e->getMessage());
+            Session::flash('error', 'A database error prevented the website order from being saved. Please try again.');
+            Response::redirect(url('sales/website/create'));
+            return;
+        } catch (\Throwable $e) {
+            Database::rollback();
+            error_log("Website order creation failed: " . $e->getMessage());
+            Session::flash('error', $e->getMessage());
+            Response::redirect(url('sales/website/create'));
+            return;
         }
 
         Session::flash('success', "Website Order #{$invoiceNumber} created successfully.");
@@ -586,10 +923,19 @@ class SalesController {
             }
         }
         unset($v);
-        $variants = $this->enhanceVariantsWithDynamicTokens($variants);
+        $channelIds = $this->getSalesChannelLocationIds('WHATSAPP');
+        $availableStockByVariant = $this->getSalesChannelAvailableStock($channelIds);
+        foreach ($variants as &$variant) {
+            $variant['available_stock'] = $availableStockByVariant[(int)$variant['id']] ?? 0;
+        }
+        unset($variant);
+        $variants = $this->enhanceVariantsWithDynamicTokens($variants, $channelIds, 'WHATSAPP');
 
-        $currentUserId = Session::get('user_id');
-        $currentUser = $currentUserId ? Database::fetchOne("SELECT full_name FROM users WHERE id = ?", [$currentUserId]) : null;
+        $currentUserId = (int)(Session::get('user_id') ?? 0);
+        $currentUser = $currentUserId > 0
+            ? Database::fetchOne("SELECT id, full_name FROM users WHERE id = ?", [$currentUserId])
+            : null;
+        $currentUserId = $currentUser ? (int)$currentUser['id'] : 0;
         $defaultBillerName = $currentUser['full_name'] ?? 'System Administrator';
 
         Response::view('sales.whatsapp.create', [
@@ -606,6 +952,42 @@ class SalesController {
             'defaultBillerName' => $defaultBillerName,
             'currentUserId'     => $currentUserId,
         ]);
+    }
+
+    public function lookupWhatsappCustomer(): void {
+        $query = trim((string)($_GET['q'] ?? ''));
+        if (strlen($query) < 2) {
+            Response::jsonSuccess('No customer search term', []);
+            return;
+        }
+        $wild = '%' . $query . '%';
+        $customers = Database::fetchAll(
+            "SELECT id, name, phone, address, state, pincode
+             FROM customers
+             WHERE phone LIKE ? OR name LIKE ?
+             ORDER BY CASE WHEN phone = ? THEN 0 ELSE 1 END, id DESC
+             LIMIT 10",
+            [$wild, $wild, $query]
+        );
+        Response::jsonSuccess('Customer matches loaded', $customers);
+    }
+
+    public function lookupWebsiteCustomer(): void {
+        $query = trim((string)($_GET['q'] ?? ''));
+        if (strlen($query) < 2) {
+            Response::jsonSuccess('No customer search term', []);
+            return;
+        }
+        $wild = '%' . $query . '%';
+        $customers = Database::fetchAll(
+            "SELECT id, name, phone, address, state, pincode
+             FROM customers
+             WHERE phone LIKE ? OR name LIKE ?
+             ORDER BY CASE WHEN phone = ? THEN 0 ELSE 1 END, id DESC
+             LIMIT 10",
+            [$wild, $wild, $query]
+        );
+        Response::jsonSuccess('Customer matches loaded', $customers);
     }
 
     public function storeWhatsappOrder(): void {
@@ -626,10 +1008,24 @@ class SalesController {
         $employeeName    = trim($_POST['employee_name'] ?? '');
         $employeeCode    = trim($_POST['employee_code'] ?? '');
         $billerName      = trim($_POST['biller_name'] ?? '');
-        $billingStaffId  = (int)($_POST['billing_staff_id'] ?? 0);
-        $billerId        = $billingStaffId ?: (int)($_POST['biller_id'] ?? Session::get('user_id') ?? 0);
+        $requestedBillingStaffId = (int)($_POST['billing_staff_id'] ?? 0);
+        $billingStaff = $requestedBillingStaffId > 0
+            ? Database::fetchOne("SELECT id FROM users WHERE id = ?", [$requestedBillingStaffId])
+            : null;
+        $billingStaffId = $billingStaff ? (int)$billingStaff['id'] : 0;
+        $requestedBillerId = $billingStaffId ?: (int)($_POST['biller_id'] ?? Session::get('user_id') ?? 0);
+        $validBiller = $requestedBillerId > 0
+            ? Database::fetchOne("SELECT id FROM users WHERE id = ?", [$requestedBillerId])
+            : null;
+        $billerId        = $validBiller ? (int)$validBiller['id'] : 0;
         $paymentMode     = trim($_POST['payment_mode'] ?? 'UPI');
-        $paymentStatus   = trim($_POST['payment_status'] ?? 'PAID');
+        $paymentStatus   = strtoupper(trim($_POST['payment_status'] ?? 'PAID'));
+        if ($paymentStatus === 'UNPAID') {
+            $paymentStatus = 'PENDING';
+        }
+        if (!in_array($paymentStatus, ['PENDING', 'PAID', 'PARTIAL', 'REFUNDED'], true)) {
+            $paymentStatus = 'PAID';
+        }
         $shippingCost    = (float)($_POST['shipping_cost'] ?? 0);
         $gstPercentage   = (float)($_POST['gst_percentage'] ?? 0);
         $gstAmount       = (float)($_POST['gst_amount'] ?? 0);
@@ -662,6 +1058,24 @@ class SalesController {
 
         if (empty($items) || !is_array($items)) {
             Session::flash('error', 'Please select at least one item for the order.');
+            Response::redirect(url('sales/whatsapp/create'));
+            return;
+        }
+
+        if ($customerId > 0 && !Database::fetchOne("SELECT id FROM customers WHERE id = ?", [$customerId])) {
+            $customerId = 0;
+        }
+
+        $channelIds = $this->getSalesChannelLocationIds('WHATSAPP');
+        try {
+            $items = $this->validateSalesChannelItems($items, 'WHATSAPP', $channelIds);
+        } catch (\PDOException $e) {
+            error_log("WhatsApp order validation failed: " . $e->getMessage());
+            Session::flash('error', 'Unable to verify WhatsApp order stock right now. Please try again.');
+            Response::redirect(url('sales/whatsapp/create'));
+            return;
+        } catch (RuntimeException $e) {
+            Session::flash('error', $e->getMessage());
             Response::redirect(url('sales/whatsapp/create'));
             return;
         }
@@ -743,12 +1157,23 @@ class SalesController {
                 $mrp = $isComp ? 0.00 : (float)($itm['mrp'] ?? $price);
                 if (!$isComp && $mrp <= 0) $mrp = $price;
                 $totalMrp += ($qty * $mrp);
+                $itemGstPercentage = $isComp ? 0.0 : (float)($itm['gst_percentage'] ?? 5.0);
+                $lineTaxable = $isComp ? 0.0 : round($price / (1 + ($itemGstPercentage / 100)), 2) * $qty;
+                $lineGst = $isComp ? 0.0 : round(($price - round($price / (1 + ($itemGstPercentage / 100)), 2)) * $qty, 2);
+                $lineCgst = round($lineGst / 2, 2);
+                $lineSgst = $lineGst - $lineCgst;
 
                 $orderItems[] = [
                     'variant_id'       => $variantId,
                     'quantity'         => $qty,
                     'unit_price'       => $price,
                     'mrp'              => $mrp,
+                    'gst_percentage'   => $itemGstPercentage,
+                    'taxable'          => $lineTaxable,
+                    'gst_amount'       => $lineGst,
+                    'cgst_amount'      => $lineCgst,
+                    'sgst_amount'      => $lineSgst,
+                    'is_series'        => $itm['is_series'],
                     'total'            => $sub,
                     'scanned_qr_codes' => !empty($scannedQrs) ? $scannedQrs : null,
                 ];
@@ -761,66 +1186,61 @@ class SalesController {
             $discountAmount = $calcDiscount;
         }
 
-        // Inclusive GST Calculation matching Shop POS: Taxable Base = Billed Gross / (1 + GST%)
-        $taxableSubtotal = round($grossTotal / (1 + ($gstPercentage / 100)), 2);
-        $gstAmount = round($grossTotal - $taxableSubtotal, 2);
-        $cgstAmount = round($gstAmount / 2, 2);
-        $sgstAmount = round($gstAmount - $cgstAmount, 2);
+        $taxableSubtotal = array_sum(array_column($orderItems, 'taxable'));
+        $gstAmount = array_sum(array_column($orderItems, 'gst_amount'));
+        $cgstAmount = array_sum(array_column($orderItems, 'cgst_amount'));
+        $sgstAmount = array_sum(array_column($orderItems, 'sgst_amount'));
+        $gstPercentage = $taxableSubtotal > 0 ? round(($gstAmount / $taxableSubtotal) * 100, 2) : 0.0;
         $grandTotalAmount = (float)ceil($grossTotal + $shippingCost);
 
         $shop = Database::fetchOne("SELECT id FROM shops LIMIT 1");
         $shopId = $shop ? (int)$shop['id'] : null;
 
-        Database::execute(
-            "INSERT INTO sales (invoice_number, sale_type, shop_id, customer_id, customer_address, subtotal, discount_amount, taxable_amount, gst_percentage, gst_amount, cgst_amount, sgst_amount, shipping_cost, total_amount, paid_amount, payment_mode, payment_status, status, sales_channel, biller_id, billing_staff_id, employee_name, employee_code, biller_name, notes, created_at)
-             VALUES (?, 'WHATSAPP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DELIVERED', 'WHATSAPP', ?, ?, ?, ?, ?, ?, NOW())",
-            [$invoiceNumber, $shopId, $customerId ?: null, $fullAddress, $taxableSubtotal, $discountAmount, $taxableSubtotal, $gstPercentage, $gstAmount, $cgstAmount, $sgstAmount, $shippingCost, $grandTotalAmount, ($paymentStatus === 'PAID' ? $grandTotalAmount : 0.0), $paymentMode, $paymentStatus, $billerId ?: null, $billingStaffId ?: null, $employeeName, $employeeCode, $billerName, $notes]
-        );
-        $saleId = (int)Database::lastInsertId();
-
-        foreach ($orderItems as $oi) {
+        $stockUserId = $billerId > 0 && Database::fetchOne("SELECT id FROM users WHERE id = ?", [$billerId])
+            ? $billerId
+            : null;
+        try {
+            Database::beginTransaction();
             Database::execute(
-                "INSERT INTO sale_items (sale_id, variant_id, quantity, unit_price, mrp, total_amount, scanned_qr_codes) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [$saleId, $oi['variant_id'], $oi['quantity'], $oi['unit_price'], $oi['mrp'], $oi['total'], $oi['scanned_qr_codes']]
+                "INSERT INTO sales (invoice_number, sale_type, shop_id, customer_id, customer_address, subtotal, discount_amount, taxable_amount, gst_percentage, gst_amount, cgst_amount, sgst_amount, shipping_cost, total_amount, paid_amount, payment_mode, payment_status, status, sales_channel, biller_id, billing_staff_id, employee_name, employee_code, biller_name, notes, created_at)
+                 VALUES (?, 'WHATSAPP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DELIVERED', 'WHATSAPP', ?, ?, ?, ?, ?, ?, NOW())",
+                [$invoiceNumber, $shopId, $customerId ?: null, $fullAddress, $taxableSubtotal, $discountAmount, $taxableSubtotal, $gstPercentage, $gstAmount, $cgstAmount, $sgstAmount, $shippingCost, $grandTotalAmount, ($paymentStatus === 'PAID' ? $grandTotalAmount : 0.0), $paymentMode, $paymentStatus, $billerId ?: null, $billingStaffId ?: null, $employeeName, $employeeCode, $billerName, $notes]
             );
+            $saleId = (int)Database::lastInsertId();
 
-            // Automatically deduct stock from WhatsApp Channel inventory & Shop Inventory
-            $tagNote = !empty($oi['scanned_qr_codes']) ? " [Piece Tags: {$oi['scanned_qr_codes']}]" : "";
-            try {
-                StockService::decrease(
+            foreach ($orderItems as $oi) {
+                $tagNote = !empty($oi['scanned_qr_codes']) ? " [Piece Tags: {$oi['scanned_qr_codes']}]" : "";
+                $this->deductSalesChannelStock(
                     $oi['variant_id'],
-                    'CHANNEL',
-                    1,
-                    'AVAILABLE',
-                    (float)$oi['quantity'],
-                    'SALE',
-                    'sales',
+                    $oi['quantity'],
+                    $channelIds,
+                    'WHATSAPP',
                     $saleId,
-                    $billerId ?: 1,
+                    $stockUserId,
                     "WhatsApp Sale: {$invoiceNumber}{$tagNote}"
                 );
-            } catch (\Throwable $ex) {
-                // If channel record had no balance, sync or ignore
+                $this->assertSalesChannelTagsAvailable(
+                    array_filter(array_map('trim', explode(',', (string)$oi['scanned_qr_codes']))),
+                    (bool)$oi['is_series']
+                );
+                Database::execute(
+                    "INSERT INTO sale_items (sale_id, variant_id, quantity, unit_price, mrp, gst_percentage, cgst_amount, sgst_amount, total_amount, scanned_qr_codes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [$saleId, $oi['variant_id'], $oi['quantity'], $oi['unit_price'], $oi['mrp'], $oi['gst_percentage'], $oi['cgst_amount'], $oi['sgst_amount'], $oi['total'], $oi['scanned_qr_codes']]
+                );
             }
-
-            if ($shopId) {
-                try {
-                    StockService::decrease(
-                        $oi['variant_id'],
-                        'SHOP',
-                        $shopId,
-                        'AVAILABLE',
-                        (float)$oi['quantity'],
-                        'SALE',
-                        'sales',
-                        $saleId,
-                        $billerId ?: 1,
-                        "WhatsApp Sale: {$invoiceNumber}{$tagNote}"
-                    );
-                } catch (\Throwable $ex) {
-                    // Fallback
-                }
-            }
+            Database::commit();
+        } catch (\PDOException $e) {
+            Database::rollback();
+            error_log("WhatsApp order creation failed: " . $e->getMessage());
+            Session::flash('error', 'A database error prevented the WhatsApp order from being saved. Please try again.');
+            Response::redirect(url('sales/whatsapp/create'));
+            return;
+        } catch (\Throwable $e) {
+            Database::rollback();
+            error_log("WhatsApp order creation failed: " . $e->getMessage());
+            Session::flash('error', $e->getMessage());
+            Response::redirect(url('sales/whatsapp/create'));
+            return;
         }
 
         Session::flash('success', "WhatsApp Order #{$invoiceNumber} created successfully.");

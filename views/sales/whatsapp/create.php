@@ -283,7 +283,7 @@ input[type=number] {
         <?= CSRF::field() ?>
         <input type="hidden" name="customer_id" id="customerIdInput" value="0">
         <input type="hidden" name="biller_name" id="billerNameInput" value="<?= htmlspecialchars($defaultBillerName ?? 'System Administrator') ?>">
-        <input type="hidden" name="billing_staff_id" id="billingStaffIdInput" value="<?= htmlspecialchars((string)($currentUserId ?? '1')) ?>">
+        <input type="hidden" name="billing_staff_id" id="billingStaffIdInput" value="<?= (int)($currentUserId ?? 0) > 0 ? (int)$currentUserId : '' ?>">
         <input type="hidden" name="discount_amount" id="formDiscountAmount" value="0.00">
         <input type="hidden" name="taxable_amount" id="formTaxableAmount" value="0.00">
         <input type="hidden" name="gst_percentage" id="formGstPercentage" value="5.00">
@@ -299,10 +299,10 @@ input[type=number] {
                         <label class="form-label fw-bold text-dark fs-5 mb-2">
                             <i class="bi bi-upc-scan text-success me-2"></i>Scan Product QR Code
                         </label>
-                        <div class="input-group input-group-lg shadow-sm rounded-3 overflow-hidden mb-2">
+                        <div class="input-group input-group-lg shadow-sm rounded-3 mb-2 whatsapp-qr-input-group">
                             <span class="input-group-text bg-success text-white border-0"><i class="bi bi-qr-code fs-4"></i></span>
-                            <input type="text" id="qrInput" class="form-control border-0 bg-light font-monospace fw-bold" 
-                                   placeholder="Point QR scanner or type code & hit Enter..." autofocus autocomplete="off"
+                            <input type="text" id="qrInput" class="form-control bg-white font-monospace fw-bold whatsapp-qr-input"
+                                   placeholder="" autofocus autocomplete="off"
                                    onkeydown="if(event.key==='Enter'){ event.preventDefault(); processManualScan(); }">
                             <button class="btn btn-success px-4 fw-semibold" id="btnManualScan" type="button" onclick="processManualScan()">
                                 <i class="bi bi-arrow-right-circle me-1"></i> Add
@@ -318,33 +318,6 @@ input[type=number] {
                         <div class="d-flex justify-content-between align-items-center">
                             <small class="text-muted"><i class="bi bi-info-circle me-1"></i>Each scanned piece is added one by one.</small>
                             <small class="text-success fw-semibold" id="scanStatus">Ready for next scan...</small>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Last Scanned Product Details Card -->
-                <div class="card border-0 shadow-sm rounded-4 bg-white mb-3" id="lastScannedCard" style="display:none;">
-                    <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
-                        <h6 class="fw-bold text-success mb-0"><i class="bi bi-check-circle-fill me-2"></i>Last Scanned Piece</h6>
-                        <span id="lastScanTagBadge"></span>
-                    </div>
-                    <div class="card-body pt-0">
-                        <div class="d-flex align-items-center">
-                            <div class="rounded-3 bg-light border me-3 d-flex align-items-center justify-content-center overflow-hidden" style="width:70px; height:70px; min-width:70px;">
-                                <i class="bi bi-bag-check text-success fs-2"></i>
-                            </div>
-                            <div class="flex-grow-1">
-                                <h5 class="fw-bold text-dark mb-1" id="lastScanName">Product Name</h5>
-                                <div class="d-flex flex-wrap gap-2 small text-muted mb-1">
-                                    <span class="badge bg-light text-dark border">SKU: <span id="lastScanSku"></span></span>
-                                    <span class="badge bg-light text-dark border">Size: <span id="lastScanSize"></span></span>
-                                    <span class="badge bg-light text-dark border">Color: <span id="lastScanColor"></span></span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div class="fs-5 fw-bold text-success">₹<span id="lastScanPrice">0.00</span></div>
-                                    <span class="badge bg-success-subtle text-success" id="lastScanStock">Stock Available</span>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -377,27 +350,14 @@ input[type=number] {
                             </div>
                             <div>
                                 <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2.5 py-1" style="font-size: 10.5px;">
-                                    <i class="bi bi-asterisk me-1"></i>Name, Phone, Address Required
+                                    <i class="bi bi-asterisk me-1"></i>Phone, Name, Address Required
                                 </span>
                             </div>
                         </div>
 
-                        <!-- ROW 1: Customer Name, Phone No, Address (3 Cols) -->
+                        <!-- ROW 1: Phone No, Customer Name, Address (3 Cols) -->
                         <div class="row g-2 mb-2">
-                            <!-- 1. Customer Name -->
-                            <div class="col-12 col-md-4">
-                                <div class="pos-field-wrap">
-                                    <label class="pos-field-label" for="custName">
-                                        <i class="bi bi-person text-success me-1"></i>Customer Name <span class="text-danger">*</span>
-                                    </label>
-                                    <div class="input-group input-group-sm pos-input-group">
-                                        <span class="input-group-text"><i class="bi bi-person-fill"></i></span>
-                                        <input type="text" name="customer_name" id="custName" class="form-control" placeholder="Alphabets only *" required pattern="[A-Za-z\s.]+" oninput="this.value = this.value.replace(/[^a-zA-Z\s.]/g, '')" autocomplete="off">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- 2. Phone No -->
+                            <!-- 1. Phone No: used to find saved customers -->
                             <div class="col-12 col-md-4">
                                 <div class="pos-field-wrap">
                                     <label class="pos-field-label" for="custPhone">
@@ -406,6 +366,20 @@ input[type=number] {
                                     <div class="input-group input-group-sm pos-input-group">
                                         <span class="input-group-text"><i class="bi bi-whatsapp text-success"></i></span>
                                         <input type="tel" name="customer_phone" id="custPhone" class="form-control font-monospace" placeholder="10-digit number only *" required maxlength="10" inputmode="numeric" pattern="[0-9]{10}" oninput="this.value = this.value.replace(/\D/g, '').slice(0, 10)" autocomplete="off">
+                                    </div>
+                                    <div id="whatsappCustomerSuggestions" class="list-group position-absolute w-100 shadow" style="z-index:20;display:none;top:100%;left:0;"></div>
+                                </div>
+                            </div>
+
+                            <!-- 2. Customer Name -->
+                            <div class="col-12 col-md-4">
+                                <div class="pos-field-wrap">
+                                    <label class="pos-field-label" for="custName">
+                                        <i class="bi bi-person text-success me-1"></i>Customer Name <span class="text-danger">*</span>
+                                    </label>
+                                    <div class="input-group input-group-sm pos-input-group">
+                                        <span class="input-group-text"><i class="bi bi-person-fill"></i></span>
+                                        <input type="text" name="customer_name" id="custName" class="form-control" placeholder="Customer full name *" required autocomplete="off">
                                     </div>
                                 </div>
                             </div>
@@ -490,7 +464,7 @@ input[type=number] {
                                     <div class="input-group input-group-sm pos-input-group">
                                         <span class="input-group-text"><i class="bi bi-person-badge-fill"></i></span>
                                         <input type="text" id="staffIdInput" class="form-control fw-semibold" 
-                                               value="<?= htmlspecialchars((string)($currentUserId ?? '1')) ?>" 
+                                               value="<?= (int)($currentUserId ?? 0) > 0 ? (int)$currentUserId : '' ?>"
                                                placeholder="Staff ID (e.g. 4)" autocomplete="off" oninput="document.getElementById('billingStaffIdInput').value = this.value">
                                     </div>
                                 </div>
@@ -535,7 +509,7 @@ input[type=number] {
                                                 <i class="bi bi-bag-plus text-success"></i>
                                             </div>
                                             <h6 class="fw-bold text-dark mb-1">Billing Cart is Empty</h6>
-                                            <p class="text-muted small mb-0">Point your scanner at garment QR codes or type SKU on the left to start billing.</p>
+                                            <p class="text-muted small mb-0">Scan a garment piece QR code to add it to the bill. SKU entry is not accepted.</p>
                                         </div>
                                     </td>
                                 </tr>
@@ -742,6 +716,22 @@ input[type=number] {
     </form>
 </div>
 
+<style>
+    .whatsapp-qr-input-group {
+        border: 2px solid #198754;
+        border-radius: .75rem;
+        overflow: hidden;
+    }
+    .whatsapp-qr-input-group:focus-within {
+        border-color: #0f5132;
+        box-shadow: 0 0 0 .2rem rgba(25, 135, 84, .2) !important;
+    }
+    .whatsapp-qr-input {
+        border: 0 !important;
+        min-width: 0;
+    }
+</style>
+
 <script>
 const variantsList = <?= json_encode($variants ?? []) ?>;
 const cart = [];
@@ -781,10 +771,20 @@ function processManualScan() {
     const rawCode = (qrInput.value || '').trim();
     if (!rawCode) return;
 
+    // Billing accepts a piece QR/tag (or its full pipe-delimited payload), never a SKU.
+    const pieceCode = rawCode.includes('|') ? rawCode.split('|')[0].trim() : rawCode;
+    if (!/^[A-Za-z]+\d+[A-Za-z0-9_-]*$/.test(pieceCode)) {
+        showScanToast('Scan the garment piece QR code. SKU and product codes cannot be billed here.', 'danger');
+        qrInput.value = '';
+        focusQR();
+        return;
+    }
+
     const matched = findVariantFromCode(rawCode);
     if (!matched) {
-        showScanToast(`Product QR Code / SKU <strong>"${escapeHtml(rawCode)}"</strong> not found in active catalog.`, 'danger');
+        showScanToast(`Piece QR <strong>"${escapeHtml(pieceCode)}"</strong> is not assigned to received WhatsApp stock. Scan a piece received into WhatsApp inventory.`, 'danger');
         qrInput.value = '';
+        focusQR();
         return;
     }
 
@@ -801,6 +801,8 @@ function processManualScan() {
         return;
     }
 
+    // Do not reject scans using the page's initial stock snapshot. The checkout
+    // validates live channel stock transactionally on the server.
     addItemToCart(matched, pieceTag);
     showLastScanned(matched, pieceTag);
     showScanToast(`Added: <strong>${escapeHtml(matched.product_name)}</strong> (${escapeHtml(matched.size_name || 'Free')}) [Tag: ${escapeHtml(pieceTag)}]`, 'success');
@@ -820,7 +822,8 @@ function addItemToCart(variant, pieceTag) {
     const cartItemId = 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     let retailPrice = parseFloat(variant.selling_price) || 0;
     let mrp = parseFloat(variant.mrp) || retailPrice;
-    let gstRate = parseFloat(variant.gst_percentage) || 5.0;
+    const variantGstRate = Number(variant.gst_percentage);
+    let gstRate = Number.isFinite(variantGstRate) ? Math.min(100, Math.max(0, variantGstRate)) : 5.0;
 
     if (isComp) {
         retailPrice = 0.00;
@@ -867,25 +870,7 @@ function flashCartItemRow(pieceTag) {
 }
 
 function showLastScanned(variant, pieceTag) {
-    const card = document.getElementById('lastScannedCard');
-    if (!card) return;
-    card.style.display = 'block';
-    document.getElementById('lastScanName').innerText = variant.product_name;
-    document.getElementById('lastScanSku').innerText = variant.sku || '';
-    document.getElementById('lastScanSize').innerText = variant.size_name || 'N/A';
-    document.getElementById('lastScanColor').innerText = variant.color_name || 'N/A';
-    const isComp = (variant.is_complementary == 1 || variant.category_type === 'COMPLEMENTARY' || variant.p_is_comp == 1 || variant.pv_is_comp == 1);
-    const pVal = isComp ? 0 : parseFloat(variant.selling_price > 0 ? variant.selling_price : (variant.mrp || 0));
-    document.getElementById('lastScanPrice').innerText = pVal.toFixed(2);
-    let tagBadges = pieceTag ? `<span class="piece-tag-badge"><i class="bi bi-qr-code"></i>Piece Tag: ${escapeHtml(pieceTag)}</span>` : '';
-    if (isComp) {
-        tagBadges += ` <span class="badge bg-warning-subtle text-dark border border-warning"><i class="bi bi-gift me-1"></i>Complementary (₹0.00)</span>`;
-    }
-    const isSeries = (variant.is_series == 1 || variant.category_type === 'SERIES' || variant.qr_type === 'SERIES_BATCH' || (variant.pack_quantity && parseInt(variant.pack_quantity) > 1));
-    if (isSeries) {
-        tagBadges += ` <span class="badge bg-info-subtle text-info border border-info font-monospace"><i class="bi bi-layers me-1"></i>Series Batch</span>`;
-    }
-    document.getElementById('lastScanTagBadge').innerHTML = tagBadges;
+    // Piece details are displayed in the billing cart; no separate last-scan panel.
 }
 
 function showScanToast(msg, type = 'success') {
@@ -935,7 +920,8 @@ function updateSummaryTotals() {
     cart.forEach(item => {
         const orig = parseFloat(item.original_price) || 0;
         const billed = parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig;
-        const gstPct = parseFloat(item.gst_percentage) || 5.0;
+        const parsedGstPct = Number(item.gst_percentage);
+        const gstPct = Number.isFinite(parsedGstPct) ? Math.min(100, Math.max(0, parsedGstPct)) : 5.0;
         mainGstPct = gstPct;
 
         const lineTaxable = Math.round((billed / (1 + (gstPct / 100))) * 100) / 100;
@@ -1006,7 +992,7 @@ function renderCart() {
                             <i class="bi bi-bag-plus text-success"></i>
                         </div>
                         <h6 class="fw-bold text-dark mb-1">Billing Cart is Empty</h6>
-                        <p class="text-muted small mb-0">Point your scanner at garment QR codes or type SKU on the left to start billing.</p>
+                        <p class="text-muted small mb-0">Scan a garment piece QR code to add it to the bill. SKU entry is not accepted.</p>
                     </div>
                 </td>
             </tr>`;
@@ -1028,20 +1014,17 @@ function renderCart() {
         const isSeries = (item.is_series == 1 || item.category_type === 'SERIES' || item.qr_type === 'SERIES_BATCH');
         const orig = isComp ? 0.00 : (parseFloat(item.original_price) || 0);
         const billed = isComp ? 0.00 : (parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig);
-        const gstPercentage = isComp ? 0.00 : (parseFloat(item.gst_percentage) || 5.0);
+        const parsedGstPercentage = Number(item.gst_percentage);
+        const gstPercentage = isComp ? 0.00 : (Number.isFinite(parsedGstPercentage) ? Math.min(100, Math.max(0, parsedGstPercentage)) : 5.0);
 
         const lineTaxable = isComp ? 0.00 : (Math.round((billed / (1 + (gstPercentage / 100))) * 100) / 100);
         const lineGst = isComp ? 0.00 : (Math.round((billed - lineTaxable) * 100) / 100);
         const discountAmount = isComp ? 0.00 : (orig > billed ? Math.round((orig - billed) * 100) / 100 : 0);
         const discountPct = isComp ? 0.00 : (orig > 0 && discountAmount > 0 ? Math.round(((discountAmount / orig) * 100) * 10) / 10 : 0);
 
-        const itemImgHtml = item.image 
-            ? `<img src="${escapeHtml(item.image)}" alt="" class="rounded-3 border me-2.5 shadow-sm" style="width:38px; height:38px; object-fit: cover;">`
-            : `<div class="rounded-3 bg-light border me-2.5 d-flex align-items-center justify-content-center text-success" style="width:38px; height:38px; min-width:38px;"><i class="bi bi-bag-check fs-5"></i></div>`;
-
         const tagHtml = item.scanned_tag
             ? `<span class="badge bg-dark-subtle text-dark border border-secondary-subtle font-monospace mt-0.5 d-inline-block" style="font-size:10px;"><i class="bi bi-qr-code text-success me-1"></i>Piece Tag: ${escapeHtml(item.scanned_tag)}</span>`
-            : `<span class="badge bg-light text-dark border font-monospace mt-0.5 d-inline-block" style="font-size:10px;"><i class="bi bi-qr-code text-success me-1"></i>QR: ${escapeHtml(item.sku)}</span>`;
+            : '';
 
         const compBadgeHtml = isComp
             ? `<span class="badge bg-warning-subtle text-dark border border-warning" style="font-size:10px;"><i class="bi bi-gift-fill me-1 text-warning"></i>Complementary (₹0.00)</span>`
@@ -1063,11 +1046,9 @@ function renderCart() {
                 </td>
                 <td>
                     <div class="d-flex align-items-center">
-                        ${itemImgHtml}
                         <div class="overflow-hidden flex-grow-1">
                             <div class="fw-bold text-dark small text-truncate" title="${escapeHtml(item.product_name)}">${escapeHtml(item.product_name)}</div>
                             <div class="d-flex flex-wrap align-items-center gap-1 mt-0.5" style="font-size:11px;">
-                                <span class="badge bg-light text-dark border font-monospace" style="font-size:10px;">${escapeHtml(item.sku)}</span> 
                                 ${item.size_name ? `<span class="badge bg-primary-subtle text-primary" style="font-size:10px;">${escapeHtml(item.size_name)}</span>` : ''} 
                                 ${item.color_name ? `<span class="badge bg-secondary-subtle text-secondary" style="font-size:10px;">${escapeHtml(item.color_name)}</span>` : ''}
                                 ${compBadgeHtml}
@@ -1082,14 +1063,14 @@ function renderCart() {
                     <input type="hidden" name="items[${index}][quantity]" value="1">
                     <input type="hidden" name="items[${index}][unit_price]" class="item-hidden-price" value="${billed.toFixed(2)}">
                     <input type="hidden" name="items[${index}][mrp]" value="${orig.toFixed(2)}">
-                    <input type="hidden" name="items[${index}][gst_percentage]" value="${gstPercentage}">
+                    <input type="hidden" name="items[${index}][gst_percentage]" class="item-hidden-gst" value="${gstPercentage}">
                     <input type="hidden" name="items[${index}][scanned_qr_codes]" value="${escapeHtml(item.scanned_tag || '')}">
                 </td>
                 <td class="text-end fw-semibold text-secondary font-monospace item-base-price-cell" style="font-size: 12.5px;">
                     ₹${lineTaxable.toFixed(2)}
                 </td>
                 <td class="text-end item-gst-cell">
-                    <span class="badge bg-info-subtle text-info-emphasis font-monospace" style="font-size: 10px;">${gstPercentage}%</span>
+                    <input type="number" min="0" max="100" step="0.01" class="form-control form-control-sm text-end font-monospace item-gst-input" data-cart-id="${item.cart_id}" value="${gstPercentage}" style="width:68px;display:inline-block;" ${isComp ? 'readonly title="Complementary item GST is fixed at 0%"' : 'title="Edit GST percentage"'}>
                     <div class="text-muted font-monospace mt-0.5 item-gst-val" style="font-size: 10px;">+₹${lineGst.toFixed(2)}</div>
                 </td>
                 <td class="text-end item-discount-cell" style="width: 105px;">
@@ -1119,6 +1100,26 @@ function renderCart() {
 }
 
 function attachCartRowEvents() {
+    document.querySelectorAll('.item-gst-input').forEach(inp => {
+        inp.addEventListener('input', function() {
+            const item = cart.find(it => it.cart_id === this.dataset.cartId);
+            if (!item || item.is_complementary == 1) return;
+            const rate = parseFloat(this.value);
+            item.gst_percentage = Number.isFinite(rate) ? Math.min(100, Math.max(0, rate)) : 0;
+            const billed = Math.max(0, parseFloat(item.billed_price) || 0);
+            const taxable = Math.round((billed / (1 + item.gst_percentage / 100)) * 100) / 100;
+            const tax = Math.round((billed - taxable) * 100) / 100;
+            const row = this.closest('tr');
+            if (row) {
+                row.querySelector('.item-base-price-cell').innerText = `₹${taxable.toFixed(2)}`;
+                row.querySelector('.item-gst-val').innerText = `+₹${tax.toFixed(2)}`;
+                const hiddenRate = row.querySelector('.item-hidden-gst');
+                if (hiddenRate) hiddenRate.value = item.gst_percentage.toFixed(2);
+            }
+            updateSummaryTotals();
+        });
+    });
+
     // Live Input on Item Billed Price (Row-level)
     document.querySelectorAll('.item-billed-price-input').forEach(inp => {
         inp.addEventListener('input', function() {
@@ -1154,7 +1155,8 @@ function attachCartRowEvents() {
                 item.discount_percent = 0;
             }
 
-            const gstPct = parseFloat(item.gst_percentage) || 5.0;
+            const parsedGstPct = Number(item.gst_percentage);
+            const gstPct = Number.isFinite(parsedGstPct) ? Math.min(100, Math.max(0, parsedGstPct)) : 5.0;
             const lineTaxable = Math.round((enteredVal / (1 + (gstPct / 100))) * 100) / 100;
             const lineGst = Math.round((enteredVal - lineTaxable) * 100) / 100;
 
@@ -1162,16 +1164,14 @@ function attachCartRowEvents() {
             const row = this.closest('tr');
             if (row) {
                 const baseCell = row.querySelector('.item-base-price-cell');
-                const gstCell = row.querySelector('.item-gst-cell');
+                const gstValue = row.querySelector('.item-gst-val');
                 const discBadge = row.querySelector('.item-discount-badge');
                 const discPct = row.querySelector('.item-discount-pct');
                 const mrpBadge = row.querySelector('.item-mrp-badge');
                 const hiddenPrice = row.querySelector('.item-hidden-price');
 
                 if (baseCell) baseCell.innerText = `₹${lineTaxable.toFixed(2)}`;
-                if (gstCell) {
-                    gstCell.innerHTML = `<span class="badge bg-info-subtle text-info-emphasis font-monospace" style="font-size: 10px;">${gstPct}%</span><div class="text-muted font-monospace mt-0.5 item-gst-val" style="font-size: 10px;">+₹${lineGst.toFixed(2)}</div>`;
-                }
+                if (gstValue) gstValue.innerText = `+₹${lineGst.toFixed(2)}`;
                 if (discBadge) {
                     discBadge.innerText = `-₹${item.discount_amount.toFixed(2)}`;
                     discBadge.className = item.discount_amount > 0 ? 'badge bg-danger-subtle text-danger fw-bold font-monospace item-discount-badge' : 'badge bg-light text-muted font-monospace item-discount-badge';
@@ -1304,6 +1304,10 @@ function findVariantFromCode(rawCode) {
     // 1. Pipe-separated payload (e.g. "KB102612|BCT0303-12Y-BLK|MRP:3000|Price:2500")
     if (clean.includes('|')) {
         const parts = clean.split('|').map(p => p.trim());
+        const firstPart = parts[0] || '';
+        if (/^[a-zA-Z]+\d+[a-zA-Z0-9_-]*$/.test(firstPart)) {
+            return variantsList.find(v => v.piece_tags && Array.isArray(v.piece_tags) && v.piece_tags.some(tag => tag.toLowerCase() === firstPart.toLowerCase())) || null;
+        }
         for (let part of parts) {
             const pLower = part.toLowerCase();
             const pAlpha = part.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -1336,6 +1340,10 @@ function findVariantFromCode(rawCode) {
         (v.id && v.id.toString() === clean)
     );
     if (matched) return matched;
+
+    // A serial-looking value must be an explicitly inwarded WhatsApp piece tag.
+    // Never guess its variant from a generated prefix or partial SKU match.
+    if (/^[a-zA-Z]+\d+[a-zA-Z0-9_-]*$/.test(clean)) return null;
 
     // 4. Match specific variant containing clean SKU or size/color parts (e.g. "34Y", "LAV", "GFF040434YLAV")
     if (cleanAlpha.length >= 3) {
@@ -1442,6 +1450,44 @@ function validateWhatsappForm(e) {
 
 document.addEventListener('DOMContentLoaded', function() {
     focusQR();
+    const phoneInput = document.getElementById('custPhone');
+    const suggestions = document.getElementById('whatsappCustomerSuggestions');
+    const customerIdInput = document.getElementById('customerIdInput');
+    let customerSearchTimer = null;
+    let customerSearchSequence = 0;
+    if (phoneInput && suggestions) {
+        phoneInput.addEventListener('input', function() {
+            if (customerIdInput) customerIdInput.value = '0';
+            clearTimeout(customerSearchTimer);
+            const query = this.value.trim();
+            const sequence = ++customerSearchSequence;
+            if (query.length < 2) { suggestions.style.display = 'none'; return; }
+            customerSearchTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`<?= url('api/whatsapp/customers/lookup') ?>?q=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json' } });
+                    const result = await response.json();
+                    if (sequence !== customerSearchSequence || phoneInput.value.trim() !== query) return;
+                    const customers = result.data || result.customers || [];
+                    if (!result.success || !customers.length) { suggestions.style.display = 'none'; return; }
+                    suggestions.innerHTML = customers.map(customer => `<button type="button" class="list-group-item list-group-item-action py-2 text-start" data-customer='${escapeHtml(JSON.stringify(customer))}'><strong>${escapeHtml(customer.name || '')}</strong><span class="badge bg-light text-primary ms-2">${escapeHtml(customer.phone || '')}</span>${customer.address ? `<small class="d-block text-muted text-truncate">${escapeHtml(customer.address)}</small>` : ''}</button>`).join('');
+                    suggestions.style.display = 'block';
+                    suggestions.querySelectorAll('button[data-customer]').forEach(button => button.addEventListener('click', function() {
+                        const customer = JSON.parse(this.dataset.customer || '{}');
+                        if (customerIdInput) customerIdInput.value = customer.id || '0';
+                        document.getElementById('custName').value = customer.name || '';
+                        phoneInput.value = customer.phone || '';
+                        document.getElementById('custAddress').value = customer.address || '';
+                        document.getElementById('custState').value = customer.state || '';
+                        document.getElementById('custPincode').value = customer.pincode || '';
+                        suggestions.style.display = 'none';
+                    }));
+                } catch (error) { suggestions.style.display = 'none'; }
+            }, 250);
+        });
+        document.addEventListener('click', event => {
+            if (!event.target.closest('#whatsappCustomerSuggestions') && !event.target.closest('#custPhone')) suggestions.style.display = 'none';
+        });
+    }
     const initMode = document.querySelector('input[name="payment_mode"]:checked')?.value || 'CASH';
     onPaymentModeChange(initMode);
 
@@ -1450,13 +1496,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const preVariantId = urlParams.get('variant_id');
     const preSku = urlParams.get('sku');
     const preTag = urlParams.get('tag') || urlParams.get('tag_code');
-    const lookupKey = preVariantId || preSku || preTag;
-    if (lookupKey) {
-        const matched = findVariantFromCode(lookupKey);
-        if (matched) {
-            addItemToCart(matched, preTag || matched.sku);
-            showLastScanned(matched, preTag || matched.sku);
+    if (preTag) {
+        const matched = findVariantFromCode(preTag);
+        if (matched && (!preVariantId || String(matched.id) === String(preVariantId))) {
+            addItemToCart(matched, preTag.trim().toUpperCase());
+            showLastScanned(matched, preTag.trim().toUpperCase());
+        } else {
+            showScanToast('This piece QR is not assigned to received WhatsApp stock. Scan a WhatsApp inwarded piece.', 'danger');
         }
+    } else if (preVariantId || preSku) {
+        showScanToast('Select an individual received piece by scanning its QR code. SKU-only billing is not allowed.', 'warning');
     }
 });
 </script>

@@ -31,10 +31,30 @@ class WhatsappController {
              WHERE LOWER(name) LIKE '%whatsapp%' OR LOWER(code) LIKE '%whatsapp%' OR channel_type = 'WHATSAPP' OR code = 'online 1' OR code = 'WA-01'"
         );
         $ids = array_map('intval', array_column($channels, 'id'));
-        if (empty($ids)) {
-            $ids = [3];
-        }
+        if (empty($ids)) $ids = [3];
         return array_unique($ids);
+    }
+
+    /** Resolve the WhatsApp stock location from the allocation's channel destination. */
+    private function getWhatsappAllocationChannelId(array $allocation): int {
+        $whatsappChannelIds = $this->getWhatsappChannelIds();
+        $destinationType = strtoupper(trim((string)($allocation['destination_type'] ?? '')));
+        $destinationId = (int)($allocation['destination_id'] ?? 0);
+        if ($destinationType === 'CHANNEL' && in_array($destinationId, $whatsappChannelIds, true)) {
+            return $destinationId;
+        }
+
+        $channelId = (int)($allocation['channel_id'] ?? 0);
+        if (in_array($channelId, $whatsappChannelIds, true)) {
+            return $channelId;
+        }
+
+        $defaultChannelId = (int)($this->getChannel()['id'] ?? 0);
+        if (in_array($defaultChannelId, $whatsappChannelIds, true)) {
+            return $defaultChannelId;
+        }
+
+        return (int)($whatsappChannelIds[0] ?? 3);
     }
 
     private function buildWhatsappAllocWhere(string $prefix = 'wa'): array {
@@ -45,13 +65,11 @@ class WhatsappController {
             $destList[] = 'CHANNEL_' . $id;
         }
         $destPlaceholders = implode(',', array_fill(0, count($destList), '?'));
-        $sql = "({$prefix}.channel_id IN ($placeholders) 
-                 OR ({$prefix}.destination_type = 'CHANNEL' AND {$prefix}.destination_id IN ($placeholders)) 
+        $sql = "(({$prefix}.destination_type = 'CHANNEL' AND {$prefix}.destination_id IN ($placeholders))
                  OR {$prefix}.destination_type IN ($destPlaceholders)
                  OR {$prefix}.destination_type = 'WHATSAPP'
-                 OR sc.channel_type = 'WHATSAPP'
-                 OR LOWER(sc.name) LIKE '%whatsapp%')";
-        $params = array_merge($chanIds, $chanIds, $destList);
+                 )";
+        $params = array_merge($chanIds, $destList);
         return [$sql, $params];
     }
 
@@ -616,6 +634,50 @@ class WhatsappController {
         }
         unset($item);
 
+        // Allocation items may contain one row per serialized piece. Present a single
+        // product/variant row in the inward matrix while retaining all source IDs for
+        // posting grouped receive quantities back to their original allocation rows.
+        $groupedItems = [];
+        foreach ($items as $item) {
+            $groupKey = (int)$item['variant_id'];
+            if (!isset($groupedItems[$groupKey])) {
+                $item['allocation_item_ids'] = [(int)$item['id']];
+                $item['piece_qrs'] = array_values($item['piece_qrs'] ?? []);
+                $groupedItems[$groupKey] = $item;
+                continue;
+            }
+
+            $grouped =& $groupedItems[$groupKey];
+            $grouped['quantity'] += (int)$item['quantity'];
+            $grouped['requested_qty'] = (int)($grouped['requested_qty'] ?? 0) + (int)($item['requested_qty'] ?? $item['quantity']);
+            $grouped['dispatched_qty'] = (int)($grouped['dispatched_qty'] ?? 0) + (int)($item['dispatched_qty'] ?? $item['quantity']);
+            $grouped['received_qty'] += (int)$item['received_qty'];
+            $grouped['damaged_qty'] += (int)$item['damaged_qty'];
+            $grouped['missing_qty'] += (int)$item['missing_qty'];
+            $grouped['allocation_item_ids'][] = (int)$item['id'];
+            $grouped['piece_qrs'] = array_merge($grouped['piece_qrs'], $item['piece_qrs'] ?? []);
+            unset($grouped);
+        }
+        $items = array_values($groupedItems);
+        $pieceQRs = [];
+        foreach ($items as &$groupedItem) {
+            $allTags = [];
+            $pieceNumber = 1;
+            foreach ($groupedItem['piece_qrs'] as &$piece) {
+                $piece['item_id'] = (int)$groupedItem['id'];
+                $piece['piece_no'] = $pieceNumber++;
+                $tag = trim((string)($piece['tag_code'] ?? ''));
+                if ($tag !== '' && !in_array($tag, $allTags, true)) {
+                    $allTags[] = $tag;
+                }
+                $pieceQRs[] = $piece;
+            }
+            unset($piece);
+            $groupedItem['qr_codes'] = $allTags;
+            $groupedItem['qr_range'] = $allTags ? implode(', ', $allTags) : ($groupedItem['sku'] ?? '');
+        }
+        unset($groupedItem);
+
         $activeMenu = ($fromSection === 'allocations') ? 'wh-whatsapp-allocations' : 'wh-whatsapp-inward';
         $breadcrumb = ($fromSection === 'allocations') ? [
             ['label' => 'WhatsApp Orders', 'url' => url('warehouse/whatsapp-orders')],
@@ -668,12 +730,58 @@ class WhatsappController {
             return;
         }
 
-        $items = Database::fetchAll("SELECT * FROM allocation_items WHERE allocation_id = ?", [$id]);
+        $items = Database::fetchAll("SELECT * FROM allocation_items WHERE allocation_id = ? ORDER BY id ASC", [$id]);
         $isReceiveAll  = !empty($_POST['receive_all']);
         $receivedInput = $_POST['received_qty'] ?? [];
         $damagedInput  = $_POST['damaged_qty'] ?? [];
-        $userId        = Session::get('user_id') ?? 1;
-        $channelId     = (int)($allocation['channel_id'] ?? 2);
+
+        // The detail screen submits one total per variant. Expand those grouped totals
+        // across the original allocation rows so existing per-piece records stay intact.
+        $allocationGroups = [];
+        foreach ($items as $item) {
+            $variantId = (int)($item['variant_id'] ?? 0);
+            $allocationGroups[$variantId][] = $item;
+        }
+        $groupedQuantitiesByItemId = [];
+        foreach ($allocationGroups as $groupItems) {
+            if (!$groupItems) {
+                continue;
+            }
+            $groupKey = (string)$groupItems[0]['id'];
+            if (!array_key_exists($groupKey, $receivedInput) && !array_key_exists($groupKey, $damagedInput)) {
+                continue;
+            }
+
+            $groupExpected = 0;
+            foreach ($groupItems as $groupItem) {
+                $groupExpected += (int)($groupItem['dispatched_qty'] > 0 ? $groupItem['dispatched_qty'] : ($groupItem['requested_qty'] ?? 1));
+            }
+            $targetReceived = max(0, min($groupExpected, (int)($receivedInput[$groupKey] ?? 0)));
+            $targetDamaged = max(0, min($groupExpected - $targetReceived, (int)($damagedInput[$groupKey] ?? 0)));
+
+            foreach ($groupItems as $groupItem) {
+                $itemId = (int)$groupItem['id'];
+                $capacity = (int)($groupItem['dispatched_qty'] > 0 ? $groupItem['dispatched_qty'] : ($groupItem['requested_qty'] ?? 1));
+                $receivedForItem = min($capacity, $targetReceived);
+                $targetReceived -= $receivedForItem;
+                $damagedForItem = min($capacity - $receivedForItem, $targetDamaged);
+                $targetDamaged -= $damagedForItem;
+                $groupedQuantitiesByItemId[$itemId] = [
+                    'received_qty' => $receivedForItem,
+                    'damaged_qty' => $damagedForItem,
+                ];
+            }
+        }
+
+        $sessionUserId = Session::get('user_id');
+        $userId = is_numeric($sessionUserId) && (int)$sessionUserId > 0
+            ? (int)$sessionUserId
+            : null;
+        if ($userId !== null && !Database::fetchOne("SELECT id FROM users WHERE id = ?", [$userId])) {
+            error_log("WhatsApp inward received an invalid session user ID; stock transactions will be recorded without a user.");
+            $userId = null;
+        }
+        $channelId     = $this->getWhatsappAllocationChannelId($allocation);
 
         $totalDispatched = 0;
         $totalRec        = 0;
@@ -691,6 +799,9 @@ class WhatsappController {
                 if ($isReceiveAll) {
                     $newRec = $dispQty;
                     $newDmg = 0;
+                } elseif (isset($groupedQuantitiesByItemId[(int)$itemId])) {
+                    $newRec = $groupedQuantitiesByItemId[(int)$itemId]['received_qty'];
+                    $newDmg = $groupedQuantitiesByItemId[(int)$itemId]['damaged_qty'];
                 } else {
                     $newRec = isset($receivedInput[$itemId]) ? (int)$receivedInput[$itemId] : $dispQty;
                     $newDmg = isset($damagedInput[$itemId]) ? (int)$damagedInput[$itemId] : 0;
@@ -1508,15 +1619,31 @@ class WhatsappController {
         $globalPieceIdx = 1;
         foreach ($inwardHistory as $inw) {
             $allocId = (int)($inw['allocation_id'] ?? $inw['id']);
-            $exp = (int)($inw['dispatched_qty'] > 0 ? $inw['dispatched_qty'] : ($inw['requested_qty'] ?? 1));
-            $rec = (int)($inw['received_qty'] ?? (in_array(strtoupper($inw['alloc_status'] ?? ''), ['COMPLETED', 'RECEIVED']) ? $exp : 0));
+            $dispatchedQty = (int)($inw['dispatched_qty'] > 0 ? $inw['dispatched_qty'] : ($inw['requested_qty'] ?? 1));
+            $rec = (int)($inw['received_qty'] ?? (in_array(strtoupper($inw['alloc_status'] ?? ''), ['COMPLETED', 'RECEIVED']) ? $dispatchedQty : 0));
             $dmg = (int)($inw['damaged_qty'] ?? 0);
+            // This is an inventory page: dispatched but unreceived pieces are not stock.
+            $exp = min($dispatchedQty, max(0, $rec + $dmg));
             $allocMonthStr = sprintf('%02d', date('n', strtotime($inw['alloc_date'] ?? 'now')));
             $allocYearStr  = date('y', strtotime($inw['alloc_date'] ?? 'now'));
 
             $transitDmgRecord = $allocTransitDamageMap[$allocId] ?? null;
 
-            $savedQrs = !empty($inw['selected_qr_codes']) ? array_filter(array_map('trim', explode(',', $inw['selected_qr_codes']))) : [];
+            // Inventory detail represents pieces physically received into WhatsApp,
+            // not every QR selected for the warehouse dispatch. Prefer the inward
+            // scan list; older records fall back to the received + damaged count.
+            $savedQrs = [];
+            if (!empty($inw['received_qr_codes'])) {
+                $decodedReceivedQrs = json_decode((string)$inw['received_qr_codes'], true);
+                $savedQrs = is_array($decodedReceivedQrs)
+                    ? array_values(array_filter(array_map('trim', $decodedReceivedQrs)))
+                    : array_values(array_filter(array_map('trim', explode(',', (string)$inw['received_qr_codes']))));
+            }
+            if (empty($savedQrs) && !empty($inw['selected_qr_codes'])) {
+                $selectedQrs = array_values(array_filter(array_map('trim', explode(',', (string)$inw['selected_qr_codes']))));
+                $physicallyReceivedQty = max(0, (int)($inw['received_qty'] ?? 0) + (int)($inw['damaged_qty'] ?? 0));
+                $savedQrs = array_slice($selectedQrs, 0, $physicallyReceivedQty);
+            }
 
             if (!empty($savedQrs)) {
                 $pSeq = 1;
@@ -1525,7 +1652,7 @@ class WhatsappController {
                     if (isset($seenTags[$tagCode])) continue;
                     $seenTags[$tagCode] = true;
 
-                    $qrPayload = "{$tagCode}|{$item['sku']}|MRP:{$fmtMrp}|Disc:{$fmtDisc}";
+                    $qrPayload = $tagCode;
                     
                     $status = 'AVAILABLE';
                     $statusMeta = [];
@@ -1610,7 +1737,7 @@ class WhatsappController {
                     }
                     $seenTags[$tagCode] = true;
 
-                    $qrPayload = "{$tagCode}|{$item['sku']}|MRP:{$fmtMrp}|Disc:{$fmtDisc}";
+                    $qrPayload = $tagCode;
                     
                     $status = 'AVAILABLE';
                     $statusMeta = [];
@@ -1699,7 +1826,7 @@ class WhatsappController {
             for ($i = 1; $i <= ($currentAvail + $currentDmg); $i++) {
                 $tagSeq = $varOffset + $i;
                 $tagCode = $prefix . $nowMonth . $nowYear . sprintf("%02d", $tagSeq);
-                $qrPayload = "{$tagCode}|{$item['sku']}|MRP:{$fmtMrp}|Disc:{$fmtDisc}";
+                $qrPayload = $tagCode;
                 $isDmg = ($i > $currentAvail);
                 
                 $pieceTags[] = [
@@ -2674,7 +2801,14 @@ class WhatsappController {
     public function storeWhatsappDamage(): void {
         $chan = $this->getChannel();
         $channelId = (int)($chan['id'] ?? 3);
-        $userId = Session::get('user_id') ?? 1;
+        $sessionUserId = Session::get('user_id');
+        $userId = is_numeric($sessionUserId) && (int)$sessionUserId > 0
+            ? (int)$sessionUserId
+            : null;
+        if ($userId !== null && !Database::fetchOne("SELECT id FROM users WHERE id = ?", [$userId])) {
+            error_log("WhatsApp damage received an invalid session user ID; stock transactions will be recorded without a user.");
+            $userId = null;
+        }
 
         $variantId = (int)($_POST['variant_id'] ?? 0);
         $quantity  = max(1, (int)($_POST['quantity'] ?? 1));
@@ -2716,6 +2850,10 @@ class WhatsappController {
             return;
         }
 
+        // Existing damage records without corresponding stock movements can remain
+        // when an older request failed halfway through. Reuse those records on retry.
+        $reusableDamageRecordsByTag = [];
+
         // Validate all items first
         foreach ($items as $idx => $itm) {
             $vId = (int)($itm['variant_id'] ?? 0);
@@ -2730,16 +2868,33 @@ class WhatsappController {
 
             if (!empty($tCode)) {
                 $existingDamage = Database::fetchOne(
-                    "SELECT damage_number FROM channel_damages 
+                    "SELECT id, damage_number, channel_id, variant_id, quantity, status FROM channel_damages
                      WHERE (tag_code = ? OR tag_code LIKE ? OR tag_code LIKE ? OR tag_code LIKE ?)
                        AND status NOT IN ('REWORK_RETURNED_TO_STOCK', 'CANCELLED', 'RESOLVED')
                      LIMIT 1",
                     [$tCode, "{$tCode},%", "%,{$tCode}", "%,{$tCode},%"]
                 );
                 if ($existingDamage) {
-                    $_SESSION['flash_error'] = "Piece tag '{$tCode}' is ALREADY logged in Damaged Stock (Ref: {$existingDamage['damage_number']}). Only available good inventory stock can be logged as damaged.";
-                    Response::redirect(url('warehouse/whatsapp-orders/damage/create'));
-                    return;
+                    $sameDamageRecord = (int)$existingDamage['channel_id'] === $channelId
+                        && (int)$existingDamage['variant_id'] === $vId
+                        && (int)$existingDamage['quantity'] === $qty
+                        && strtoupper((string)$existingDamage['status']) === 'LOGGED';
+                    $stockMovementExists = Database::fetchOne(
+                        "SELECT id FROM stock_transactions
+                         WHERE variant_id = ? AND location_type = 'CHANNEL' AND location_id = ?
+                           AND transaction_type = 'DAMAGE_LOGGED' AND reference_type = 'channel_damages'
+                           AND notes LIKE ?
+                         LIMIT 1",
+                        [$vId, $channelId, '% ' . $existingDamage['damage_number'] . '%']
+                    );
+
+                    if ($sameDamageRecord && !$stockMovementExists) {
+                        $reusableDamageRecordsByTag[$tCode] = $existingDamage;
+                    } else {
+                        $_SESSION['flash_error'] = "Piece tag '{$tCode}' is ALREADY logged in Damaged Stock (Ref: {$existingDamage['damage_number']}). Only available good inventory stock can be logged as damaged.";
+                        Response::redirect(url('warehouse/whatsapp-orders/damage/create'));
+                        return;
+                    }
                 }
 
                 $existingSale = Database::fetchOne(
@@ -2766,9 +2921,12 @@ class WhatsappController {
             }
         }
 
-        // Process all items
+        // Process all items atomically so a stock movement failure cannot leave a
+        // damage record behind without the matching available/damaged ledger entries.
         $loggedNumbers = [];
         $totalQtyLogged = 0;
+        Database::beginTransaction();
+        try {
         foreach ($items as $itm) {
             $vId = (int)($itm['variant_id'] ?? 0);
             $qty = max(1, (int)($itm['quantity'] ?? 1));
@@ -2789,21 +2947,26 @@ class WhatsappController {
                 $cUnit = round($sPrice / (1 + ($gst / 100)), 2);
             }
 
-            $dmgNum = ChannelDamage::create([
-                'channel_id'       => $channelId,
-                'variant_id'       => $vId,
-                'allocation_id'    => $allocId,
-                'tag_code'         => $tCode,
-                'quantity'         => $qty,
-                'cost_per_unit'    => $cUnit,
-                'defect_type'      => $defectType,
-                'source_type'      => $sourceType,
-                'damage_reason'    => $damageReason,
-                'defect_notes'     => $defectNotes,
-                'photo_url'        => $photoUrl,
-                'status'           => 'LOGGED',
-                'reported_by'      => $userId
-            ]);
+            $dmgNum = $reusableDamageRecordsByTag[$tCode]['damage_number'] ?? null;
+            if (!$dmgNum) {
+                $dmgNum = ChannelDamage::create([
+                    'channel_id'       => $channelId,
+                    'variant_id'       => $vId,
+                    'allocation_id'    => $allocId,
+                    'tag_code'         => $tCode,
+                    'quantity'         => $qty,
+                    'cost_per_unit'    => $cUnit,
+                    'defect_type'      => $defectType,
+                    'source_type'      => $sourceType,
+                    'damage_reason'    => $damageReason,
+                    'defect_notes'     => $defectNotes,
+                    'photo_url'        => $photoUrl,
+                    'status'           => 'LOGGED',
+                    'reported_by'      => $userId
+                ]);
+            }
+            $damageRecord = Database::fetchOne("SELECT id FROM channel_damages WHERE damage_number = ?", [$dmgNum]);
+            $damageRecordId = (int)($damageRecord['id'] ?? 0);
 
             StockService::decrease(
                 variantId: $vId,
@@ -2813,7 +2976,7 @@ class WhatsappController {
                 quantity: (float)$qty,
                 transactionType: 'DAMAGE_LOGGED',
                 referenceType: 'channel_damages',
-                referenceId: 0,
+                referenceId: $damageRecordId,
                 userId: $userId,
                 notes: "Damaged stock quarantined: {$dmgNum}"
             );
@@ -2826,13 +2989,18 @@ class WhatsappController {
                 quantity: (float)$qty,
                 transactionType: 'DAMAGE_LOGGED',
                 referenceType: 'channel_damages',
-                referenceId: 0,
+                referenceId: $damageRecordId,
                 userId: $userId,
                 notes: "Damaged stock quarantined: {$dmgNum}"
             );
 
             $loggedNumbers[] = $dmgNum;
             $totalQtyLogged += $qty;
+        }
+            Database::commit();
+        } catch (\Throwable $e) {
+            Database::rollback();
+            throw $e;
         }
 
         $summaryMsg = count($loggedNumbers) === 1

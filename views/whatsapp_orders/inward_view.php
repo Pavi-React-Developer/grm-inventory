@@ -297,7 +297,14 @@
                                                 <span class="badge bg-dark text-white font-monospace"><?= e($it['sku']) ?></span>
                                             </td>
                                             <td>
-                                                <span class="badge bg-warning text-dark font-monospace" title="<?= e($it['qr_range'] ?? $it['sku']) ?>"><?= e($it['qr_range'] ?? $it['sku']) ?></span>
+                                                <div class="d-flex flex-wrap gap-1" style="max-width: 280px;">
+                                                    <?php foreach (($it['qr_codes'] ?? []) as $qrCode): ?>
+                                                        <span class="badge bg-warning text-dark font-monospace" title="Piece QR <?= e($qrCode) ?>"><?= e($qrCode) ?></span>
+                                                    <?php endforeach; ?>
+                                                    <?php if (empty($it['qr_codes'])): ?>
+                                                        <span class="badge bg-light text-dark border font-monospace"><?= e($it['sku']) ?></span>
+                                                    <?php endif; ?>
+                                                </div>
                                             </td>
                                             <td>
                                                 <span class="badge bg-light text-dark border"><?= e($it['size_name'] ?? 'Free Size') ?></span>
@@ -532,6 +539,7 @@ let inspState = {
     damagedCount: 0,
     mode: 'good',
     activeFilter: 'all',
+    activePieceNum: null,
     pieces: []
 };
 
@@ -689,6 +697,7 @@ function openPieceInspectionModal(itemId) {
     inspState.totalQty = rawPieces.length;
     inspState.mode = 'good';
     inspState.activeFilter = 'all';
+    inspState.activePieceNum = rawPieces[0].piece_no || 1;
 
     const curRecv = parseInt(document.getElementById('input_recv_' + itemId)?.value) || 0;
     const curDmg = parseInt(document.getElementById('input_dmg_' + itemId)?.value) || 0;
@@ -760,9 +769,6 @@ function openPieceInspectionModal(itemId) {
     document.getElementById('inspExactSkuInput').textContent = inspState.sku;
     document.getElementById('inspExpected').textContent = inspState.totalQty;
 
-    document.getElementById('inspMainQrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=' + encodeURIComponent(first.qr_payload || inspState.sku);
-    document.getElementById('inspMainQrCaption').textContent = 'Exact Piece QR: ' + first.tag_code;
-
     setInspectionMode('good');
     updateInspectionUI();
 
@@ -798,6 +804,7 @@ function inwardNextPiece() {
     }
 
     nextPiece.status = inspState.mode === 'good' ? 'good' : 'damaged';
+    inspState.activePieceNum = nextPiece.num;
     nextPiece.scannedAt = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     if (inspState.mode === 'good') {
@@ -823,6 +830,12 @@ function updateInspectionUI() {
     document.getElementById('inspGood').textContent = inspState.goodCount;
     document.getElementById('inspDamaged').textContent = inspState.damagedCount;
     document.getElementById('inspMissing').textContent = Math.max(0, missing);
+
+    const activePiece = inspState.pieces.find(piece => piece.num === inspState.activePieceNum) || inspState.pieces.find(piece => piece.status === 'pending') || inspState.pieces[0];
+    if (activePiece) {
+        document.getElementById('inspMainQrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=' + encodeURIComponent(activePiece.qrPayload || (activePiece.tag + '|' + inspState.sku));
+        document.getElementById('inspMainQrCaption').textContent = 'Piece QR: ' + activePiece.tag;
+    }
 
     // Sync with parent form inputs in real-time
     const parentRecv = document.getElementById('input_recv_' + inspState.itemId);
@@ -917,7 +930,7 @@ function renderPieceCards() {
         const col = document.createElement('div');
         col.className = 'col-md-6 col-lg-4';
         col.innerHTML = `
-            <div class="card ${borderClass} shadow-sm p-3 rounded-3 bg-white h-100">
+            <div class="card ${borderClass} shadow-sm p-3 rounded-3 bg-white h-100" role="button" tabindex="0" title="Select ${escapeHtml(p.tag)} to preview its QR">
                 <div class="d-flex align-items-start gap-3">
                     <div class="text-center flex-shrink-0">
                         <img src="${qrUrl}" alt="QR ${p.tag}" class="img-fluid border p-1 rounded bg-white mb-1" style="width: 75px; height: 75px;">
@@ -938,16 +951,33 @@ function renderPieceCards() {
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
                             ${statusBadge}
                             ${pendingCount > 0 ? `<div class="btn-group btn-group-xs">
-                                <button class="btn btn-sm btn-outline-success py-0 px-2 fs-9" onclick="${totalForTag > 1 ? `markNextPieceWithTag(${p.num}, 'good')` : `markPieceSingle(${p.num}, 'good')`}">🟢 Good${totalForTag > 1 ? ' +1' : ''}</button>
-                                <button class="btn btn-sm btn-outline-danger py-0 px-2 fs-9" onclick="${totalForTag > 1 ? `markNextPieceWithTag(${p.num}, 'damaged')` : `markPieceSingle(${p.num}, 'damaged')`}">🔴 Damage${totalForTag > 1 ? ' +1' : ''}</button>
+                                <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 fs-9" onclick="${totalForTag > 1 ? `markNextPieceWithTag(${p.num}, 'good')` : `markPieceSingle(${p.num}, 'good')`}">🟢 Good${totalForTag > 1 ? ' +1' : ''}</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 fs-9" onclick="${totalForTag > 1 ? `markNextPieceWithTag(${p.num}, 'damaged')` : `markPieceSingle(${p.num}, 'damaged')`}">🔴 Damage${totalForTag > 1 ? ' +1' : ''}</button>
                             </div>` : ''}
                         </div>
                     </div>
                 </div>
             </div>
         `;
+        const pieceCard = col.querySelector('.card');
+        if (p.num === inspState.activePieceNum) {
+            pieceCard.classList.add('border-primary', 'border-3');
+            pieceCard.style.boxShadow = '0 0 0 3px rgba(13, 110, 253, 0.15)';
+        }
+        pieceCard.addEventListener('click', () => selectInspectionPiece(p.num));
+        pieceCard.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                selectInspectionPiece(p.num);
+            }
+        });
         grid.appendChild(col);
     });
+}
+
+function selectInspectionPiece(pieceNum) {
+    inspState.activePieceNum = pieceNum;
+    updateInspectionUI();
 }
 
 function markNextPieceWithTag(pieceNum, status) {
@@ -959,6 +989,7 @@ function markNextPieceWithTag(pieceNum, status) {
 function markPieceSingle(pieceNum, status) {
     const target = inspState.pieces.find(p => p.num === pieceNum);
     if (!target) return;
+    inspState.activePieceNum = pieceNum;
     const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     if (target.status === 'good') inspState.goodCount--;

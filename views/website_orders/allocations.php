@@ -1,7 +1,9 @@
 <?php
 // views/website_orders/allocations.php — Website Stock Inventory & Warehouse Allocations Dashboard
 
-$currTab = $activeTab ?? ($_GET['tab'] ?? 'stock');
+// Website inventory is focused on live channel stock; inward history is managed
+// from the dedicated Inward / GRN screen.
+$currTab = 'stock';
 $currStatus = strtolower($filters['stock_status'] ?? '');
 $currCategory = (int)($filters['category_id'] ?? 0);
 $currSort = $filters['sort'] ?? 'name_asc';
@@ -19,7 +21,7 @@ $currSearch = $filters['search'] ?? '';
             </span>
         </div>
         <h2 class="fw-bold mb-1 text-dark"><i class="bi bi-boxes me-2 text-primary"></i>Website Stock &amp; Inventory</h2>
-        <span class="text-muted">Real-time Website stock balances, catalog specifications, piece-by-piece quarantine, and warehouse allocations.</span>
+        <span class="text-muted">Real-time Website stock balances, catalog specifications, and piece-by-piece quarantine.</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <?php if (hasPermission('website_inventory.adjust') || hasPermission('website_inventory.create')): ?>
@@ -27,12 +29,6 @@ $currSearch = $filters['search'] ?? '';
             <i class="bi bi-plus-lg me-1"></i> Request Warehouse Stock
         </a>
         <?php endif; ?>
-        <a href="<?= url('warehouse/website-orders/damage') ?>" class="btn btn-outline-danger rounded-pill px-3 shadow-sm fw-semibold">
-            <i class="bi bi-exclamation-octagon me-1"></i> Damage Management
-        </a>
-        <a href="<?= url('warehouse/website-orders/history') ?>" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm fw-semibold">
-            <i class="bi bi-clock-history me-1"></i> Orders History
-        </a>
     </div>
 </div>
 
@@ -170,12 +166,6 @@ $currSearch = $filters['search'] ?? '';
                 <a class="nav-link fw-semibold <?= $currTab === 'stock' ? 'active text-primary border-primary border-bottom-0' : 'text-muted' ?>" 
                    href="<?= url('warehouse/website-orders/allocations?tab=stock') ?>">
                     <i class="bi bi-box-seam me-1"></i> Live Product Stock Balances (<?= count($inventory ?? []) ?> items)
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link fw-semibold <?= $currTab === 'allocations' ? 'active text-primary border-primary border-bottom-0' : 'text-muted' ?>" 
-                   href="<?= url('warehouse/website-orders/allocations?tab=allocations') ?>">
-                    <i class="bi bi-truck me-1"></i> Warehouse Inward Allocations (<?= count($allocations ?? []) ?> records)
                 </a>
             </li>
         </ul>
@@ -415,19 +405,6 @@ $currSearch = $filters['search'] ?? '';
                                             title="View Full Product History &amp; Stock Ledger">
                                             <i class="bi bi-clock-history me-1"></i>History
                                         </a>
-                                        <?php if ($avail > 0 && hasPermission('website_damage.create')): ?>
-                                            <a href="<?= url('warehouse/website-orders/damage/create?variant_id=' . $it['variant_id']) ?>" 
-                                                class="btn btn-xs btn-outline-danger px-2 py-1" 
-                                                title="Report Damage for this Product">
-                                                <i class="bi bi-shield-x"></i>
-                                            </a>
-                                        <?php elseif ($avail <= 0 && (hasPermission('website_inventory.adjust') || hasPermission('website_inventory.create'))): ?>
-                                            <a href="<?= url('warehouse/website-orders/requests/create') ?>" 
-                                                class="btn btn-xs btn-outline-secondary px-2 py-1" 
-                                                title="Request Stock from Warehouse">
-                                                <i class="bi bi-plus-lg"></i>
-                                            </a>
-                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>

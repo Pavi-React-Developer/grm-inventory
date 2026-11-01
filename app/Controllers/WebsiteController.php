@@ -32,9 +32,7 @@ class WebsiteController {
              WHERE LOWER(name) LIKE '%website%' OR LOWER(code) LIKE '%website%' OR channel_type = 'WEBSITE' OR code = 'online 2' OR code = 'WE-01'"
         );
         $ids = array_map('intval', array_column($channels, 'id'));
-        if (empty($ids)) {
-            $ids = [1, 2, 4];
-        }
+        if (empty($ids)) $ids = [2];
         return array_unique($ids);
     }
 
@@ -46,13 +44,11 @@ class WebsiteController {
             $destList[] = 'CHANNEL_' . $id;
         }
         $destPlaceholders = implode(',', array_fill(0, count($destList), '?'));
-        $sql = "({$prefix}.channel_id IN ($placeholders) 
-                 OR ({$prefix}.destination_type = 'CHANNEL' AND {$prefix}.destination_id IN ($placeholders)) 
+        $sql = "(({$prefix}.destination_type = 'CHANNEL' AND {$prefix}.destination_id IN ($placeholders))
                  OR {$prefix}.destination_type IN ($destPlaceholders)
                  OR {$prefix}.destination_type = 'WEBSITE'
-                 OR sc.channel_type = 'WEBSITE'
-                 OR LOWER(sc.name) LIKE '%website%')";
-        $params = array_merge($chanIds, $chanIds, $destList);
+                 )";
+        $params = array_merge($chanIds, $destList);
         return [$sql, $params];
     }
 
@@ -673,7 +669,13 @@ class WebsiteController {
         $isReceiveAll  = !empty($_POST['receive_all']);
         $receivedInput = $_POST['received_qty'] ?? [];
         $damagedInput  = $_POST['damaged_qty'] ?? [];
-        $userId        = Session::get('user_id') ?? 1;
+        // Session IDs can outlive a deleted user account. stock_transactions.user_id
+        // references users.id, so only write an actor ID that still exists; NULL is
+        // permitted by the FK and preserves the inward receipt when the account is gone.
+        $sessionUserId = (int)(Session::get('user_id') ?? 0);
+        $userId        = $sessionUserId > 0 && Database::fetchOne("SELECT id FROM users WHERE id = ?", [$sessionUserId])
+            ? $sessionUserId
+            : null;
         $channelId     = (int)($allocation['channel_id'] ?? 2);
 
         $totalDispatched = 0;
@@ -959,7 +961,10 @@ class WebsiteController {
                 OR EXISTS (
                     SELECT 1 FROM allocation_items ai 
                     JOIN warehouse_allocations wa ON ai.allocation_id = wa.id 
-                    WHERE ai.variant_id = pv.id AND wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED') AND (wa.channel_id IN ($chanIn) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WEBSITE')
+                    WHERE ai.variant_id = pv.id
+                      AND (COALESCE(ai.received_qty, 0) > 0 OR COALESCE(ai.damaged_qty, 0) > 0)
+                      AND wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED')
+                      AND (wa.channel_id IN ($chanIn) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WEBSITE')
                 )
             )
         ";
@@ -1505,15 +1510,27 @@ class WebsiteController {
         $globalPieceIdx = 1;
         foreach ($inwardHistory as $inw) {
             $allocId = (int)($inw['allocation_id'] ?? $inw['id']);
-            $exp = (int)($inw['dispatched_qty'] > 0 ? $inw['dispatched_qty'] : ($inw['requested_qty'] ?? 1));
-            $rec = (int)($inw['received_qty'] ?? (in_array(strtoupper($inw['alloc_status'] ?? ''), ['COMPLETED', 'RECEIVED']) ? $exp : 0));
+            $dispatchedQty = (int)($inw['dispatched_qty'] > 0 ? $inw['dispatched_qty'] : ($inw['requested_qty'] ?? 1));
+            $rec = (int)($inw['received_qty'] ?? (in_array(strtoupper($inw['alloc_status'] ?? ''), ['COMPLETED', 'RECEIVED']) ? $dispatchedQty : 0));
             $dmg = (int)($inw['damaged_qty'] ?? 0);
+            // Website inventory includes physically received pieces only.
+            $exp = min($dispatchedQty, max(0, $rec + $dmg));
             $allocMonthStr = sprintf('%02d', date('n', strtotime($inw['alloc_date'] ?? 'now')));
             $allocYearStr  = date('y', strtotime($inw['alloc_date'] ?? 'now'));
 
             $transitDmgRecord = $allocTransitDamageMap[$allocId] ?? null;
 
-            $savedQrs = !empty($inw['selected_qr_codes']) ? array_filter(array_map('trim', explode(',', $inw['selected_qr_codes']))) : [];
+            $savedQrs = [];
+            if (!empty($inw['received_qr_codes'])) {
+                $decodedReceivedQrs = json_decode((string)$inw['received_qr_codes'], true);
+                $savedQrs = is_array($decodedReceivedQrs)
+                    ? array_values(array_filter(array_map('trim', $decodedReceivedQrs)))
+                    : array_values(array_filter(array_map('trim', explode(',', (string)$inw['received_qr_codes']))));
+            }
+            if (empty($savedQrs) && !empty($inw['selected_qr_codes'])) {
+                $selectedQrs = array_values(array_filter(array_map('trim', explode(',', (string)$inw['selected_qr_codes']))));
+                $savedQrs = array_slice($selectedQrs, 0, max(0, (int)($inw['received_qty'] ?? 0) + (int)($inw['damaged_qty'] ?? 0)));
+            }
 
             if (!empty($savedQrs)) {
                 $pSeq = 1;
@@ -1522,7 +1539,7 @@ class WebsiteController {
                     if (isset($seenTags[$tagCode])) continue;
                     $seenTags[$tagCode] = true;
 
-                    $qrPayload = "{$tagCode}|{$item['sku']}|MRP:{$fmtMrp}|Disc:{$fmtDisc}";
+                    $qrPayload = $tagCode;
                     
                     $status = 'AVAILABLE';
                     $statusMeta = [];
@@ -1617,7 +1634,7 @@ class WebsiteController {
                     }
                     $seenTags[$tagCode] = true;
 
-                    $qrPayload = "{$tagCode}|{$item['sku']}|MRP:{$fmtMrp}|Disc:{$fmtDisc}";
+                    $qrPayload = $tagCode;
                     
                     $status = 'AVAILABLE';
                     $statusMeta = [];
@@ -1716,7 +1733,7 @@ class WebsiteController {
             for ($i = 1; $i <= ($currentAvail + $currentDmg); $i++) {
                 $tagSeq = $varOffset + $i;
                 $tagCode = $prefix . $nowMonth . $nowYear . sprintf("%02d", $tagSeq);
-                $qrPayload = "{$tagCode}|{$item['sku']}|MRP:{$fmtMrp}|Disc:{$fmtDisc}";
+                $qrPayload = $tagCode;
                 $isDmg = ($i > $currentAvail);
                 
                 $status = $isDmg ? 'DAMAGED' : 'AVAILABLE';

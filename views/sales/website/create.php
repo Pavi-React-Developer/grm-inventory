@@ -382,22 +382,9 @@ input[type=number] {
                             </div>
                         </div>
 
-                        <!-- ROW 1: Customer Name, Phone No, Address (3 Cols) -->
+                        <!-- ROW 1: Phone No, Customer Name, Address (3 Cols) -->
                         <div class="row g-2 mb-2">
-                            <!-- 1. Customer Name -->
-                            <div class="col-12 col-md-4">
-                                <div class="pos-field-wrap">
-                                    <label class="pos-field-label" for="custName">
-                                        <i class="bi bi-person text-primary me-1"></i>Customer Name <span class="text-danger">*</span>
-                                    </label>
-                                    <div class="input-group input-group-sm pos-input-group">
-                                        <span class="input-group-text"><i class="bi bi-person-fill"></i></span>
-                                        <input type="text" name="customer_name" id="custName" class="form-control" placeholder="Alphabets only *" required pattern="[A-Za-z\s.]+" oninput="this.value = this.value.replace(/[^a-zA-Z\s.]/g, '')" autocomplete="off">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- 2. Phone No -->
+                            <!-- 1. Phone No: used to find saved customers -->
                             <div class="col-12 col-md-4">
                                 <div class="pos-field-wrap">
                                     <label class="pos-field-label" for="custPhone">
@@ -406,6 +393,20 @@ input[type=number] {
                                     <div class="input-group input-group-sm pos-input-group">
                                         <span class="input-group-text"><i class="bi bi-globe text-primary"></i></span>
                                         <input type="tel" name="customer_phone" id="custPhone" class="form-control font-monospace" placeholder="10-digit number only *" required maxlength="10" inputmode="numeric" pattern="[0-9]{10}" oninput="this.value = this.value.replace(/\D/g, '').slice(0, 10)" autocomplete="off">
+                                    </div>
+                                    <div id="websiteCustomerSuggestions" class="list-group position-absolute w-100 shadow" style="z-index:20;display:none;top:100%;left:0;"></div>
+                                </div>
+                            </div>
+
+                            <!-- 2. Customer Name -->
+                            <div class="col-12 col-md-4">
+                                <div class="pos-field-wrap">
+                                    <label class="pos-field-label" for="custName">
+                                        <i class="bi bi-person text-primary me-1"></i>Customer Name <span class="text-danger">*</span>
+                                    </label>
+                                    <div class="input-group input-group-sm pos-input-group">
+                                        <span class="input-group-text"><i class="bi bi-person-fill"></i></span>
+                                        <input type="text" name="customer_name" id="custName" class="form-control" placeholder="Alphabets only *" required pattern="[A-Za-z\s.]+" oninput="this.value = this.value.replace(/[^a-zA-Z\s.]/g, '')" autocomplete="off">
                                     </div>
                                 </div>
                             </div>
@@ -795,6 +796,16 @@ function processManualScan() {
     if (pieceTag && scannedPieceTags.has(pieceTag) && !isSeries) {
         showScanToast(`Piece Tag <code class="text-danger fw-bold">${escapeHtml(pieceTag)}</code> is already in the order! Each physical garment has a unique serial QR.`, 'warning');
         flashCartItemRow(pieceTag);
+        qrInput.value = '';
+        return;
+    }
+
+    const availableStock = Number(matched.available_stock);
+    const cartQuantity = cart
+        .filter(item => Number(item.variant_id) === Number(matched.id))
+        .reduce((total, item) => total + Number(item.quantity || 0), 0);
+    if (Number.isFinite(availableStock) && cartQuantity >= availableStock) {
+        showScanToast(`No more stock available for <strong>${escapeHtml(matched.sku || matched.product_name)}</strong>. Available: ${availableStock}.`, 'danger');
         qrInput.value = '';
         return;
     }
@@ -1302,6 +1313,10 @@ function findVariantFromCode(rawCode) {
     // 1. Pipe-separated payload (e.g. "KB102612|BCT0303-12Y-BLK|MRP:3000|Price:2500")
     if (clean.includes('|')) {
         const parts = clean.split('|').map(p => p.trim());
+        const firstPart = parts[0] || '';
+        if (/^[a-zA-Z]+\d+[a-zA-Z0-9_-]*$/.test(firstPart)) {
+            return variantsList.find(v => v.piece_tags && Array.isArray(v.piece_tags) && v.piece_tags.some(tag => tag.toLowerCase() === firstPart.toLowerCase())) || null;
+        }
         for (let part of parts) {
             const pLower = part.toLowerCase();
             const pAlpha = part.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -1334,6 +1349,10 @@ function findVariantFromCode(rawCode) {
         (v.id && v.id.toString() === clean)
     );
     if (matched) return matched;
+
+    // A serial-looking value must be an explicitly inwarded Website piece tag.
+    // Never guess its variant from a generated prefix or partial SKU match.
+    if (/^[a-zA-Z]+\d+[a-zA-Z0-9_-]*$/.test(clean)) return null;
 
     // 4. Match specific variant containing clean SKU or size/color parts (e.g. "34Y", "LAV", "GFF040434YLAV")
     if (cleanAlpha.length >= 3) {
@@ -1384,7 +1403,15 @@ function validateWebsiteForm(e) {
     const address = document.getElementById('custAddress').value.trim();
     const pincode = (document.getElementById('custPincode')?.value || '').trim();
 
-    // 1. Customer Name Validation (Only Alphabets, spaces, dots)
+    // Validate the phone first because it identifies an existing customer.
+    if (!phone) {
+        alert('Customer Mobile Number is required.');
+        document.getElementById('custPhone').focus();
+        e.preventDefault();
+        return false;
+    }
+
+    // Customer Name Validation (Only Alphabets, spaces, dots)
     if (!name) {
         alert('Customer Name is required.');
         document.getElementById('custName').focus();
@@ -1394,14 +1421,6 @@ function validateWebsiteForm(e) {
     if (!/^[a-zA-Z\s.]+$/.test(name)) {
         alert('Customer Name must contain ONLY alphabets (letters).');
         document.getElementById('custName').focus();
-        e.preventDefault();
-        return false;
-    }
-
-    // 2. Phone Number Validation (Only Numbers, Exactly 10 Digits)
-    if (!phone) {
-        alert('Customer Mobile Number is required.');
-        document.getElementById('custPhone').focus();
         e.preventDefault();
         return false;
     }
@@ -1440,6 +1459,44 @@ function validateWebsiteForm(e) {
 
 document.addEventListener('DOMContentLoaded', function() {
     focusQR();
+    const phoneInput = document.getElementById('custPhone');
+    const suggestions = document.getElementById('websiteCustomerSuggestions');
+    const customerIdInput = document.getElementById('customerIdInput');
+    let customerSearchTimer = null;
+    let customerSearchSequence = 0;
+    if (phoneInput && suggestions) {
+        phoneInput.addEventListener('input', function() {
+            if (customerIdInput) customerIdInput.value = '0';
+            clearTimeout(customerSearchTimer);
+            const query = this.value.trim();
+            const sequence = ++customerSearchSequence;
+            if (query.length < 2) { suggestions.style.display = 'none'; return; }
+            customerSearchTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`<?= url('api/website/customers/lookup') ?>?q=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json' } });
+                    const result = await response.json();
+                    if (sequence !== customerSearchSequence || phoneInput.value.trim() !== query) return;
+                    const customers = result.data || result.customers || [];
+                    if (!result.success || !customers.length) { suggestions.style.display = 'none'; return; }
+                    suggestions.innerHTML = customers.map(customer => `<button type="button" class="list-group-item list-group-item-action py-2 text-start" data-customer='${escapeHtml(JSON.stringify(customer))}'><strong>${escapeHtml(customer.name || '')}</strong><span class="badge bg-light text-primary ms-2">${escapeHtml(customer.phone || '')}</span>${customer.address ? `<small class="d-block text-muted text-truncate">${escapeHtml(customer.address)}</small>` : ''}</button>`).join('');
+                    suggestions.style.display = 'block';
+                    suggestions.querySelectorAll('button[data-customer]').forEach(button => button.addEventListener('click', function() {
+                        const customer = JSON.parse(this.dataset.customer || '{}');
+                        if (customerIdInput) customerIdInput.value = customer.id || '0';
+                        document.getElementById('custName').value = customer.name || '';
+                        phoneInput.value = customer.phone || '';
+                        document.getElementById('custAddress').value = customer.address || '';
+                        document.getElementById('custState').value = customer.state || '';
+                        document.getElementById('custPincode').value = customer.pincode || '';
+                        suggestions.style.display = 'none';
+                    }));
+                } catch (error) { suggestions.style.display = 'none'; }
+            }, 250);
+        });
+        document.addEventListener('click', event => {
+            if (!event.target.closest('#websiteCustomerSuggestions') && !event.target.closest('#custPhone')) suggestions.style.display = 'none';
+        });
+    }
     const initMode = document.querySelector('input[name="payment_mode"]:checked')?.value || 'CASH';
     onPaymentModeChange(initMode);
 

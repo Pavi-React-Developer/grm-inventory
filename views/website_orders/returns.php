@@ -4,12 +4,6 @@
         <span class="text-muted">Manage eCommerce return merchandise authorizations (RMA), size replacements, and payment gateway refunds</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="<?= url('warehouse/website-orders') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-speedometer2 me-1"></i> Dashboard
-        </a>
-        <a href="<?= url('warehouse/website-orders/history') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-clock-history me-1"></i> Orders History
-        </a>
         <?php if (hasPermission('website_returns.create') || hasPermission('website_returns.process')): ?>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newReturnModal">
             <i class="bi bi-plus-circle me-1"></i> Create RMA / Exchange

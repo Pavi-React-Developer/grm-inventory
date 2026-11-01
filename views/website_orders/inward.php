@@ -199,76 +199,7 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
         </div>
     </div>
 
-    <!-- ========================================================================= -->
-    <!-- 2. LIVE QR CODE SCANNER BAR -->
-    <!-- ========================================================================= -->
-    <?php if ($canReceive): ?>
-    <div class="card border-0 shadow-sm mb-3 border-start border-primary border-4">
-        <div class="card-body p-3">
-            <div class="row g-3 align-items-center">
-                <!-- Scan Input -->
-                <div class="col-12 col-lg-5">
-                    <label class="form-label fw-bold text-dark mb-1 small">
-                        <i class="bi bi-qr-code-scan me-1 text-primary"></i> Scan Allocation / Outward QR Code
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="bi bi-upc-scan text-primary"></i></span>
-                        <input type="text" id="qrInput" class="form-control font-monospace" placeholder="Scan or type Allocation # (e.g. ALC-20260917-0005)..." autofocus autocomplete="off">
-                        <button class="btn btn-primary px-3 fw-semibold text-nowrap" type="button" id="btnScanSubmit">
-                            <i class="bi bi-box-arrow-in-down me-1"></i> Process QR
-                        </button>
-                    </div>
-                    <small class="text-muted mt-1 d-block fs-8 text-truncate">
-                        <i class="bi bi-info-circle me-1"></i> Handheld barcode guns will submit automatically.
-                    </small>
-                </div>
-
-                <!-- Channel Destination -->
-                <div class="col-12 col-md-6 col-lg-4">
-                    <label class="form-label fw-bold text-dark mb-1 small">
-                        <i class="bi bi-globe me-1 text-primary"></i> Receiving Channel
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="bi bi-shop text-primary"></i></span>
-                        <input type="text" class="form-control bg-light text-dark fw-bold" value="Website Channel Inventory" readonly>
-                    </div>
-                    <small class="text-muted mt-1 d-block fs-8 text-truncate">
-                        <i class="bi bi-shield-check me-1"></i> Stock credits to Website inventory.
-                    </small>
-                </div>
-
-                <!-- Auto Inward Switch -->
-                <div class="col-12 col-md-6 col-lg-3">
-                    <div class="p-2 p-md-3 bg-light rounded border h-100 d-flex flex-column justify-content-center">
-                        <div class="form-check form-switch mb-1">
-                            <input class="form-check-input" type="checkbox" role="switch" id="autoReceiveSwitch" checked>
-                            <label class="form-check-label fw-bold text-dark small" for="autoReceiveSwitch">
-                                ⚡ Auto-Inward on Scan
-                            </label>
-                        </div>
-                        <small class="text-muted d-block text-truncate" id="switchHelpText" style="font-size: 0.74rem;">
-                            <strong class="text-success">ON:</strong> Auto-credits inventory on scan.
-                        </small>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Dynamic Scan Result Feedback Alert -->
-            <div id="scanFeedback" class="mt-2 d-none"></div>
-        </div>
-    </div>
-    <?php else: ?>
-    <div class="alert alert-light border border-secondary-subtle d-flex align-items-center justify-content-between mb-3 shadow-sm py-2 px-3">
-        <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-eye text-primary fs-5"></i>
-            <div>
-                <strong class="text-dark small">View-Only Inward Dispatches Ledger</strong>
-                <span class="text-muted small d-block">You have read-only access to Website Inward records. Receiving, stock credit, and scanning permissions are restricted.</span>
-            </div>
-        </div>
-        <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"><i class="bi bi-lock-fill me-1"></i>Read-Only</span>
-    </div>
-    <?php endif; ?>
+    <!-- Allocation scanning is handled from each batch's inward verification page. -->
 
     <!-- ========================================================================= -->
     <!-- 3. VIEW MODE SELECTION TABS -->
@@ -420,9 +351,6 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                                     <tr id="row-batch-<?= $b['id'] ?>" class="inward-alloc-row" data-search="<?= $searchHaystack ?>" data-status="<?= $bIsCredited ? 'RECEIVED' : ($bState === 'PARTIAL' ? 'PARTIAL_RECEIVED' : 'DISPATCHED') ?>" data-warehouse-id="<?= (int)($b['warehouse_id'] ?? 0) ?>">
                                         <td class="ps-3">
                                             <div class="d-flex align-items-center gap-2">
-                                                <button type="button" class="btn btn-sm btn-light border p-1 rounded text-primary border-primary" onclick="openCrossCheckModal(<?= $b['id'] ?>)" title="Show / Scan QR Code">
-                                                    <i class="bi bi-qr-code text-primary fs-5"></i>
-                                                </button>
                                                 <div>
                                                     <span class="fw-bold font-monospace text-primary fs-7 d-block"><?= htmlspecialchars($bNum) ?></span>
                                                     <span class="badge bg-light text-dark border font-monospace fs-9 mt-1"><i class="bi bi-box-seam me-1"></i><?= htmlspecialchars($bOutward) ?></span>
@@ -469,9 +397,6 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                                         </td>
                                         <td class="text-end pe-3">
                                             <div class="d-inline-flex gap-1 align-items-center">
-                                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-2 px-2" onclick="openCrossCheckModal(<?= $b['id'] ?>)" title="Print Carton QR Sticker / Receiving Tag">
-                                                    <i class="bi bi-qr-code"></i>
-                                                </button>
                                                 <button type="button" class="btn btn-sm btn-outline-info rounded-2 px-2" onclick="openBatchHistoryModal(<?= $b['id'] ?>)" title="Batch Traceability &amp; Lifecycle Logs">
                                                     <i class="bi bi-clock-history"></i>
                                                 </button>

@@ -34,11 +34,6 @@
             <a href="<?= url('warehouse/website-orders/damage') ?>" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i> Back to Damage List
             </a>
-            <?php if (in_array($damage['status'], ['REPORTED', 'INSPECTED', 'OUTWARD_PENDING'])): ?>
-                <a href="<?= url('warehouse/website-orders/damage/outward/create') ?>" class="btn btn-danger">
-                    <i class="bi bi-box-arrow-up-right me-1"></i> Create Outward Batch
-                </a>
-            <?php endif; ?>
         </div>
     </div>
 
@@ -54,17 +49,6 @@
                         <div class="col-md-6">
                             <label class="text-muted small">Product Name</label>
                             <div class="fw-bold fs-6 text-dark"><?= htmlspecialchars($damage['product_name'] ?? 'N/A') ?></div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="text-muted small">SKU / Variant Code</label>
-                            <div class="fw-semibold text-dark">
-                                <code><?= htmlspecialchars($damage['variant_sku'] ?? 'N/A') ?></code>
-                                <?php if (!empty($damage['color']) || !empty($damage['size'])): ?>
-                                    <span class="badge bg-light text-dark border ms-1">
-                                        <?= htmlspecialchars(($damage['color'] ?? '') . ' / ' . ($damage['size'] ?? '')) ?>
-                                    </span>
-                                <?php endif; ?>
-                            </div>
                         </div>
 
                         <div class="col-md-4">
@@ -170,14 +154,6 @@
                                 <span class="text-muted">Inward Allocation Ref:</span>
                                 <a href="<?= url('warehouse/website-orders/inward/view/' . $damage['allocation_id']) ?>" class="fw-bold text-decoration-none">
                                     Allocation #<?= $damage['allocation_id'] ?> <i class="bi bi-box-arrow-up-right"></i>
-                                </a>
-                            </li>
-                        <?php endif; ?>
-                        <?php if (!empty($damage['outward_batch_id'])): ?>
-                            <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                                <span class="text-muted">Outward Return Batch:</span>
-                                <a href="<?= url('warehouse/website-orders/damage/outward/view/' . $damage['outward_batch_id']) ?>" class="badge bg-danger text-decoration-none">
-                                    Batch #<?= $damage['outward_batch_id'] ?> <i class="bi bi-box-arrow-up-right"></i>
                                 </a>
                             </li>
                         <?php endif; ?>

@@ -278,7 +278,7 @@ class ChannelDamage {
                 $reason,
                 $notes,
                 $status,
-                $data['reported_by'] ?? 1
+                $data['reported_by'] ?? null
             ]
         );
 
@@ -291,10 +291,11 @@ class ChannelDamage {
     public static function find(int $id): ?array {
         $sql = "SELECT cd.*, 
                        sc.name as channel_name, sc.code as channel_code,
-                       pv.sku, pv.sku as variant_sku, pv.qr_code, pv.mrp, pv.selling_price, pv.purchase_price, pv.production_cost,
+                       pv.sku, pv.sku as variant_sku, pv.qr_code, pv.qr_type, pv.is_complementary as variant_is_complementary, pv.mrp, pv.selling_price, pv.purchase_price, pv.production_cost,
+                       ai.selected_qr_codes, ai.received_qr_codes,
                        pv.image_url as variant_image,
                        p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                       p.category_code, p.material, p.hsn_code,
+                       p.category_code, p.material, p.hsn_code, p.is_complementary as product_is_complementary,
                        cat.name as category_name, sz.name as size_name, sz.name as size, cl.name as color_name, cl.name as color,
                        u_rep.full_name as reported_by_name,
                        u_insp.full_name as inspected_by_name,
@@ -312,6 +313,7 @@ class ChannelDamage {
                 LEFT JOIN users u_rep ON cd.reported_by = u_rep.id
                 LEFT JOIN users u_insp ON cd.inspected_by = u_insp.id
                 LEFT JOIN warehouse_allocations wa ON cd.allocation_id = wa.id
+                LEFT JOIN allocation_items ai ON ai.allocation_id = cd.allocation_id AND ai.variant_id = cd.variant_id
                 LEFT JOIN warehouses w ON wa.warehouse_id = w.id
                 LEFT JOIN warehouse_returns wr ON cd.outward_batch_id = wr.id
                 LEFT JOIN warehouses dest_w ON wr.warehouse_id = dest_w.id
@@ -322,6 +324,13 @@ class ChannelDamage {
         $rec['image'] = !empty($rec['variant_image']) ? $rec['variant_image'] : ($rec['product_image'] ?? null);
         $rec['resolved_tags'] = self::resolvePieceTags($rec);
         $rec['piece_tags'] = $rec['resolved_tags'];
+        if (empty($rec['piece_tags']) && !empty($rec['allocation_id'])) {
+            $qrList = json_decode((string)($rec['received_qr_codes'] ?? ''), true);
+            if (!is_array($qrList)) {
+                $qrList = array_filter(array_map('trim', explode(',', (string)($rec['received_qr_codes'] ?: $rec['selected_qr_codes'] ?? ''))));
+            }
+            $rec['piece_tags'] = array_slice(array_values($qrList), 0, max(1, (int)$rec['quantity']));
+        }
         $rec['notes'] = $rec['damage_reason'] . (!empty($rec['defect_notes']) ? ("\n" . $rec['defect_notes']) : '');
         return $rec;
     }
@@ -351,8 +360,8 @@ class ChannelDamage {
         int $variantId = 0,
         int $quantity = 0,
         string $tagCodes = '',
-        int $reportedBy = 1,
-        int $userId = 1,
+        ?int $reportedBy = null,
+        ?int $userId = null,
         string $notes = '',
         string $defectType = 'TRANSIT_DAMAGE',
         string $severity = 'MODERATE',
@@ -360,7 +369,7 @@ class ChannelDamage {
     ): int {
         if ($quantity <= 0 || $variantId <= 0) return 0;
 
-        $user = $reportedBy ?: $userId ?: 1;
+        $user = $reportedBy ?: $userId;
         if (!empty($pieceTags)) {
             $tagCodes = implode(', ', $pieceTags);
         }

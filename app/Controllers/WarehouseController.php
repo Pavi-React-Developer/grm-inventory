@@ -670,6 +670,39 @@ class WarehouseController {
                 }
 
                 if ($autoReceive) {
+                    $destinationType = strtoupper(trim((string)($allocation['destination_type'] ?? '')));
+                    $destinationId = (int)($allocation['destination_id'] ?? 0);
+                    $stockChannelId = (int)($allocation['channel_id'] ?? 0);
+                    if ($destinationType === 'CHANNEL' && $destinationId > 0) {
+                        $stockChannelId = $destinationId;
+                    } elseif ($destinationId > 0) {
+                        $destinationChannel = Database::fetchOne(
+                            "SELECT id FROM sales_channels
+                             WHERE id = ? AND (channel_type = 'WHATSAPP' OR LOWER(name) LIKE '%whatsapp%' OR LOWER(code) LIKE '%whatsapp%' OR code IN ('online 1', 'WA-01'))",
+                            [$destinationId]
+                        );
+                        if ($destinationChannel) {
+                            $stockChannelId = (int)$destinationChannel['id'];
+                        }
+                    }
+                    if ($stockChannelId <= 0) {
+                        $channelType = str_contains(strtoupper((string)($allocation['allocation_number'] ?? '')), 'WREQ-')
+                            ? 'WHATSAPP'
+                            : strtoupper(trim((string)($allocation['destination_type'] ?? '')));
+                        if (in_array($channelType, ['WHATSAPP', 'CHANNEL_WHATSAPP'], true)) {
+                            $whatsappChannel = Database::fetchOne(
+                                "SELECT id FROM sales_channels
+                                 WHERE channel_type = 'WHATSAPP' OR LOWER(name) LIKE '%whatsapp%' OR LOWER(code) LIKE '%whatsapp%' OR code IN ('online 1', 'WA-01')
+                                 ORDER BY id DESC LIMIT 1"
+                            );
+                            $stockChannelId = (int)($whatsappChannel['id'] ?? 3);
+                        }
+                    }
+                    if ($stockChannelId <= 0) {
+                        Response::jsonError('This allocation has no valid channel destination, so stock was not received.');
+                        return;
+                    }
+
                     Database::execute("UPDATE warehouse_allocations SET status = 'COMPLETED', updated_at = NOW() WHERE id = ?", [$allocId]);
                     Database::execute("UPDATE allocation_outwards SET status = 'DELIVERED', updated_at = NOW() WHERE allocation_id = ?", [$allocId]);
                     $items = Database::fetchAll("SELECT * FROM allocation_items WHERE allocation_id = ?", [$allocId]);
@@ -681,7 +714,7 @@ class WarehouseController {
                                 "INSERT INTO stock_balances (variant_id, location_type, location_id, stock_state, quantity, created_at, updated_at)
                                  VALUES (?, 'CHANNEL', ?, 'AVAILABLE', ?, NOW(), NOW())
                                  ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity), updated_at = NOW()",
-                                [$item['variant_id'], $allocation['channel_id'] ?? 2, $qty]
+                                [$item['variant_id'], $stockChannelId, $qty]
                             );
                         }
                     }
@@ -9014,7 +9047,14 @@ class WarehouseController {
         $warehouse = Database::fetchOne("SELECT * FROM warehouses WHERE id = ?", [$warehouseId]);
         $whName = $warehouse['name'] ?? ('Warehouse #' . $warehouseId);
 
-        $userId = Session::get('user_id') ?: 1;
+        $sessionUserId = Session::get('user_id');
+        $userId = is_numeric($sessionUserId) && (int)$sessionUserId > 0
+            ? (int)$sessionUserId
+            : null;
+        if ($userId !== null && !Database::fetchOne("SELECT id FROM users WHERE id = ?", [$userId])) {
+            error_log("Stickered inward received an invalid session user ID; stock transaction will be recorded without a user.");
+            $userId = null;
+        }
         $firstTag = !empty($tagCodes) && is_array($tagCodes) ? reset($tagCodes) : null;
         $lastTag = !empty($tagCodes) && is_array($tagCodes) ? end($tagCodes) : null;
 
@@ -13905,7 +13945,7 @@ class WarehouseController {
         $newBrandName = trim($_POST['new_brand_name'] ?? '');
         $phone = trim($_POST['phone'] ?? '');
         $email = trim($_POST['email'] ?? '');
-        $gstNumber = trim($_POST['gst_number'] ?? '');
+        $gstNumber = strtoupper(trim($_POST['gst_number'] ?? ''));
         $address = trim($_POST['address'] ?? '');
         $city = trim($_POST['city'] ?? '');
         $state = trim($_POST['state'] ?? 'Tamil Nadu');
@@ -13914,13 +13954,48 @@ class WarehouseController {
         $sellerType = trim($_POST['seller_type'] ?? 'PRODUCT_SELLER');
         $notes = trim($_POST['notes'] ?? '');
 
-        if (empty($name)) {
+        $rejectValidation = function (string $message) use ($isAjax): void {
             if ($isAjax) {
-                Response::json(['success' => false, 'message' => 'Supplier name is required.'], 400);
+                Response::json(['success' => false, 'message' => $message], 400);
                 return;
             }
-            Session::flash('error', 'Supplier name is required.');
+            Session::flash('error', $message);
             Response::redirect(url('warehouse/sellers/create'));
+        };
+
+        if (mb_strlen($name) < 2) {
+            $rejectValidation('Supplier name is required and must be at least 2 characters.');
+            return;
+        }
+
+        if ($newBrandName !== '') {
+            if (mb_strlen($newBrandName) < 2) {
+                $rejectValidation('Brand name must be at least 2 characters.');
+                return;
+            }
+        } elseif (!$brandId || !Database::fetchOne("SELECT id FROM brands WHERE id = ? AND is_active = 1", [$brandId])) {
+            $rejectValidation('Please select a valid brand or enter a new brand name of at least 2 characters.');
+            return;
+        }
+
+        if ($phone !== '') {
+            $phoneDigits = preg_replace('/\D+/', '', $phone);
+            if (strlen($phoneDigits) === 12 && substr($phoneDigits, 0, 2) === '91') {
+                $phoneDigits = substr($phoneDigits, 2);
+            }
+            if (!preg_match('/^[6-9]\d{9}$/', $phoneDigits)) {
+                $rejectValidation('Enter a valid 10-digit Indian mobile number.');
+                return;
+            }
+        }
+
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $rejectValidation('Enter a valid email address.');
+            return;
+        }
+
+        if ($gstNumber !== '' && !preg_match('/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/', $gstNumber)) {
+            $rejectValidation('Enter a valid 15-character GSTIN.');
             return;
         }
 
@@ -14174,7 +14249,7 @@ class WarehouseController {
                     COALESCE(wc.name, '') AS category_name,
                     COALESCE(wsc.name, '') AS subcategory_name,
                     COALESCE(wss.name, '') AS sub_subcategory_name,
-                    COALESCE(pv.hsn_code, p.hsn_code, '') AS hsn_code,
+                    COALESCE(p.hsn_code, '') AS hsn_code,
                     COALESCE(pv.weight, p.weight, 0) AS weight,
                     COALESCE(pv.mrp, 0) AS mrp,
                     COALESCE(pv.selling_price, 0) AS selling_price,
@@ -14591,9 +14666,9 @@ class WarehouseController {
 
                 // Insert Variant
                 Database::execute(
-                    "INSERT INTO product_variants (product_id, size_id, color_id, sku, hsn_code, weight, mrp, purchase_price, production_cost, selling_price, qr_code, qr_type, pack_quantity, series_start_code, series_end_code, is_complementary, is_active, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
-                    [$productId, $sizeId, $colorId, $variantSku, $hsn, $weight, $mrp, $costPrice, $costPrice, $sellingPrice, $variantSku, $qrType, $packQty, $effectiveStart, $effectiveEnd, $isComp]
+                    "INSERT INTO product_variants (product_id, size_id, color_id, sku, weight, mrp, purchase_price, production_cost, selling_price, qr_code, qr_type, pack_quantity, series_start_code, series_end_code, is_complementary, is_active, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
+                    [$productId, $sizeId, $colorId, $variantSku, $weight, $mrp, $costPrice, $costPrice, $sellingPrice, $variantSku, $qrType, $packQty, $effectiveStart, $effectiveEnd, $isComp]
                 );
                 $variantId = (int)Database::lastInsertId();
 

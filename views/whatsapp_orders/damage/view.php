@@ -34,11 +34,6 @@
             <a href="<?= url('warehouse/whatsapp-orders/damage') ?>" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i> Back to Damage List
             </a>
-            <?php if (in_array($damage['status'], ['REPORTED', 'INSPECTED', 'OUTWARD_PENDING'])): ?>
-                <a href="<?= url('warehouse/whatsapp-orders/damage/outward/create') ?>" class="btn btn-danger">
-                    <i class="bi bi-box-arrow-up-right me-1"></i> Create Outward Batch
-                </a>
-            <?php endif; ?>
         </div>
     </div>
 
@@ -56,14 +51,20 @@
                             <div class="fw-bold fs-6 text-dark"><?= htmlspecialchars($damage['product_name'] ?? 'N/A') ?></div>
                         </div>
                         <div class="col-md-6">
-                            <label class="text-muted small">SKU / Variant Code</label>
-                            <div class="fw-semibold text-dark">
-                                <code><?= htmlspecialchars($damage['variant_sku'] ?? 'N/A') ?></code>
-                                <?php if (!empty($damage['color']) || !empty($damage['size'])): ?>
-                                    <span class="badge bg-light text-dark border ms-1">
-                                        <?= htmlspecialchars(($damage['color'] ?? '') . ' / ' . ($damage['size'] ?? '')) ?>
-                                    </span>
-                                <?php endif; ?>
+                            <label class="text-muted small">Product Type</label>
+                            <?php
+                            $productType = !empty($damage['variant_is_complementary']) || !empty($damage['product_is_complementary'])
+                                ? 'COMPLEMENTARY'
+                                : (strtoupper($damage['qr_type'] ?? '') === 'SERIES_BATCH' ? 'SERIES' : 'NORMAL');
+                            $typeClass = $productType === 'COMPLEMENTARY' ? 'bg-info-subtle text-info border-info-subtle' : ($productType === 'SERIES' ? 'bg-primary-subtle text-primary border-primary-subtle' : 'bg-light text-dark border-secondary-subtle');
+                            ?>
+                            <div><span class="badge <?= $typeClass ?> border px-2 py-1"><?= htmlspecialchars($productType) ?></span></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="text-muted small">Product QR Code</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <div id="damageProductQr" class="bg-white border rounded p-1" aria-label="Product QR code"></div>
+                                <span class="badge bg-dark-subtle text-dark"><?= htmlspecialchars($productType) ?> QR</span>
                             </div>
                         </div>
 
@@ -132,10 +133,21 @@
                             <?php endforeach; ?>
                         </div>
                     <?php else: ?>
-                        <div class="text-center py-4 text-muted">
-                            <i class="bi bi-qr-code fs-1 d-block mb-2 text-secondary opacity-50"></i>
-                            No specific piece serial tags assigned to this batch damage entry.
-                        </div>
+                        <?php $fallbackQr = (string)($damage['qr_code'] ?? $damage['variant_sku'] ?? ''); ?>
+                        <?php if ($fallbackQr !== ''): ?>
+                            <div class="d-flex flex-wrap justify-content-center gap-3 py-3">
+                                <div class="text-center border rounded bg-white p-3">
+                                    <div id="trackedFallbackQr" class="mb-2 d-flex justify-content-center"></div>
+                                    <div class="fw-bold small"><?= htmlspecialchars($productType) ?> PIECE TAG</div>
+                                    <div><span class="badge bg-danger-subtle text-danger mt-1">Damaged</span></div>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="text-center py-4 text-muted">
+                                <i class="bi bi-qr-code fs-1 d-block mb-2 text-secondary opacity-50"></i>
+                                No piece tags or product QR code are available for this damage record.
+                            </div>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>
@@ -173,14 +185,6 @@
                                 </a>
                             </li>
                         <?php endif; ?>
-                        <?php if (!empty($damage['outward_batch_id'])): ?>
-                            <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                                <span class="text-muted">Outward Return Batch:</span>
-                                <a href="<?= url('warehouse/whatsapp-orders/damage/outward/view/' . $damage['outward_batch_id']) ?>" class="badge bg-danger text-decoration-none">
-                                    Batch #<?= $damage['outward_batch_id'] ?> <i class="bi bi-box-arrow-up-right"></i>
-                                </a>
-                            </li>
-                        <?php endif; ?>
                     </ul>
                 </div>
             </div>
@@ -189,10 +193,25 @@
                 <div class="card-body">
                     <h6 class="fw-bold mb-2"><i class="bi bi-shield-check text-success me-1"></i> Stock Ledger Status</h6>
                     <p class="small text-muted mb-0">
-                        This item has been deducted from Available WhatsApp stock and isolated in the <code>DAMAGED</code> stock partition. It will remain isolated until dispatched to the central warehouse via an Outward Return Batch.
+                        This item has been deducted from Available WhatsApp stock and isolated in the <code>DAMAGED</code> stock partition for review.
                     </p>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script src="<?= url('assets/js/qrcode.min.js') ?>"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const container = document.getElementById('damageProductQr');
+    const code = <?= json_encode((string)($damage['qr_code'] ?? $damage['variant_sku'] ?? '')) ?>;
+    if (container && code && typeof QRCode !== 'undefined') {
+        new QRCode(container, { text: code, width: 96, height: 96, correctLevel: QRCode.CorrectLevel.M });
+    }
+    const trackedQr = document.getElementById('trackedFallbackQr');
+    if (trackedQr && code && typeof QRCode !== 'undefined') {
+        new QRCode(trackedQr, { text: code, width: 128, height: 128, correctLevel: QRCode.CorrectLevel.M });
+    }
+});
+</script>

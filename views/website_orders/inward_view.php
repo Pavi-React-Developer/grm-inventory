@@ -34,9 +34,6 @@
         <button type="button" class="btn btn-outline-info fw-semibold" onclick="openBatchHistoryModal(<?= $allocation['id'] ?? 1 ?>)">
             <i class="bi bi-clock-history me-1"></i> Batch Lifecycle &amp; Logs
         </button>
-        <button type="button" class="btn btn-outline-primary fw-semibold" onclick="openCrossCheckModal(<?= $allocation['id'] ?? 1 ?>)">
-            <i class="bi bi-printer me-1"></i> Print Carton QR Sticker
-        </button>
         <a href="<?= url('warehouse/website-orders/inward') ?>" class="btn btn-outline-secondary fw-semibold">
             <i class="bi bi-arrow-left me-1"></i> Inward Queue
         </a>
@@ -237,7 +234,7 @@
                         <label class="form-label fw-bold text-dark mb-0 fs-6">
                             <i class="bi bi-upc-scan text-primary me-1"></i> Live Product &amp; QR Cross-Check Scanner
                         </label>
-                        <small class="text-muted d-block">Toggle mode below to scan intact goods or quarantine damaged pieces</small>
+                        <small class="text-muted d-block">Choose the piece condition, then scan its QR code to record it.</small>
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <span id="draftSaveIndicator" class="badge bg-light text-muted border small d-none">
@@ -249,25 +246,11 @@
                     </div>
                 </div>
 
-                <!-- Scan Mode Selector -->
-                <div class="mb-3">
-                    <label class="small fw-bold text-dark d-block mb-2"><i class="bi bi-sliders me-1"></i>Scanner Mode (Click to Switch):</label>
-                    <div class="d-flex gap-2 flex-wrap">
-                        <input type="radio" class="btn-check" name="scanModeToggle" id="modeGood" value="good" checked autocomplete="off">
-                        <label class="btn btn-outline-success fw-bold py-2 fs-6 flex-grow-1" for="modeGood">
-                            <i class="bi bi-check-circle-fill me-1"></i> 🟢 Good / Intact Mode
-                        </label>
-
-                        <input type="radio" class="btn-check" name="scanModeToggle" id="modeDamage" value="damage" autocomplete="off">
-                        <label class="btn btn-outline-danger fw-bold py-2 fs-6 flex-grow-1" for="modeDamage">
-                            <i class="bi bi-slash-circle-fill me-1"></i> 🔴 Damaged / Inactivate Mode
-                        </label>
-                    </div>
-                </div>
-
                 <div class="input-group input-group-lg mb-2">
                     <span class="input-group-text bg-white"><i class="bi bi-qr-code text-primary"></i></span>
-                    <input type="text" id="liveScannerInput" class="form-control font-monospace" placeholder="Scan Variant QR / Barcode / SKU / Master Carton..." autofocus autocomplete="off">
+                    <input type="text" id="liveScannerInput" class="form-control font-monospace" placeholder="Scan piece QR code..." autofocus autocomplete="off">
+                    <button type="button" id="scanModeGood" class="btn btn-success fw-semibold" aria-pressed="true" onclick="setScanMode('good')">Good</button>
+                    <button type="button" id="scanModeDamage" class="btn btn-outline-danger fw-semibold" aria-pressed="false" onclick="setScanMode('damage')">Damaged</button>
                     <button class="btn btn-primary px-4 fw-semibold" type="button" onclick="triggerScan()">
                         <i class="bi bi-plus-circle me-1"></i> Scan
                     </button>
@@ -275,142 +258,125 @@
 
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 text-muted small">
                     <span><i class="bi bi-lightning-charge-fill text-warning me-1"></i>Physical USB scanner guns will instantly cross-check on scan.</span>
-                    <button type="button" class="btn btn-link btn-sm text-decoration-none p-0 fw-bold" onclick="quickFillAll()">
-                        <i class="bi bi-magic me-1"></i> Quick Fill All Expected (Master Scan)
-                    </button>
                 </div>
             </div>
         </div>
         <?php endif; ?>
         <?php endif; ?>
 
-        <!-- Missing / Unscanned Products Table -->
-        <div class="card border-0 shadow-sm mb-4 border-start border-danger border-4">
-            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <div>
-                    <h6 class="card-title mb-0 fw-bold text-danger">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>Missing / Unscanned Products &amp; QR Codes (Profile-Wise)
-                    </h6>
-                    <small class="text-muted">Shows the full product variant profile first, followed by pending missing pieces</small>
-                </div>
-                <span class="badge bg-danger rounded-pill px-3 py-2 fs-7"><?= count($items) ?> SKU(s) in batch</span>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Product Variant Profile</th>
-                                <th>QR Code / Tag Range</th>
-                                <th>Size &amp; Color</th>
-                                <th class="text-center">Expected</th>
-                                <th class="text-center">Scanned</th>
-                                <th class="text-end">Missing Qty</th>
-                                <th class="text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (!empty($items)): ?>
-                                <?php foreach ($items as $it): 
-                                    $expQty = (int)$it['quantity'];
-                                    $recQty = isset($it['received_qty']) && $it['received_qty'] !== null ? (int)$it['received_qty'] : 0;
-                                    $dmgQty = isset($it['damaged_qty']) && $it['damaged_qty'] !== null ? (int)$it['damaged_qty'] : 0;
-                                    $initRecv = $recQty > 0 ? $recQty : ($allocation['status'] === 'DELIVERED' || $allocation['status'] === 'RECEIVED' ? $expQty : 0);
-                                    $totalProc = $initRecv + $dmgQty;
-                                    $diff = $expQty - $totalProc;
-                                ?>
-                                    <tr>
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2">
-                                                <div class="p-1 border rounded bg-light">
-                                                    <i class="bi bi-box-seam text-secondary fs-5"></i>
-                                                </div>
-                                                <div>
-                                                    <div class="fw-bold text-dark"><?= e($it['product_name']) ?></div>
-                                                    <span class="badge bg-dark font-monospace fs-9"><?= e($it['sku']) ?></span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-warning text-dark font-monospace p-2"><?= e($it['qr_range'] ?? $it['sku']) ?></span>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-light text-dark border"><?= e($it['size_name'] ?? 'Free Size') ?></span>
-                                            <span class="badge bg-secondary bg-opacity-10 text-dark border"><?= e($it['color_name'] ?? 'Standard') ?></span>
-                                        </td>
-                                        <td class="text-center fw-bold"><?= $expQty ?></td>
-                                        <td class="text-center fw-bold text-success" id="scanned_qty_<?= $it['id'] ?>"><?= $initRecv ?><?= $dmgQty > 0 ? " ({$dmgQty} dmg)" : "" ?></td>
-                                        <td class="text-end fw-bold <?= $diff > 0 && $totalProc > 0 ? 'text-danger' : ($diff === 0 ? 'text-success' : 'text-muted') ?>" id="missing_qty_<?= $it['id'] ?>">
-                                            <?= $diff > 0 && $totalProc > 0 ? '-' . $diff . ' pcs' : ($diff === 0 ? '0 pcs' : $expQty . ' pending') ?>
-                                        </td>
-                                        <td class="text-center">
-                                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="openPieceInspectionModal(<?= $it['id'] ?>)">
-                                                <i class="bi bi-eye me-1"></i> View Pieces
-                                            </button>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Matrix Table Form -->
+        <!-- Single inward verification table, following the WhatsApp inward layout -->
         <form method="POST" action="<?= url('warehouse/website-orders/inward/receive/' . $allocation['id']) ?>" onsubmit="try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch(e){}">
             <?= CSRF::field() ?>
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div>
-                        <h6 class="card-title mb-0 fw-bold"><i class="bi bi-table me-2 text-primary"></i>Outward vs Inward Cross-Check Matrix</h6>
-                        <small class="text-muted">Scan QR or verify quantities. Damaged items are quarantined upon receipt.</small>
-                    </div>
-                    <div>
-                        <?php if ($canReceive): ?>
-                        <button type="button" class="btn btn-sm btn-outline-success fw-bold" onclick="quickFillAll()">
-                            <i class="bi bi-check2-all me-1"></i> Fill All Full (Intact)
-                        </button>
-                        <?php endif; ?>
+                        <h6 class="card-title mb-0 fw-bold"><i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Inward Verification &amp; Outward Cross-Check</h6>
+                        <small class="text-muted">Review product profiles, scan QR codes, and record intact or damaged quantities.</small>
                     </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0 font-monospace">
-                            <thead class="table-light fs-8">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>#</th>
-                                    <th>SKU &amp; QR RANGE</th>
-                                    <th>SIZE &amp; COLOR</th>
-                                    <th class="text-center">EXPECTED</th>
-                                    <th class="text-center">INWARD RECV</th>
-                                    <th class="text-center">DAMAGED / INACTIVE</th>
-                                    <th class="text-center">DIFFERENCE</th>
-                                    <th class="text-center">STATUS</th>
-                                    <th class="text-center">ACTIONS</th>
+                                    <th style="width: 42px;">S.NO</th>
+                                    <th style="min-width: 190px;">Product &amp; SKU</th>
+                                    <th style="min-width: 145px;">QR Range</th>
+                                    <th style="min-width: 105px;">Size &amp; Color</th>
+                                    <th class="text-end" style="width: 88px;">Expected</th>
+                                    <th class="text-center" style="min-width: 95px;">Inward Recv</th>
+                                    <th class="text-center" style="min-width: 105px;">Damaged</th>
+                                    <th class="text-center" style="min-width: 105px;">Difference</th>
+                                    <th class="text-center" style="min-width: 110px;">Status</th>
+                                    <th class="text-center" style="width: 90px;">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
+                                <?php $inwardItemGroups = []; $inwardItemGroupMap = []; $inwardItemExpectedMap = []; ?>
                                 <?php if (!empty($items)): ?>
-                                    <?php foreach ($items as $idx => $it): 
-                                        $expQty = (int)$it['quantity'];
-                                        $recQty = isset($it['received_qty']) && $it['received_qty'] !== null ? (int)$it['received_qty'] : 0;
-                                        $dmgQty = isset($it['damaged_qty']) && $it['damaged_qty'] !== null ? (int)$it['damaged_qty'] : 0;
-                                        $initInputVal = $recQty > 0 ? $recQty : ($allocation['status'] === 'DELIVERED' || $allocation['status'] === 'RECEIVED' ? $expQty : 0);
+                                    <?php
+                                        foreach ($items as $member) {
+                                            $skuKey = strtoupper(trim((string)($member['sku'] ?? '')));
+                                            $profileKey = $skuKey !== ''
+                                                ? implode('|', [$skuKey, (int)($member['size_id'] ?? 0), (int)($member['color_id'] ?? 0), strtolower(trim((string)($member['product_name'] ?? '')))])
+                                                : 'variant:' . (int)($member['variant_id'] ?? $member['id']);
+                                            $groupId = 'g_' . substr(sha1($profileKey), 0, 12);
+                                            $expMember = (int)($member['quantity'] ?? 0);
+                                            $inwardItemExpectedMap[(string)$member['id']] = $expMember;
+                                            $recMember = isset($member['received_qty']) && $member['received_qty'] !== null ? (int)$member['received_qty'] : 0;
+                                            $recMember = $recMember > 0 ? $recMember : (in_array(strtoupper($allocation['status'] ?? ''), ['DELIVERED', 'RECEIVED'] , true) ? $expMember : 0);
+                                            $dmgMember = isset($member['damaged_qty']) && $member['damaged_qty'] !== null ? (int)$member['damaged_qty'] : 0;
+
+                                            if (!isset($inwardItemGroups[$groupId])) {
+                                                $inwardItemGroups[$groupId] = [
+                                                    'product' => $member,
+                                                    'members' => [],
+                                                    'expected' => 0,
+                                                    'received' => 0,
+                                                    'damaged' => 0,
+                                                    'tags' => [],
+                                                ];
+                                            }
+                                            $inwardItemGroupMap[(string)$member['id']] = $groupId;
+
+                                            $inwardItemGroups[$groupId]['members'][] = [
+                                                'id' => (int)$member['id'],
+                                                'expected' => $expMember,
+                                                'received' => $recMember,
+                                                'damaged' => $dmgMember,
+                                            ];
+                                            $inwardItemGroups[$groupId]['expected'] += $expMember;
+                                            $inwardItemGroups[$groupId]['received'] += $recMember;
+                                            $inwardItemGroups[$groupId]['damaged'] += $dmgMember;
+                                            foreach (($member['piece_qrs'] ?? []) as $piece) {
+                                                if (!empty($piece['tag_code'])) $inwardItemGroups[$groupId]['tags'][] = $piece['tag_code'];
+                                            }
+                                        }
+
+                                        $rowNumber = 0;
+                                        foreach ($inwardItemGroups as $idx => $group):
+                                        $rowNumber++;
+                                        $it = $group['product'];
+                                        $expQty = (int)$group['expected'];
+                                        $initInputVal = (int)$group['received'];
+                                        $dmgQty = (int)$group['damaged'];
                                         $totalProc = $initInputVal + $dmgQty;
                                         $diff = $expQty - $totalProc;
+                                        $productType = strtoupper($it['product_type'] ?? 'NORMAL');
+                                        $productTypeBadge = $productType === 'COMPLEMENTARY' ? 'bg-warning text-dark' : ($productType === 'SERIES' ? 'bg-info text-dark' : 'bg-primary');
+                                        $groupTags = array_values(array_unique($group['tags']));
+                                        $qrLabel = !empty($groupTags)
+                                            ? (count($groupTags) > 1 ? $groupTags[0] . ' → ' . end($groupTags) : $groupTags[0])
+                                            : ($it['qr_range'] ?? $it['sku']);
                                     ?>
                                         <tr>
-                                            <td><?= $idx + 1 ?></td>
+                                            <td class="text-muted small fw-semibold"><?= $rowNumber ?></td>
                                             <td>
-                                                <div class="fw-bold text-primary"><?= e($it['sku']) ?></div>
-                                                <small class="text-muted fs-8 font-monospace"><?= e($it['qr_range'] ?? $it['sku']) ?></small>
+                                                <div class="fw-bold text-dark"><?= e($it['product_name'] ?? 'Garment Product') ?></div>
+                                                <span class="badge <?= $productTypeBadge ?> mb-1"><?= e(ucfirst(strtolower($productType))) ?> Type</span>
+                                                <span class="badge bg-dark text-white font-monospace"><?= e($it['sku']) ?></span>
                                             </td>
-                                            <td><?= e($it['size_name'] ?? 'Free Size') ?> / <?= e($it['color_name'] ?? 'Standard') ?></td>
-                                            <td class="text-center fw-bold" id="exp_qty_<?= $it['id'] ?>" data-expected="<?= $expQty ?>"><?= $expQty ?> pcs</td>
-                                            <td class="text-center"><input type="number" name="received_qty[<?= $it['id'] ?>]" id="input_recv_<?= $it['id'] ?>" class="form-control form-control-sm text-center font-monospace fw-bold" value="<?= $initInputVal ?>" min="0" max="<?= $expQty ?>" style="width: 70px; margin: 0 auto;" oninput="updateMatrixRow(<?= $it['id'] ?>)" onchange="updateMatrixRow(<?= $it['id'] ?>)" <?= !$canReceive ? 'readonly disabled' : '' ?>></td>
-                                            <td class="text-center"><input type="number" name="damaged_qty[<?= $it['id'] ?>]" id="input_dmg_<?= $it['id'] ?>" class="form-control form-control-sm text-center font-monospace fw-bold text-danger" value="<?= $dmgQty ?>" min="0" max="<?= $expQty ?>" style="width: 70px; margin: 0 auto;" oninput="updateMatrixRow(<?= $it['id'] ?>)" onchange="updateMatrixRow(<?= $it['id'] ?>)" <?= !$canReceive ? 'readonly disabled' : '' ?>></td>
-                                            <td class="text-center fw-bold <?= $diff > 0 && $totalProc > 0 ? 'text-danger' : ($diff === 0 ? 'text-success' : 'text-muted') ?>" id="diff_col_<?= $it['id'] ?>">
+                                            <td>
+                                                <span class="badge bg-warning text-dark font-monospace" title="<?= e(implode(', ', $groupTags) ?: ($it['qr_range'] ?? $it['sku'])) ?>"><?= e($qrLabel) ?></span>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-light text-dark border"><?= e($it['size_name'] ?? 'Free Size') ?></span>
+                                                <span class="badge bg-secondary bg-opacity-10 text-dark border"><?= e($it['color_name'] ?? 'Standard') ?></span>
+                                            </td>
+                                            <td class="text-end fw-bold" id="exp_qty_<?= e($idx) ?>" data-expected="<?= $expQty ?>"><?= $expQty ?> pcs</td>
+                                            <td class="text-center">
+                                                <input type="number" id="group_recv_<?= e($idx) ?>" class="form-control form-control-sm text-center font-monospace fw-bold text-success bg-light" value="<?= $initInputVal ?>" readonly tabindex="-1" aria-label="Received quantity (read only)" style="width: 70px; margin: 0 auto;">
+                                                <?php foreach ($group['members'] as $member): ?>
+                                                    <input type="hidden" name="received_qty[<?= $member['id'] ?>]" id="input_recv_<?= $member['id'] ?>" value="<?= $member['received'] ?>">
+                                                <?php endforeach; ?>
+                                            </td>
+                                            <td class="text-center">
+                                                <input type="number" id="group_dmg_<?= e($idx) ?>" class="form-control form-control-sm text-center font-monospace fw-bold text-danger bg-light" value="<?= $dmgQty ?>" readonly tabindex="-1" aria-label="Damaged quantity (read only)" style="width: 70px; margin: 0 auto;">
+                                                <?php foreach ($group['members'] as $member): ?>
+                                                    <input type="hidden" name="damaged_qty[<?= $member['id'] ?>]" id="input_dmg_<?= $member['id'] ?>" value="<?= $member['damaged'] ?>">
+                                                <?php endforeach; ?>
+                                            </td>
+                                            <td class="text-center fw-bold <?= $diff > 0 && $totalProc > 0 ? 'text-danger' : ($diff === 0 ? 'text-success' : 'text-muted') ?>" id="diff_col_<?= e($idx) ?>">
                                                 <?php if ($diff > 0): ?>
                                                     <?= $totalProc > 0 ? '-' . $diff . ' pcs' : $expQty . ' pending' ?>
                                                 <?php elseif ($diff === 0): ?>
@@ -419,7 +385,7 @@
                                                     +<?= abs($diff) ?> excess
                                                 <?php endif; ?>
                                             </td>
-                                            <td class="text-center" id="status_col_<?= $it['id'] ?>">
+                                            <td class="text-center" id="status_col_<?= e($idx) ?>">
                                                 <?php if ($totalProc === 0): ?>
                                                     <span class="badge bg-primary">AWAITING</span>
                                                 <?php elseif ($diff === 0): ?>
@@ -435,8 +401,8 @@
                                                 <?php endif; ?>
                                             </td>
                                             <td class="text-center">
-                                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openPieceInspectionModal(<?= $it['id'] ?>)">
-                                                    <i class="bi bi-eye me-1"></i> View
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openPieceInspectionModal('<?= e($idx) ?>')">
+                                                    <i class="bi bi-eye me-1"></i> Pieces
                                                 </button>
                                             </td>
                                         </tr>
@@ -446,10 +412,7 @@
                         </table>
                     </div>
                 </div>
-                <div class="card-footer bg-white p-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div class="flex-grow-1 me-3">
-                        <input type="text" name="notes" class="form-control" placeholder="e.g. Scanned remaining pieces via QR gun. Carton completed." <?= !$canReceive ? 'readonly disabled' : '' ?>>
-                    </div>
+                <div class="card-footer bg-white p-3 d-flex justify-content-end align-items-center flex-wrap gap-2">
                     <?php if ($canReceive): ?>
                     <button type="submit" class="btn btn-success fw-bold px-4 py-2">
                         <i class="bi bi-check-circle-fill me-1"></i> Update / Credit Inward Stock to Website Inventory
@@ -539,8 +502,8 @@
                     <div class="col-md-5">
                         <div class="card border-0 shadow-sm p-4 text-center bg-white h-100">
                             <div class="p-3 border border-dashed rounded bg-light mb-3">
-                                <img id="inspMainQrImg" src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=PROD" alt="QR Code" class="img-fluid mb-2" style="max-height: 150px;">
-                                <div class="badge bg-primary font-monospace fs-8 px-3 py-1" id="inspMainQrCaption">Exact Piece QR</div>
+                                <img id="inspMainQrImg" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=TAG" alt="Piece QR Code" class="img-fluid mb-2" style="width: 120px; height: 120px;">
+                                <div class="font-monospace fw-bold text-dark fs-8" id="inspMainQrCaption">Piece Tag</div>
                             </div>
                             <div class="mb-2">
                                 <label class="small fw-bold text-muted d-block text-start mb-1 fs-9">PRODUCT EXACT SKU / IDENTIFIER:</label>
@@ -559,28 +522,8 @@
                     <!-- Right Column Scanner Actions -->
                     <div class="col-md-7">
                         <div class="card border-0 shadow-sm p-4 bg-white h-100">
-                            <label class="small fw-bold text-dark mb-2"><i class="bi bi-sliders me-1"></i>Scanner Mode (Click to Switch):</label>
-                            <div class="d-flex gap-2 mb-3">
-                                <button type="button" id="btnModeGood" class="btn btn-success fw-bold py-2 flex-grow-1 shadow-sm" onclick="setInspectionMode('good')">
-                                    <i class="bi bi-check-circle-fill me-1"></i> 🟢 Good / Intact Mode
-                                </button>
-                                <button type="button" id="btnModeDamage" class="btn btn-outline-danger fw-bold py-2 flex-grow-1" onclick="setInspectionMode('damage')">
-                                    <i class="bi bi-slash-circle-fill me-1"></i> 🔴 Damaged / Inactivate Mode
-                                </button>
-                            </div>
-                            <div id="inspModeAlert" class="alert alert-success py-2 text-center fs-8 fw-bold mb-3">
-                                <i class="bi bi-check2-all me-1"></i> Currently scanning verified sellable stock
-                            </div>
-                            <div class="d-grid gap-2">
-                                <button type="button" id="btnInwardNextPiece" class="btn btn-success btn-lg fw-bold py-3" onclick="inwardNextPiece()">
-                                    <i class="bi bi-check-circle me-1"></i> <span id="btnInwardText">Inward Next Piece (Good Product)</span>
-                                </button>
-                                <button type="button" class="btn btn-outline-primary btn-lg fw-bold py-2" onclick="quickFillAllGood()">
-                                    <i class="bi bi-check2-all me-1"></i> Quick All Good Products
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetInspection()">
-                                    <i class="bi bi-arrow-counterclockwise me-1"></i> Reset All Pieces
-                                </button>
+                            <div class="alert alert-success py-2 text-center fs-8 fw-bold mb-3">
+                                <i class="bi bi-check2-all me-1"></i> Scans are recorded as intact. Use each piece's controls below to quarantine damage.
                             </div>
                         </div>
                     </div>
@@ -620,6 +563,10 @@
     foreach ($items as $it) {
         $itemPiecesMap[$it['id']] = $it['piece_qrs'] ?? [];
     }
+    $inwardGroupMembersMap = [];
+    foreach ($inwardItemGroups as $groupId => $group) {
+        $inwardGroupMembersMap[$groupId] = array_column($group['members'], 'id');
+    }
 ?>
 <script>
 const ALLOCATION_ID = <?= (int)($allocation['id'] ?? 1) ?>;
@@ -627,13 +574,19 @@ const DRAFT_STORAGE_KEY = 'grm_website_inward_draft_' + ALLOCATION_ID;
 const IS_COMPLETED = <?= $isFullyReceived ? 'true' : 'false' ?>;
 
 const ITEM_PIECES_MAP = <?= json_encode($itemPiecesMap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+const ITEM_GROUPS_MAP = <?= json_encode($inwardGroupMembersMap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+const ITEM_TO_GROUP_MAP = <?= json_encode($inwardItemGroupMap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+const ITEM_EXPECTED_MAP = <?= json_encode($inwardItemExpectedMap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 const ALL_PIECE_QRS = <?= json_encode($pieceQRs ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 
 // Global piece status tracking cache: itemId -> array of piece status objects
 let SAVED_PIECE_STATUSES = {};
+let activeScanMode = 'good';
 
 let inspState = {
     itemId: 0,
+    itemIds: [],
+    groupId: '',
     sku: '',
     prodName: '',
     category: '',
@@ -644,7 +597,6 @@ let inspState = {
     totalQty: 0,
     goodCount: 0,
     damagedCount: 0,
-    mode: 'good',
     activeFilter: 'all',
     pieces: []
 };
@@ -657,7 +609,6 @@ function saveInwardDraft() {
         receivedMap: {},
         damagedMap: {},
         pieceStatuses: SAVED_PIECE_STATUSES,
-        notes: (document.querySelector('input[name="notes"]')?.value || '').trim(),
         timestamp: Date.now(),
         savedAtFormatted: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     };
@@ -735,11 +686,6 @@ function loadInwardDraft() {
         }
     }
 
-    const notesInput = document.querySelector('input[name="notes"]');
-    if (notesInput && draft.notes) {
-        notesInput.value = draft.notes;
-    }
-
     updateAllMatrixRows(false);
 
     if (hasScannedData) {
@@ -787,21 +733,22 @@ function clearInwardDraft(confirmPrompt = false) {
         if (dmgInput) dmgInput.value = 0;
     }
 
-    const notesInput = document.querySelector('input[name="notes"]');
-    if (notesInput) notesInput.value = '';
-
     updateAllMatrixRows(false);
 }
 
 function openPieceInspectionModal(itemId) {
-    const rawPieces = ITEM_PIECES_MAP[itemId] || [];
+    const groupId = String(itemId);
+    const itemIds = (ITEM_GROUPS_MAP[groupId] || [itemId]).map(String);
+    const rawPieces = itemIds.flatMap(memberId => (ITEM_PIECES_MAP[memberId] || []).map(piece => ({ ...piece, item_id: String(piece.item_id || memberId) })));
     if (rawPieces.length === 0) {
         alert('No piece QR records assigned for this item.');
         return;
     }
 
     const first = rawPieces[0];
-    inspState.itemId = itemId;
+    inspState.itemId = itemIds[0];
+    inspState.itemIds = itemIds;
+    inspState.groupId = groupId;
     inspState.sku = first.sku || '';
     inspState.prodName = first.product_name || 'Garment Item';
     inspState.category = first.category_name || 'Apparel';
@@ -810,69 +757,45 @@ function openPieceInspectionModal(itemId) {
     inspState.mrp = first.mrp || '999';
     inspState.disc = first.disc || '500';
     inspState.totalQty = rawPieces.length;
-    inspState.mode = 'good';
     inspState.activeFilter = 'all';
 
-    const curRecv = parseInt(document.getElementById('input_recv_' + itemId)?.value) || 0;
-    const curDmg = parseInt(document.getElementById('input_dmg_' + itemId)?.value) || 0;
-
-    // Check if we have cached piece statuses from draft or previous session
-    const cachedPieces = SAVED_PIECE_STATUSES[itemId];
-
-    if (cachedPieces && Array.isArray(cachedPieces) && cachedPieces.length === rawPieces.length) {
-        let goodCount = 0;
-        let damagedCount = 0;
-        inspState.pieces = rawPieces.map((p, idx) => {
-            const cached = cachedPieces[idx] || {};
-            const st = cached.status || 'pending';
-            if (st === 'good') goodCount++;
-            else if (st === 'damaged') damagedCount++;
-            return {
-                num: p.piece_no || (idx + 1),
-                tag: p.tag_code,
-                sku: p.sku,
-                prodName: p.product_name,
-                size: p.size_name,
-                color: p.color_name,
-                mrp: p.mrp,
-                disc: p.disc,
-                selling_price: p.selling_price,
-                qrPayload: p.qr_payload || (p.tag_code + '|' + p.sku),
-                status: st,
-                scannedAt: cached.scannedAt || (st !== 'pending' ? 'Verified' : null)
-            };
-        });
-        inspState.goodCount = goodCount;
-        inspState.damagedCount = damagedCount;
-    } else {
-        inspState.pieces = rawPieces.map((p, idx) => {
-            let st = 'pending';
-            let scannedTime = null;
-            if (idx < curRecv) {
-                st = 'good';
-                scannedTime = 'Verified';
-            } else if (idx < (curRecv + curDmg)) {
-                st = 'damaged';
-                scannedTime = 'Quarantined';
+    const memberPositions = {};
+    inspState.pieces = rawPieces.map((p, idx) => {
+        const memberId = String(p.item_id);
+        const localIndex = memberPositions[memberId] || 0;
+        memberPositions[memberId] = localIndex + 1;
+        const memberRecv = parseInt(document.getElementById('input_recv_' + memberId)?.value) || 0;
+        const memberDmg = parseInt(document.getElementById('input_dmg_' + memberId)?.value) || 0;
+        const cached = (SAVED_PIECE_STATUSES[memberId] || []).find(saved => saved.tag === p.tag_code) || {};
+        let status = cached.status || 'pending';
+        let scannedAt = cached.scannedAt || null;
+        if (!cached.status) {
+            if (localIndex < memberRecv) {
+                status = 'good';
+                scannedAt = 'Verified';
+            } else if (localIndex < memberRecv + memberDmg) {
+                status = 'damaged';
+                scannedAt = 'Quarantined';
             }
-            return {
-                num: p.piece_no || (idx + 1),
-                tag: p.tag_code,
-                sku: p.sku,
-                prodName: p.product_name,
-                size: p.size_name,
-                color: p.color_name,
-                mrp: p.mrp,
-                disc: p.disc,
-                selling_price: p.selling_price,
-                qrPayload: p.qr_payload || (p.tag_code + '|' + p.sku),
-                status: st,
-                scannedAt: scannedTime
-            };
-        });
-        inspState.goodCount = curRecv;
-        inspState.damagedCount = curDmg;
-    }
+        }
+        return {
+            num: idx + 1,
+            itemId: memberId,
+            tag: p.tag_code,
+            sku: p.sku,
+            prodName: p.product_name,
+            size: p.size_name,
+            color: p.color_name,
+            mrp: p.mrp,
+            disc: p.disc,
+            selling_price: p.selling_price,
+            qrPayload: p.qr_payload || (p.tag_code + '|' + p.sku),
+            status,
+            scannedAt
+        };
+    });
+    inspState.goodCount = inspState.pieces.filter(piece => piece.status === 'good').length;
+    inspState.damagedCount = inspState.pieces.filter(piece => piece.status === 'damaged').length;
 
     document.getElementById('inspProdName').textContent = inspState.prodName;
     document.getElementById('inspCategory').textContent = inspState.category;
@@ -883,82 +806,10 @@ function openPieceInspectionModal(itemId) {
     document.getElementById('inspExactSkuInput').value = inspState.sku;
     document.getElementById('inspExpected').textContent = inspState.totalQty;
 
-    document.getElementById('inspMainQrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=' + encodeURIComponent(first.qr_payload || inspState.sku);
-    document.getElementById('inspMainQrCaption').textContent = 'Exact Piece QR: ' + first.tag_code;
-
-    setInspectionMode('good');
     updateInspectionUI();
 
     const modal = new bootstrap.Modal(document.getElementById('pieceInspectionModal'));
     modal.show();
-}
-
-function setInspectionMode(mode) {
-    inspState.mode = mode;
-    const btnGood = document.getElementById('btnModeGood');
-    const btnDamage = document.getElementById('btnModeDamage');
-    const alertBox = document.getElementById('inspModeAlert');
-    const btnText = document.getElementById('btnInwardText');
-    const btnNext = document.getElementById('btnInwardNextPiece');
-
-    if (mode === 'good') {
-        btnGood.className = 'btn btn-success fw-bold py-2 flex-grow-1 shadow-sm';
-        btnDamage.className = 'btn btn-outline-danger fw-bold py-2 flex-grow-1';
-        alertBox.className = 'alert alert-success py-2 text-center fs-8 fw-bold mb-3';
-        alertBox.innerHTML = '<i class="bi bi-check2-all me-1"></i> Currently scanning verified sellable stock';
-        btnText.textContent = 'Inward Next Piece (Good Product)';
-        btnNext.className = 'btn btn-success btn-lg fw-bold py-3';
-    } else {
-        btnGood.className = 'btn btn-outline-success fw-bold py-2 flex-grow-1';
-        btnDamage.className = 'btn btn-danger fw-bold py-2 flex-grow-1 shadow-sm';
-        alertBox.className = 'alert alert-danger py-2 text-center fs-8 fw-bold mb-3';
-        alertBox.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Currently scanning damaged/quarantined stock';
-        btnText.textContent = 'Inward Next Piece (Damage Product)';
-        btnNext.className = 'btn btn-danger btn-lg fw-bold py-3';
-    }
-}
-
-function inwardNextPiece() {
-    const nextPiece = inspState.pieces.find(p => p.status === 'pending');
-    if (!nextPiece) {
-        alert('All ' + inspState.totalQty + ' pieces have already been processed!');
-        return;
-    }
-
-    const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    nextPiece.status = inspState.mode === 'good' ? 'good' : 'damaged';
-    nextPiece.scannedAt = now;
-
-    if (inspState.mode === 'good') {
-        inspState.goodCount++;
-    } else {
-        inspState.damagedCount++;
-    }
-
-    updateInspectionUI();
-}
-
-function quickFillAllGood() {
-    const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    inspState.pieces.forEach(p => {
-        if (p.status !== 'good') {
-            if (p.status === 'damaged') inspState.damagedCount--;
-            p.status = 'good';
-            p.scannedAt = now;
-            inspState.goodCount++;
-        }
-    });
-    updateInspectionUI();
-}
-
-function resetInspection() {
-    inspState.goodCount = 0;
-    inspState.damagedCount = 0;
-    inspState.pieces.forEach(p => {
-        p.status = 'pending';
-        p.scannedAt = null;
-    });
-    updateInspectionUI();
 }
 
 function filterPieceCards(filter) {
@@ -970,33 +821,49 @@ function filterPieceCards(filter) {
 }
 
 function updateInspectionUI() {
+    const perItemCounts = {};
+    inspState.itemIds.forEach(id => { perItemCounts[id] = { good: 0, damaged: 0, pieces: [] }; });
+    inspState.pieces.forEach(piece => {
+        if (!perItemCounts[piece.itemId]) perItemCounts[piece.itemId] = { good: 0, damaged: 0, pieces: [] };
+        perItemCounts[piece.itemId].pieces.push(piece);
+        if (piece.status === 'good') perItemCounts[piece.itemId].good++;
+        if (piece.status === 'damaged') perItemCounts[piece.itemId].damaged++;
+    });
+    inspState.goodCount = inspState.pieces.filter(piece => piece.status === 'good').length;
+    inspState.damagedCount = inspState.pieces.filter(piece => piece.status === 'damaged').length;
     const missing = inspState.totalQty - (inspState.goodCount + inspState.damagedCount);
     document.getElementById('inspGood').textContent = inspState.goodCount;
     document.getElementById('inspDamaged').textContent = inspState.damagedCount;
     document.getElementById('inspMissing').textContent = Math.max(0, missing);
 
     // Sync with parent form inputs in real-time
-    const parentRecv = document.getElementById('input_recv_' + inspState.itemId);
-    const parentDmg = document.getElementById('input_dmg_' + inspState.itemId);
-    if (parentRecv) parentRecv.value = inspState.goodCount;
-    if (parentDmg) parentDmg.value = inspState.damagedCount;
-
-    // Cache piece statuses for draft restoration
-    SAVED_PIECE_STATUSES[inspState.itemId] = inspState.pieces.map(p => ({
-        num: p.num,
-        tag: p.tag,
-        status: p.status,
-        scannedAt: p.scannedAt
-    }));
+    // Keep each original allocation row's quantities intact for the receive endpoint.
+    Object.entries(perItemCounts).forEach(([itemId, counts]) => {
+        const parentRecv = document.getElementById('input_recv_' + itemId);
+        const parentDmg = document.getElementById('input_dmg_' + itemId);
+        if (parentRecv) parentRecv.value = counts.good;
+        if (parentDmg) parentDmg.value = counts.damaged;
+        SAVED_PIECE_STATUSES[itemId] = counts.pieces.map(piece => ({
+            num: piece.num,
+            tag: piece.tag,
+            status: piece.status,
+            scannedAt: piece.scannedAt
+        }));
+    });
 
     // Real-time recalculation of Difference and Status on the parent table and save draft
-    updateMatrixRow(inspState.itemId, true);
+    updateMatrixRow(inspState.itemIds[0], true);
 
     document.getElementById('cntFilterPending').textContent = Math.max(0, missing);
     document.getElementById('cntFilterAll').textContent = inspState.totalQty;
     document.getElementById('cntFilterVerified').textContent = inspState.goodCount + inspState.damagedCount;
 
     const nextPiece = inspState.pieces.find(p => p.status === 'pending');
+    const mainQrPiece = nextPiece || inspState.pieces[inspState.pieces.length - 1];
+    if (mainQrPiece) {
+        document.getElementById('inspMainQrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=' + encodeURIComponent(mainQrPiece.tag || mainQrPiece.sku);
+        document.getElementById('inspMainQrCaption').textContent = mainQrPiece.tag || mainQrPiece.sku;
+    }
     if (nextPiece) {
         document.getElementById('inspNextTag').textContent = nextPiece.tag + ' (Piece #' + nextPiece.num + ')';
     } else {
@@ -1031,8 +898,7 @@ function renderPieceCards() {
         let badgeHtml = `<span class="badge bg-dark text-white font-monospace fs-9">${p.tag}</span>`;
         let statusBadge = `<span class="badge bg-warning text-dark font-monospace fs-9">PENDING</span>`;
 
-        const qrColor = p.status === 'good' ? '006600' : (p.status === 'damaged' ? 'cc0000' : '000000');
-        const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=110x110&color=' + qrColor + '&data=' + encodeURIComponent(p.qrPayload);
+        const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=' + encodeURIComponent(p.tag || p.qrPayload);
 
         if (p.status === 'good') {
             borderClass = 'border-2 border-success bg-success bg-opacity-10';
@@ -1104,13 +970,7 @@ function updateGlobalSummaryStats() {
     let grandDmg = 0;
 
     for (const itemId of Object.keys(ITEM_PIECES_MAP)) {
-        const expCell = document.getElementById('exp_qty_' + itemId);
-        let exp = 0;
-        if (expCell && expCell.getAttribute('data-expected')) {
-            exp = parseInt(expCell.getAttribute('data-expected')) || 0;
-        } else if (ITEM_PIECES_MAP[itemId]) {
-            exp = ITEM_PIECES_MAP[itemId].length;
-        }
+        const exp = parseInt(ITEM_EXPECTED_MAP[itemId]) || (ITEM_PIECES_MAP[itemId] || []).length;
         const recvInput = document.getElementById('input_recv_' + itemId);
         const dmgInput = document.getElementById('input_dmg_' + itemId);
         const r = recvInput ? (parseInt(recvInput.value) || 0) : 0;
@@ -1144,48 +1004,31 @@ function updateGlobalSummaryStats() {
 }
 
 function updateMatrixRow(itemId, shouldSaveDraft = true) {
-    const recvInput = document.getElementById('input_recv_' + itemId);
-    const dmgInput = document.getElementById('input_dmg_' + itemId);
-    const diffCol = document.getElementById('diff_col_' + itemId);
-    const statusCol = document.getElementById('status_col_' + itemId);
-    const scannedCell = document.getElementById('scanned_qty_' + itemId);
-    const missingCell = document.getElementById('missing_qty_' + itemId);
-    const expCell = document.getElementById('exp_qty_' + itemId);
+    const groupId = ITEM_TO_GROUP_MAP[String(itemId)] || String(itemId);
+    const memberIds = ITEM_GROUPS_MAP[groupId] || [String(itemId)];
+    const recvDisplay = document.getElementById('group_recv_' + groupId);
+    const dmgDisplay = document.getElementById('group_dmg_' + groupId);
+    const diffCol = document.getElementById('diff_col_' + groupId);
+    const statusCol = document.getElementById('status_col_' + groupId);
+    const expCell = document.getElementById('exp_qty_' + groupId);
 
-    if (!recvInput || !dmgInput || !diffCol || !statusCol) return;
+    if (!diffCol || !statusCol) return;
 
-    let expected = 0;
-    if (expCell && expCell.getAttribute('data-expected')) {
-        expected = parseInt(expCell.getAttribute('data-expected')) || 0;
-    } else if (ITEM_PIECES_MAP[itemId]) {
-        expected = ITEM_PIECES_MAP[itemId].length;
-    }
-
-    let recv = parseInt(recvInput.value) || 0;
-    let dmg = parseInt(dmgInput.value) || 0;
-
-    if (recv < 0) { recv = 0; recvInput.value = 0; }
-    if (dmg < 0) { dmg = 0; dmgInput.value = 0; }
+    let expected = expCell ? (parseInt(expCell.getAttribute('data-expected')) || 0) : 0;
+    let recv = 0;
+    let dmg = 0;
+    memberIds.forEach(memberId => {
+        const recvInput = document.getElementById('input_recv_' + memberId);
+        const dmgInput = document.getElementById('input_dmg_' + memberId);
+        if (recvInput) recv += Math.max(0, parseInt(recvInput.value) || 0);
+        if (dmgInput) dmg += Math.max(0, parseInt(dmgInput.value) || 0);
+    });
+    if (!expected) expected = memberIds.reduce((sum, memberId) => sum + ((ITEM_PIECES_MAP[memberId] || []).length), 0);
+    if (recvDisplay) recvDisplay.value = recv;
+    if (dmgDisplay) dmgDisplay.value = dmg;
 
     const totalProcessed = recv + dmg;
     const pending = expected - totalProcessed;
-
-    // 1. Update Upper Missing Table
-    if (scannedCell) {
-        scannedCell.textContent = recv + (dmg > 0 ? ` (${dmg} dmg)` : '');
-    }
-    if (missingCell) {
-        if (pending > 0) {
-            missingCell.className = 'text-end fw-bold ' + (totalProcessed > 0 ? 'text-danger' : 'text-muted');
-            missingCell.textContent = totalProcessed > 0 ? `-${pending} pcs` : `${expected} pending`;
-        } else if (pending === 0) {
-            missingCell.className = 'text-end fw-bold text-success';
-            missingCell.textContent = '0 pcs';
-        } else {
-            missingCell.className = 'text-end fw-bold text-warning';
-            missingCell.textContent = `+${Math.abs(pending)} excess`;
-        }
-    }
 
     // 2. Update Difference Column in Matrix Table
     if (pending > 0) {
@@ -1257,68 +1100,89 @@ function triggerScan() {
     if (!rawVal) return;
     const val = rawVal.toUpperCase();
 
-    const isDamageMode = document.getElementById('modeDamage')?.checked;
+    const isDamageMode = activeScanMode === 'damage';
     let matched = false;
 
-    // Check matching piece tag code, QR payload, or SKU
+    // Match a specific serialized piece first. SKU scans select the next pending piece.
     for (const [itemId, pieces] of Object.entries(ITEM_PIECES_MAP)) {
         for (let idx = 0; idx < pieces.length; idx++) {
             const p = pieces[idx];
             const tag = (p.tag_code || '').toUpperCase();
             const sku = (p.sku || '').toUpperCase();
             const payload = (p.qr_payload || '').toUpperCase();
+            const exactPieceMatch = (!!tag && (val === tag || val.includes(tag))) || (!!payload && val === payload);
+            const skuMatch = !!sku && (val === sku || (sku.length > 5 && val.includes(sku)));
+            if (!exactPieceMatch && !skuMatch) continue;
 
-            if (val === tag || val.includes(tag) || val === payload || val === sku || (sku.length > 5 && val.includes(sku))) {
-                const recvInput = document.getElementById('input_recv_' + itemId);
-                const dmgInput = document.getElementById('input_dmg_' + itemId);
-                const maxQty = pieces.length;
+            const recvInput = document.getElementById('input_recv_' + itemId);
+            const dmgInput = document.getElementById('input_dmg_' + itemId);
+            const curRecv = recvInput ? (parseInt(recvInput.value) || 0) : 0;
+            const curDmg = dmgInput ? (parseInt(dmgInput.value) || 0) : 0;
+            if (!SAVED_PIECE_STATUSES[itemId]) {
+                SAVED_PIECE_STATUSES[itemId] = pieces.map((pc, pieceIdx) => ({
+                    num: pc.piece_no || (pieceIdx + 1),
+                    tag: pc.tag_code,
+                    status: pieceIdx < curRecv ? 'good' : (pieceIdx < curRecv + curDmg ? 'damaged' : 'pending'),
+                    scannedAt: null
+                }));
+            }
 
-                let curRecv = recvInput ? (parseInt(recvInput.value) || 0) : 0;
-                let curDmg = dmgInput ? (parseInt(dmgInput.value) || 0) : 0;
-
-                if (curRecv + curDmg < maxQty) {
-                    if (isDamageMode) {
-                        if (dmgInput) dmgInput.value = curDmg + 1;
-                    } else {
-                        if (recvInput) recvInput.value = curRecv + 1;
-                    }
-
-                    // Update piece status cache if we matched specific piece
-                    if (!SAVED_PIECE_STATUSES[itemId]) {
-                        SAVED_PIECE_STATUSES[itemId] = pieces.map((pc, i) => ({
-                            num: pc.piece_no || (i + 1),
-                            tag: pc.tag_code,
-                            status: 'pending',
-                            scannedAt: null
-                        }));
-                    }
-                    const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    if (val === tag || val.includes(tag)) {
-                        SAVED_PIECE_STATUSES[itemId][idx].status = isDamageMode ? 'damaged' : 'good';
-                        SAVED_PIECE_STATUSES[itemId][idx].scannedAt = now;
-                    } else {
-                        const pendingPiece = SAVED_PIECE_STATUSES[itemId].find(pc => pc.status === 'pending');
-                        if (pendingPiece) {
-                            pendingPiece.status = isDamageMode ? 'damaged' : 'good';
-                            pendingPiece.scannedAt = now;
-                        }
-                    }
-                }
+            const pieceStatuses = SAVED_PIECE_STATUSES[itemId];
+            const targetIdx = exactPieceMatch ? idx : pieceStatuses.findIndex(piece => piece.status === 'pending');
+            const targetStatus = pieceStatuses[targetIdx];
+            if (!targetStatus || targetStatus.status !== 'pending') {
+                alert(targetStatus ? `Piece ${targetStatus.tag} was already scanned.` : 'There are no pending pieces left for this product.');
                 matched = true;
-                updateMatrixRow(itemId, true);
                 break;
             }
+
+            const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            targetStatus.status = isDamageMode ? 'damaged' : 'good';
+            targetStatus.scannedAt = now;
+            const recvCount = pieceStatuses.filter(piece => piece.status === 'good').length;
+            const damageCount = pieceStatuses.filter(piece => piece.status === 'damaged').length;
+            if (recvInput) recvInput.value = recvCount;
+            if (dmgInput) dmgInput.value = damageCount;
+
+            const inspectionModalOpen = document.getElementById('pieceInspectionModal')?.classList.contains('show');
+            const inspectionPiece = inspState.pieces.find(piece => piece.tag === targetStatus.tag);
+            if (inspectionModalOpen && inspState.itemIds.includes(String(itemId)) && inspectionPiece) {
+                inspectionPiece.status = targetStatus.status;
+                inspectionPiece.scannedAt = now;
+                updateInspectionUI();
+            } else {
+                updateMatrixRow(itemId, true);
+            }
+            matched = true;
+            break;
         }
         if (matched) break;
     }
 
     if (!matched && (val === '<?= strtoupper($dispNum) ?>' || val.includes('ALC-') || val.includes('OUT-'))) {
-        quickFillAll();
+        if (isDamageMode) {
+            alert('Master carton scans can only mark pieces as intact. Select Good mode to receive the full carton.');
+        } else {
+            quickFillAll();
+        }
         matched = true;
     }
 
     input.value = '';
     input.focus();
+}
+
+function setScanMode(mode) {
+    activeScanMode = mode === 'damage' ? 'damage' : 'good';
+    const goodButton = document.getElementById('scanModeGood');
+    const damageButton = document.getElementById('scanModeDamage');
+    if (!goodButton || !damageButton) return;
+
+    const isGood = activeScanMode === 'good';
+    goodButton.className = isGood ? 'btn btn-success fw-semibold' : 'btn btn-outline-success fw-semibold';
+    damageButton.className = isGood ? 'btn btn-outline-danger fw-semibold' : 'btn btn-danger fw-semibold';
+    goodButton.setAttribute('aria-pressed', isGood ? 'true' : 'false');
+    damageButton.setAttribute('aria-pressed', isGood ? 'false' : 'true');
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1335,11 +1199,5 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    const notesInput = document.querySelector('input[name="notes"]');
-    if (notesInput) {
-        notesInput.addEventListener('input', function() {
-            saveInwardDraft();
-        });
-    }
 });
 </script>

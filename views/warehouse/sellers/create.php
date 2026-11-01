@@ -128,7 +128,7 @@ $isEditMode = (!empty($_GET['mode']) && $_GET['mode'] === 'edit');
                             <div id="supplierTextInputWrapper" class="d-none">
                                 <div class="input-group">
                                     <span class="input-group-text bg-light text-success border-success-subtle"><i class="bi bi-person-plus-fill text-success"></i></span>
-                                    <input type="text" id="newSupplierNameInput" class="form-control fw-semibold border-success-subtle" placeholder="Enter new contact person / supplier name..." maxlength="150" oninput="onNewSupplierNameInput(this.value)">
+                                    <input type="text" id="newSupplierNameInput" class="form-control fw-semibold border-success-subtle" placeholder="Enter new contact person / supplier name..." minlength="2" maxlength="150" oninput="onNewSupplierNameInput(this.value)">
                                     <button type="button" class="btn btn-outline-secondary btn-sm px-2.5" onclick="setSupplierMode('existing')" title="Switch to existing supplier dropdown">
                                         <i class="bi bi-arrow-return-left me-1"></i> Pick Existing
                                     </button>
@@ -189,7 +189,7 @@ $isEditMode = (!empty($_GET['mode']) && $_GET['mode'] === 'edit');
                             <!-- Mode B: Direct Input for Newly Created Brand -->
                             <div id="brandTextInputWrapper" class="d-none">
                                 <div class="input-group">
-                                    <input type="text" name="new_brand_name" id="newBrandNameInput" class="form-control" placeholder="Enter new brand name..." maxlength="150">
+                                    <input type="text" name="new_brand_name" id="newBrandNameInput" class="form-control" placeholder="Enter new brand name..." minlength="2" maxlength="150">
                                     <button type="button" class="btn btn-outline-secondary" onclick="setBrandMode('existing')" title="Select from existing brands">
                                         <i class="bi bi-arrow-return-left"></i>
                                     </button>
@@ -204,7 +204,7 @@ $isEditMode = (!empty($_GET['mode']) && $_GET['mode'] === 'edit');
                             <label class="form-label small fw-semibold">Mobile Number</label>
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text bg-light">+91</span>
-                                <input type="tel" name="phone" id="supplierPhone" class="form-control" placeholder="9876543210" maxlength="15">
+                                <input type="tel" name="phone" id="supplierPhone" class="form-control" placeholder="9876543210" inputmode="numeric" pattern="[6-9][0-9]{9}" maxlength="10" title="Enter a valid 10-digit Indian mobile number">
                             </div>
                         </div>
 
@@ -214,8 +214,8 @@ $isEditMode = (!empty($_GET['mode']) && $_GET['mode'] === 'edit');
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label small fw-semibold">GSTIN (15 Digits)</label>
-                            <input type="text" name="gst_number" id="supplierGst" class="form-control form-control-sm font-monospace" placeholder="33AAAAA0000A1Z5" maxlength="15" style="text-transform: uppercase;">
+                            <label class="form-label small fw-semibold">GSTIN (15 Characters)</label>
+                            <input type="text" name="gst_number" id="supplierGst" class="form-control form-control-sm font-monospace" placeholder="33AAAAA0000A1Z5" maxlength="15" pattern="[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z][1-9A-Za-z][Zz][0-9A-Za-z]" title="Enter a valid 15-character GSTIN" style="text-transform: uppercase;">
                         </div>
 
                         <div class="col-12">

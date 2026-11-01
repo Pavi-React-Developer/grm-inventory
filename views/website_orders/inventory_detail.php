@@ -27,6 +27,10 @@ $tagStats = [
 $firstTag = !empty($pieceTags) ? ($pieceTags[0]['tag_code'] ?? '') : '';
 $lastTag  = !empty($pieceTags) ? ($pieceTags[count($pieceTags) - 1]['tag_code'] ?? '') : '';
 $tagRangeStr = ($firstTag && $lastTag) ? ($firstTag === $lastTag ? $firstTag : "{$firstTag} → {$lastTag}") : 'N/A';
+usort($pieceTags, static function ($a, $b) {
+    $priority = ['AVAILABLE' => 0, 'DAMAGED' => 1, 'IN_TRANSIT' => 2, 'SOLD' => 3, 'RETURNED' => 4];
+    return ($priority[strtoupper($a['status'] ?? '')] ?? 5) <=> ($priority[strtoupper($b['status'] ?? '')] ?? 5);
+});
 ?>
 
 <!-- QR Code Library -->
@@ -115,22 +119,6 @@ $tagRangeStr = ($firstTag && $lastTag) ? ($firstTag === $lastTag ? $firstTag : "
             <p class="text-muted small mb-0 font-monospace">Product Code: <?= htmlspecialchars($item['product_code'] ?? 'N/A') ?> | Tag Range: <span class="fw-semibold text-primary"><?= htmlspecialchars($tagRangeStr) ?></span></p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-outline-success rounded-pill px-3 shadow-sm fw-semibold" 
-                    onclick="openEditPriceModal(<?= (int)$item['variant_id'] ?>, <?= htmlspecialchars(json_encode($item['sku']), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($item['product_name']), ENT_QUOTES, 'UTF-8') ?>, <?= (float)$sellingPrice ?>, <?= (float)$mrp ?>, <?= (float)$cost ?>)">
-                <i class="bi bi-tag me-1"></i> Edit Price
-            </button>
-            <button type="button" class="btn btn-outline-primary rounded-pill px-3 shadow-sm fw-semibold" onclick="printAllPieceTags()">
-                <i class="bi bi-printer me-1"></i> Print Piece QR Labels
-            </button>
-            <a href="<?= url('warehouse/website-orders/damage/create?variant_id=' . $item['variant_id']) ?>" class="btn btn-outline-danger rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-shield-x me-1"></i> Report Damage
-            </a>
-            <a href="<?= url('sales/website/create?variant_id=' . $item['variant_id'] . '&sku=' . urlencode($item['sku'])) ?>" class="btn btn-success rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-cart-plus me-1"></i> Create Website Sale
-            </a>
-            <a href="<?= url('warehouse/website-orders/requests/create') ?>" class="btn btn-primary rounded-pill px-3 shadow-sm fw-semibold">
-                <i class="bi bi-box-arrow-in-down me-1"></i> Request Warehouse Stock
-            </a>
             <a href="<?= url('warehouse/website-orders/allocations') ?>" class="btn btn-outline-secondary rounded-pill px-3 fw-semibold">
                 <i class="bi bi-arrow-left me-1"></i> Back to Inventory
             </a>
@@ -149,11 +137,6 @@ $tagRangeStr = ($firstTag && $lastTag) ? ($firstTag === $lastTag ? $firstTag : "
                                 <img src="<?= htmlspecialchars($imgUrl) ?>" alt="<?= htmlspecialchars($item['product_name']) ?>" 
                                      class="img-fluid rounded-4 shadow-sm border bg-white" 
                                      style="max-height: 220px; width: 100%; object-fit: cover;">
-                            <?php else: ?>
-                                <div class="rounded-4 bg-white border d-flex flex-column align-items-center justify-content-center shadow-sm p-4" style="min-height: 180px;">
-                                    <i class="bi bi-box-seam text-primary opacity-50" style="font-size: 3.5rem;"></i>
-                                    <span class="text-muted small mt-2 fw-semibold">No Image Uploaded</span>
-                                </div>
                             <?php endif; ?>
 
                             <?php if ($discount > 0): ?>
@@ -165,21 +148,6 @@ $tagRangeStr = ($firstTag && $lastTag) ? ($firstTag === $lastTag ? $firstTag : "
                             <?php endif; ?>
                         </div>
 
-                        <!-- Category Badges -->
-                        <div class="d-flex justify-content-center flex-wrap gap-1 mb-3">
-                            <?php if (!empty($item['category_name'])): ?>
-                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle"><?= htmlspecialchars($item['category_name']) ?></span>
-                            <?php endif; ?>
-                            <?php if (!empty($item['subcategory_name'])): ?>
-                                <span class="badge bg-light text-dark border">› <?= htmlspecialchars($item['subcategory_name']) ?></span>
-                            <?php endif; ?>
-                            <?php if (!empty($item['size_name'])): ?>
-                                <span class="badge bg-light text-dark border">Size: <?= htmlspecialchars($item['size_name']) ?></span>
-                            <?php endif; ?>
-                            <?php if (!empty($item['color_name'])): ?>
-                                <span class="badge bg-light text-dark border">Color: <?= htmlspecialchars($item['color_name']) ?></span>
-                            <?php endif; ?>
-                        </div>
                     </div>
 
                     <!-- Master SKU QR Code Canvas -->
@@ -378,11 +346,6 @@ $tagRangeStr = ($firstTag && $lastTag) ? ($firstTag === $lastTag ? $firstTag : "
                     <!-- Piece KPI Filter Pills -->
                     <div class="row g-2 mb-4">
                         <div class="col-6 col-md-auto">
-                            <button type="button" class="btn btn-sm btn-outline-dark rounded-pill w-100 fw-semibold active piece-filter-btn" data-filter="all" onclick="filterPieceTags('all', this)">
-                                All Pieces <span class="badge bg-dark text-white rounded-pill ms-1"><?= $tagStats['total'] ?></span>
-                            </button>
-                        </div>
-                        <div class="col-6 col-md-auto">
                             <button type="button" class="btn btn-sm btn-outline-success rounded-pill w-100 fw-semibold piece-filter-btn" data-filter="AVAILABLE" onclick="filterPieceTags('AVAILABLE', this)">
                                 Available in Stock <span class="badge bg-success rounded-pill ms-1"><?= $tagStats['available'] ?></span>
                             </button>
@@ -470,7 +433,7 @@ $tagRangeStr = ($firstTag && $lastTag) ? ($firstTag === $lastTag ? $firstTag : "
                                             <div class="row g-2 align-items-center">
                                                 <!-- Dynamic QR Canvas for this Piece -->
                                                 <div class="col-4 text-center position-relative">
-                                                    <div class="p-1 bg-white border rounded shadow-sm d-inline-block position-relative">
+                                                    <div class="p-2 bg-white border rounded-3 shadow-sm d-inline-block position-relative">
                                                         <div id="pieceQr_<?= $pt['piece_no'] ?>" class="piece-qr-canvas" data-payload="<?= htmlspecialchars($pt['qr_payload']) ?>"></div>
                                                         <?php if ($isSold && !$isExchanged): ?>
                                                              <span class="sold-watermark-overlay">SOLD</span>
@@ -478,7 +441,7 @@ $tagRangeStr = ($firstTag && $lastTag) ? ($firstTag === $lastTag ? $firstTag : "
                                                              <span class="sold-watermark-overlay" style="background: rgba(124, 58, 237, 0.85);">EXCHANGED</span>
                                                         <?php endif; ?>
                                                     </div>
-                                                    <small class="d-block text-muted mt-1 font-monospace" style="font-size: 10px;"><?= ($isSold && !$isExchanged) ? 'Billed QR' : 'Scannable QR' ?></small>
+                                                    <small class="d-block text-muted mt-1" style="font-size: 10px;">Piece QR</small>
                                                 </div>
                                                 <!-- Piece Info -->
                                                 <div class="col-8">
@@ -491,8 +454,13 @@ $tagRangeStr = ($firstTag && $lastTag) ? ($firstTag === $lastTag ? $firstTag : "
                                                     <div class="fw-bold font-monospace <?= ($isSold && !$isExchanged) ? 'sold-tag-box' : 'text-primary bg-light' ?> fs-6 mb-1 p-1 rounded border text-center">
                                                         🏷️ <?= htmlspecialchars($pt['tag_code']) ?>
                                                     </div>
-                                                    <div class="small text-muted mb-1 font-monospace text-truncate" style="font-size: 11px;" title="<?= htmlspecialchars($pt['qr_payload']) ?>">
-                                                        <span class="text-dark fw-semibold">Payload:</span> <?= htmlspecialchars($pt['qr_payload']) ?>
+                                                    <div class="small mb-1">
+                                                        <span class="text-muted">Base price:</span>
+                                                        <strong class="text-dark">₹<?= number_format((float)($pt['mrp'] ?? 0), 2) ?></strong>
+                                                    </div>
+                                                    <div class="small mb-1">
+                                                        <span class="text-muted">Discount price:</span>
+                                                        <strong class="text-success">₹<?= number_format((float)($pt['disc'] ?? 0), 2) ?></strong>
                                                     </div>
                                                     <div class="small text-muted" style="font-size: 11px;">
                                                         <i class="bi bi-box-seam me-1"></i>Batch: <span class="fw-semibold text-dark"><?= htmlspecialchars($pt['allocation_number']) ?></span>

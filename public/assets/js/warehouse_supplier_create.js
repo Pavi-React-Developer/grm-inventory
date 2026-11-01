@@ -199,7 +199,7 @@ function onSupplierDropdownSelect(id) {
     if (supplierNameInput) supplierNameInput.value = supplier.name || '';
 
     document.getElementById('supplierCompany').value = supplier.company || '';
-    document.getElementById('supplierPhone').value = supplier.phone || '';
+    document.getElementById('supplierPhone').value = normalizeSupplierPhone(supplier.phone || '');
     document.getElementById('supplierEmail').value = supplier.email || '';
     document.getElementById('supplierGst').value = supplier.gst_number || '';
 
@@ -463,7 +463,35 @@ function handlePhase1Submit(event) {
     if (supplierNameInput) supplierNameInput.value = (supplierNameInput.value || '').trim();
 
     const phoneInput = document.getElementById('supplierPhone');
-    const normalizedPhone = normalizeSupplierPhone(phoneInput ? phoneInput.value : '');
+    const phoneValue = phoneInput ? phoneInput.value.trim() : '';
+    const phoneDigits = phoneValue.replace(/\D/g, '');
+    if (phoneValue && !/^[6-9]\d{9}$/.test(phoneDigits)) {
+        event.preventDefault();
+        if (phoneInput) phoneInput.focus();
+        showValidationAlert('Enter a valid 10-digit Indian mobile number.');
+        return false;
+    }
+
+    const emailInput = document.getElementById('supplierEmail');
+    const emailValue = emailInput ? emailInput.value.trim() : '';
+    if (emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+        event.preventDefault();
+        if (emailInput) emailInput.focus();
+        showValidationAlert('Enter a valid email address.');
+        return false;
+    }
+
+    const gstInput = document.getElementById('supplierGst');
+    const gstValue = gstInput ? gstInput.value.trim().toUpperCase() : '';
+    if (gstInput) gstInput.value = gstValue;
+    if (gstValue && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstValue)) {
+        event.preventDefault();
+        if (gstInput) gstInput.focus();
+        showValidationAlert('Enter a valid 15-character GSTIN.');
+        return false;
+    }
+
+    const normalizedPhone = normalizeSupplierPhone(phoneValue);
     const selectedExistingId = Number(document.getElementById('existingSupplierId')?.value || 0);
     if (normalizedPhone) {
         const duplicate = existingSuppliersData.some(function (supplier) {

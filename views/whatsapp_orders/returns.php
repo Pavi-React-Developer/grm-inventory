@@ -4,12 +4,6 @@
         <span class="text-muted">Process customer product returns, size &amp; color exchanges, and refunds for WhatsApp orders</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="<?= url('warehouse/whatsapp-orders') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-speedometer2 me-1"></i> Dashboard
-        </a>
-        <a href="<?= url('warehouse/whatsapp-orders/history') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-clock-history me-1"></i> Orders History
-        </a>
         <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#newReturnModal">
             <i class="bi bi-plus-circle me-1"></i> New Return / Exchange
         </button>

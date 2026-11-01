@@ -12,12 +12,6 @@
         <span class="text-muted small">Manage transit-damaged inward garments, defective stock quarantine, and batch outwards back to central warehouse.</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="<?= url('warehouse/whatsapp-orders/damage/outward/create') ?>" class="btn btn-warning rounded-pill px-3 shadow-sm fw-semibold text-dark">
-            <i class="bi bi-box-arrow-up-right me-1"></i> Outward to Warehouse
-        </a>
-        <a href="<?= url('warehouse/whatsapp-orders/damage/outward') ?>" class="btn btn-outline-secondary rounded-pill px-3 fw-semibold">
-            <i class="bi bi-clock-history me-1"></i> Outward Batches
-        </a>
         <a href="<?= url('warehouse/whatsapp-orders/damage/create') ?>" class="btn btn-danger rounded-pill px-3 shadow-sm fw-semibold">
             <i class="bi bi-plus-lg me-1"></i> Log Damaged Stock
         </a>
@@ -164,9 +158,6 @@
             <span class="badge bg-danger-subtle text-danger fw-semibold px-3 py-2 rounded-pill">
                 Showing <?= count($damages) ?> records
             </span>
-            <a href="<?= url('warehouse/whatsapp-orders/damage/outward/create') ?>" class="btn btn-sm btn-outline-warning text-dark rounded-pill px-3 fw-bold">
-                <i class="bi bi-truck me-1"></i> Outward Selected
-            </a>
         </div>
     </div>
     <div class="card-body p-0 table-responsive">
@@ -287,11 +278,6 @@
                                     <a href="<?= url('warehouse/whatsapp-orders/damage/view/' . $d['id']) ?>" class="btn btn-sm btn-outline-primary rounded-pill px-2" title="View Full Damage Details">
                                         <i class="bi bi-eye-fill"></i>
                                     </a>
-                                    <?php if (in_array($d['status'], ['LOGGED', 'INSPECTED'])): ?>
-                                        <a href="<?= url('warehouse/whatsapp-orders/damage/outward/create?variant_id=' . $d['variant_id']) ?>" class="btn btn-sm btn-warning text-dark rounded-pill px-2 shadow-sm" title="Outward Batch to Warehouse">
-                                            <i class="bi bi-box-arrow-up-right"></i>
-                                        </a>
-                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>

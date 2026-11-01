@@ -352,12 +352,12 @@
                         <div class="d-flex align-items-center gap-1">
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text py-0 px-1 font-monospace fs-8 text-muted bg-light">From</span>
-                                <input type="number" min="1" step="1" id="qfSeriesFrom" class="form-control form-control-sm text-center px-1 font-monospace fw-bold" value="1" placeholder="1">
+                                <input type="number" min="1" step="1" id="qfSeriesFrom" class="form-control form-control-sm text-center px-1 font-monospace fw-bold" value="1" placeholder="1" disabled>
                             </div>
                             <span class="text-muted small">&rarr;</span>
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text py-0 px-1 font-monospace fs-8 text-muted bg-light">End</span>
-                                <input type="number" min="1" step="1" id="qfSeriesEnd" class="form-control form-control-sm text-center px-1 font-monospace fw-bold" value="15" placeholder="15">
+                                <input type="number" min="1" step="1" id="qfSeriesEnd" class="form-control form-control-sm text-center px-1 font-monospace fw-bold" value="1" placeholder="1" disabled>
                             </div>
                         </div>
                     </div>
@@ -1224,6 +1224,7 @@ function renderAddedProductsTable() {
                                 <span class="input-group-text py-0 px-1 font-monospace fs-8 text-muted bg-white">From</span>
                                 <input type="number" min="1" step="1" id="from_${item.id}"
                                        class="form-control form-control-sm text-center px-1 font-monospace fw-bold series-range-input"
+                                       disabled
                                        value="${sFromVal}"
                                        placeholder="1"
                                        oninput="updateItemField(${item.id}, 'series_from', this.value)">
@@ -1233,6 +1234,7 @@ function renderAddedProductsTable() {
                                 <span class="input-group-text py-0 px-1 font-monospace fs-8 text-muted bg-white">End</span>
                                 <input type="number" min="1" step="1" id="end_${item.id}"
                                        class="form-control form-control-sm text-center px-1 font-monospace fw-bold series-range-input"
+                                       disabled
                                        value="${sEndVal}"
                                        placeholder="1"
                                        oninput="updateItemField(${item.id}, 'series_end', this.value)">

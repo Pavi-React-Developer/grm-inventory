@@ -25,15 +25,6 @@ $currSearch = $filters['search'] ?? '';
         <a href="<?= url('warehouse/whatsapp-orders/requests/create') ?>" class="btn btn-primary rounded-pill px-3 shadow-sm fw-semibold">
             <i class="bi bi-plus-lg me-1"></i> Request Warehouse Stock
         </a>
-        <a href="<?= url('warehouse/whatsapp-orders/damage') ?>" class="btn btn-outline-danger rounded-pill px-3 shadow-sm fw-semibold">
-            <i class="bi bi-exclamation-octagon me-1"></i> Damage Management
-        </a>
-        <a href="<?= url('sales/whatsapp/create') ?>" class="btn btn-success rounded-pill px-3 shadow-sm fw-semibold">
-            <i class="bi bi-cart-plus me-1"></i> Create WhatsApp Order
-        </a>
-        <a href="<?= url('warehouse/whatsapp-orders/history') ?>" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm fw-semibold">
-            <i class="bi bi-clock-history me-1"></i> Orders History
-        </a>
     </div>
 </div>
 
@@ -171,12 +162,6 @@ $currSearch = $filters['search'] ?? '';
                 <a class="nav-link fw-semibold <?= $currTab === 'stock' ? 'active text-success border-success border-bottom-0' : 'text-muted' ?>" 
                    href="<?= url('warehouse/whatsapp-orders/allocations?tab=stock') ?>">
                     <i class="bi bi-box-seam me-1"></i> Live Product Stock Balances (<?= count($inventory ?? []) ?> items)
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link fw-semibold <?= $currTab === 'allocations' ? 'active text-primary border-primary border-bottom-0' : 'text-muted' ?>" 
-                   href="<?= url('warehouse/whatsapp-orders/allocations?tab=allocations') ?>">
-                    <i class="bi bi-truck me-1"></i> Warehouse Inward Allocations (<?= count($allocations ?? []) ?> records)
                 </a>
             </li>
         </ul>
@@ -434,24 +419,6 @@ $currSearch = $filters['search'] ?? '';
                                             title="View Full Product History &amp; Stock Ledger">
                                             <i class="bi bi-clock-history me-1"></i>History
                                         </a>
-                                        <?php if ($avail > 0): ?>
-                                            <a href="<?= url('warehouse/whatsapp-orders/damage/create?variant_id=' . $it['variant_id']) ?>" 
-                                                class="btn btn-xs btn-outline-danger px-2 py-1" 
-                                                title="Report Damage for this Product">
-                                                <i class="bi bi-shield-x"></i>
-                                            </a>
-                                            <a href="<?= url('sales/whatsapp/create') ?>" 
-                                                class="btn btn-xs btn-outline-success px-2 py-1" 
-                                                title="Sell on WhatsApp">
-                                                <i class="bi bi-cart-plus"></i>
-                                            </a>
-                                        <?php else: ?>
-                                            <a href="<?= url('warehouse/whatsapp-orders/requests/create') ?>" 
-                                                class="btn btn-xs btn-outline-secondary px-2 py-1" 
-                                                title="Request Stock from Warehouse">
-                                                <i class="bi bi-plus-lg"></i>
-                                            </a>
-                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
