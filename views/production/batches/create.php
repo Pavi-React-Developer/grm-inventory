@@ -137,7 +137,7 @@
                                     <tr>
                                         <th>Variant</th>
                                         <th>QC Status &amp; Remaining</th>
-                                        <th>Exact QR Code(s) to Pack</th>
+                                        <th>Approved QR Code(s) to Pack</th>
                                         <th style="width: 180px;">Quantity to Pack <span class="text-danger">*</span></th>
                                     </tr>
                                 </thead>
@@ -148,6 +148,8 @@
                                         $hasAvailableTags = !empty($availablePieceTags);
                                         $packQty = $hasAvailableTags ? min($remQty, count($availablePieceTags)) : $remQty;
                                         $isZero = ($packQty <= 0);
+                                        $rejectedQty = (int)($it['rejected_qty'] ?? 0);
+                                        $reworkQty = (int)($it['rework_qty'] ?? 0);
                                     ?>
                                         <tr class="variant-item-row <?= $isZero ? 'table-light opacity-75' : '' ?>" data-variant-name="<?= e($it['size_name'] ?? $it['display_size'] ?? 'Standard') ?> / <?= e($it['color_name'] ?? $it['display_color'] ?? 'Assorted') ?>" data-passed="<?= $packQty ?>" data-is-zero="<?= $isZero ? '1' : '0' ?>">
                                             <td>
@@ -183,17 +185,47 @@
                                             </td>
                                             <td>
                                                 <?php if ($hasAvailableTags): ?>
-                                                    <select name="items[<?= $idx ?>][piece_tags][]"
-                                                            class="form-select form-select-sm piece-tags-input"
-                                                            multiple
-                                                            size="<?= min(5, count($availablePieceTags)) ?>"
-                                                            aria-label="Select exact QR codes to pack for <?= e($it['sku'] ?? '') ?>"
-                                                            <?= $isZero ? 'disabled' : '' ?>>
+                                                    <div class="small fw-semibold text-success mb-1">
+                                                        <i class="bi bi-patch-check-fill me-1"></i>
+                                                        <?= number_format(count($availablePieceTags)) ?> approved QR code(s) available
+                                                    </div>
+                                                    <?php if ($rejectedQty > 0 || $reworkQty > 0): ?>
+                                                        <div class="small text-danger mb-2">
+                                                            <?= $rejectedQty > 0 ? number_format($rejectedQty) . ' rejected' : '' ?>
+                                                            <?= $rejectedQty > 0 && $reworkQty > 0 ? ' · ' : '' ?>
+                                                            <?= $reworkQty > 0 ? number_format($reworkQty) . ' need rework' : '' ?> QR code(s) excluded.
+                                                            Re-inspect and pass them in QC before packing.
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <div class="piece-tag-picker">
+                                                        <input type="search"
+                                                               class="form-control form-control-sm piece-tag-search mb-2"
+                                                               placeholder="Search QR codes..."
+                                                               aria-label="Search QR codes for <?= e($it['sku'] ?? '') ?>"
+                                                               oninput="filterPieceTags(this)"
+                                                               <?= $isZero ? 'disabled' : '' ?>>
+                                                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                                                            <small class="text-muted piece-tag-count" aria-live="polite"></small>
+                                                            <div class="d-flex gap-1">
+                                                                <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="selectPieceTagsForQuantity(this)" <?= $isZero ? 'disabled' : '' ?>>Select Qty</button>
+                                                                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="clearPieceTags(this)" <?= $isZero ? 'disabled' : '' ?>>Clear</button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="piece-tag-options <?= $isZero ? 'opacity-50' : '' ?>">
                                                         <?php foreach ($availablePieceTags as $tagIndex => $tag): ?>
-                                                            <option value="<?= e($tag) ?>" <?= $tagIndex < $packQty ? 'selected' : '' ?>><?= e($tag) ?></option>
+                                                            <label class="piece-tag-option" data-piece-tag-option>
+                                                                <input type="checkbox"
+                                                                       name="items[<?= $idx ?>][piece_tags][]"
+                                                                       class="form-check-input piece-tags-input mt-0"
+                                                                       value="<?= e($tag) ?>"
+                                                                       <?= $tagIndex < $packQty ? 'checked' : '' ?>
+                                                                       <?= $isZero ? 'disabled' : '' ?>
+                                                                       onchange="syncPieceTagSelection(this)">
+                                                                <span class="font-monospace"><?= e($tag) ?></span>
+                                                            </label>
                                                         <?php endforeach; ?>
-                                                    </select>
-                                                    <div class="small text-muted mt-1">Select exactly the same number of QR codes as the quantity. Use Ctrl-click for multiple codes.</div>
+                                                        </div>
+                                                        <div class="small text-muted mt-1">Check QR codes to pack. The quantity updates to match your selection.</div>
                                                 <?php else: ?>
                                                     <span class="small text-muted">Individual QC QR codes are unavailable.</span>
                                                 <?php endif; ?>
@@ -207,7 +239,7 @@
                                                            max="<?= $packQty ?>"
                                                            value="<?= $packQty ?>"
                                                            <?= $isZero ? 'disabled readonly tabindex="-1"' : '' ?>
-                                                           oninput="calcPackedTotal()">
+                                                           oninput="calcPackedTotal(); updatePieceTagCounts()">
                                                     <span class="input-group-text <?= $isZero ? 'bg-light text-muted' : 'bg-light text-muted' ?>">pcs</span>
                                                 </div>
                                                 <?php if ($isZero): ?>
@@ -242,6 +274,29 @@
     </div>
 </form>
 
+<style>
+.piece-tag-options {
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.piece-tag-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.piece-tag-option:hover {
+    background: #f8f9fa;
+}
+</style>
+
 <script>
 function handleQCBatchChange(qcBatchId) {
     if (qcBatchId) {
@@ -268,8 +323,69 @@ function calcPackedTotal() {
     return total;
 }
 
+function updatePieceTagCounts() {
+    document.querySelectorAll('.variant-item-row').forEach(row => {
+        const options = row.querySelector('.piece-tag-options');
+        const countLabel = row.querySelector('.piece-tag-count');
+        const quantityInput = row.querySelector('.packed-input');
+        if (!options || !countLabel || !quantityInput) return;
+
+        const selectedCount = options.querySelectorAll('.piece-tags-input:checked').length;
+        countLabel.textContent = `${selectedCount} selected / ${quantityInput.value || 0} qty`;
+    });
+}
+
+function syncPieceTagSelection(input) {
+    const row = input.closest('.variant-item-row');
+    const options = row?.querySelector('.piece-tag-options');
+    const quantityInput = row?.querySelector('.packed-input');
+    if (!options || !quantityInput) return;
+
+    quantityInput.value = options.querySelectorAll('.piece-tags-input:checked').length;
+    quantityInput.classList.remove('is-invalid', 'border-danger');
+    options.classList.remove('is-invalid', 'border-danger');
+    updatePieceTagCounts();
+    calcPackedTotal();
+}
+
+function filterPieceTags(input) {
+    const search = input.value.trim().toLowerCase();
+    const options = input.closest('.piece-tag-picker')?.querySelectorAll('[data-piece-tag-option]') ?? [];
+    options.forEach(option => {
+        option.hidden = !option.textContent.toLowerCase().includes(search);
+    });
+}
+
+function selectPieceTagsForQuantity(button) {
+    const row = button.closest('.variant-item-row');
+    const options = row?.querySelector('.piece-tag-options');
+    const quantityInput = row?.querySelector('.packed-input');
+    if (!options || !quantityInput) return;
+
+    const quantity = Math.min(
+        parseInt(quantityInput.max, 10) || 0,
+        Math.max(0, parseInt(quantityInput.value, 10) || 0)
+    );
+    options.querySelectorAll('.piece-tags-input').forEach((checkbox, index) => {
+        checkbox.checked = index < quantity;
+    });
+    syncPieceTagSelection(options.querySelector('.piece-tags-input'));
+}
+
+function clearPieceTags(button) {
+    const row = button.closest('.variant-item-row');
+    const options = row?.querySelector('.piece-tag-options');
+    if (!options) return;
+
+    options.querySelectorAll('.piece-tags-input').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    syncPieceTagSelection(options.querySelector('.piece-tags-input'));
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     calcPackedTotal();
+    updatePieceTagCounts();
 
     const form = document.getElementById('packBatchForm');
     if (form) {
@@ -355,16 +471,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     return false;
                 }
 
-                const pieceTagsInput = tr ? tr.querySelector('.piece-tags-input') : null;
-                if (pieceTagsInput && pieceTagsInput.selectedOptions.length !== val) {
+                const pieceTagOptions = tr ? tr.querySelector('.piece-tag-options') : null;
+                const selectedPieceTagCount = pieceTagOptions ? pieceTagOptions.querySelectorAll('.piece-tags-input:checked').length : 0;
+                if (pieceTagOptions && selectedPieceTagCount !== val) {
                     e.preventDefault();
                     alert(`Select exactly ${val} QR code(s) for ${variantLabel}.`);
-                    pieceTagsInput.classList.add('is-invalid', 'border-danger');
-                    pieceTagsInput.focus();
+                    pieceTagOptions.classList.add('is-invalid', 'border-danger');
+                    pieceTagOptions.querySelector('.piece-tags-input')?.focus();
                     hasError = true;
                     return false;
                 }
-                if (pieceTagsInput) pieceTagsInput.classList.remove('is-invalid', 'border-danger');
+                if (pieceTagOptions) pieceTagOptions.classList.remove('is-invalid', 'border-danger');
 
                 inp.classList.remove('is-invalid', 'border-danger');
                 totalPacked += val;

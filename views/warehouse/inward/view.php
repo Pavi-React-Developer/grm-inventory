@@ -577,6 +577,73 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
     </div>
 </div>
 
+<!-- Inward Credit Confirmation Modal -->
+<div class="modal fade" id="inwardCreditConfirmModal" tabindex="-1" aria-labelledby="inwardCreditConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-success text-white">
+                <div>
+                    <h5 class="modal-title fw-bold" id="inwardCreditConfirmModalLabel">
+                        <i class="bi bi-box-arrow-in-down me-2"></i>Confirm Warehouse Inward
+                    </h5>
+                    <div class="small text-white-50">Batch <span id="creditConfirmBatchNumber"></span></div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="d-flex align-items-center gap-3 p-3 bg-light rounded-3 border mb-3">
+                    <div class="rounded-circle bg-primary bg-opacity-10 text-primary p-3">
+                        <i class="bi bi-building fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="small text-muted">Destination warehouse</div>
+                        <div class="fw-bold text-dark" id="creditConfirmWarehouse"></div>
+                    </div>
+                </div>
+
+                <div class="row g-2 text-center">
+                    <div class="col-4">
+                        <div class="h-100 p-3 rounded-3 bg-success bg-opacity-10 border border-success border-opacity-25">
+                            <div class="small text-success fw-semibold">VERIFIED INTACT</div>
+                            <div class="fs-3 fw-bold text-success" id="creditConfirmIntact">0</div>
+                            <div class="small text-muted">pcs credited</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="h-100 p-3 rounded-3 bg-danger bg-opacity-10 border border-danger border-opacity-25">
+                            <div class="small text-danger fw-semibold">DAMAGED</div>
+                            <div class="fs-3 fw-bold text-danger" id="creditConfirmDamaged">0</div>
+                            <div class="small text-muted">pcs quarantined</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="h-100 p-3 rounded-3 bg-warning bg-opacity-10 border border-warning border-opacity-25">
+                            <div class="small text-warning-emphasis fw-semibold">MISSING</div>
+                            <div class="fs-3 fw-bold text-warning-emphasis" id="creditConfirmMissing">0</div>
+                            <div class="small text-muted">pcs discrepancy</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-info d-none mt-3 mb-0 py-2" id="creditConfirmIncremental">
+                    <i class="bi bi-info-circle-fill me-1"></i>
+                    Additional stock to credit: <strong id="creditConfirmDelta">0 pcs</strong>
+                </div>
+                <div class="small text-muted mt-3">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Damaged pieces will not be added to sellable stock. Missing pieces will be recorded in the discrepancy ledger.
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Review Scans</button>
+                <button type="button" class="btn btn-success fw-semibold px-4" id="btnConfirmInwardCredit" onclick="submitConfirmedInwardCredit()">
+                    <i class="bi bi-check2-circle me-1"></i>Confirm &amp; Credit Stock
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Camera QR Scanner Modal -->
 <div class="modal fade" id="cameraScanModal" tabindex="-1" aria-labelledby="cameraScanModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -3339,63 +3406,69 @@ $canScanOrEdit = $canVerify && ($batch['status'] === 'DISPATCHED' || !$isFullyRe
             return;
         }
 
-        let confirmMsg = (BATCH_STATUS === 'RECEIVED' && prevCredited > 0)
-            ? `Confirm crediting +${deltaSession} pcs incremental stock (Total: ${totalScanned} / ${TOTAL_EXPECTED} pcs) to ${WAREHOUSE_NAME} (${WAREHOUSE_CODE}) warehouse?`
-            : `Confirm crediting ${totalScanned} pcs of verified intact inventory to ${WAREHOUSE_NAME} (${WAREHOUSE_CODE}) warehouse?`;
+        document.getElementById('creditConfirmBatchNumber').textContent = BATCH_NUMBER;
+        document.getElementById('creditConfirmWarehouse').textContent = `${WAREHOUSE_NAME} (${WAREHOUSE_CODE})`;
+        document.getElementById('creditConfirmIntact').textContent = totalScanned.toLocaleString();
+        document.getElementById('creditConfirmDamaged').textContent = totalDamaged.toLocaleString();
+        document.getElementById('creditConfirmMissing').textContent = missingCount.toLocaleString();
 
-        if (totalDamaged > 0) {
-            confirmMsg += `\n\n⚠️ Note: ${totalDamaged} piece(s) are marked DAMAGED and will be quarantined / inactivated from sellable stock.`;
+        const incrementalNotice = document.getElementById('creditConfirmIncremental');
+        if (BATCH_STATUS === 'RECEIVED' && prevCredited > 0) {
+            document.getElementById('creditConfirmDelta').textContent = `+${deltaSession.toLocaleString()} pcs (total ${totalScanned.toLocaleString()} / ${TOTAL_EXPECTED.toLocaleString()} pcs)`;
+            incrementalNotice.classList.remove('d-none');
+        } else {
+            incrementalNotice.classList.add('d-none');
         }
-        if (missingCount > 0) {
-            confirmMsg += `\n\n⚠️ Note: There are ${missingCount} pending missing pieces. Shortages will be recorded in the discrepancy ledger.`;
-        }
 
-        if (confirm(confirmMsg)) {
-            const form = document.getElementById('inwardForm');
-            if (form) {
-                // Populate exact intact and damaged piece tags for each variant before submit
-                ITEMS.forEach(item => {
-                    const vid = item.variant_id;
-                    let vReceivedTags = [];
-                    let vDamagedTags = [];
-                    for (const t of item.dispatchTags || []) {
-                        if (SCANNED_TAGS.has(t)) {
-                            vReceivedTags.push(t);
-                        } else if (DAMAGED_TAGS.has(t)) {
-                            vDamagedTags.push(t);
-                        }
-                    }
+        const modalElement = document.getElementById('inwardCreditConfirmModal');
+        bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    }
 
-                    let inpRecv = document.getElementById(`hidden-recv-tags-${vid}`);
-                    if (!inpRecv) {
-                        inpRecv = document.createElement('input');
-                        inpRecv.type = 'hidden';
-                        inpRecv.id = `hidden-recv-tags-${vid}`;
-                        inpRecv.name = `items[${vid}][received_tags]`;
-                        form.appendChild(inpRecv);
-                    }
-                    inpRecv.value = vReceivedTags.join(',');
+    function submitConfirmedInwardCredit() {
+        const form = document.getElementById('inwardForm');
+        if (!form) return;
 
-                    let inpDmg = document.getElementById(`hidden-dmg-tags-${vid}`);
-                    if (!inpDmg) {
-                        inpDmg = document.createElement('input');
-                        inpDmg.type = 'hidden';
-                        inpDmg.id = `hidden-dmg-tags-${vid}`;
-                        inpDmg.name = `items[${vid}][damaged_tags]`;
-                        form.appendChild(inpDmg);
-                    }
-                    inpDmg.value = vDamagedTags.join(',');
-                });
-
-                // Clear localStorage scan state since batch is being credited
-                try {
-                    localStorage.removeItem(SCAN_STORAGE_KEY);
-                    localStorage.removeItem(DMG_STORAGE_KEY);
-                } catch(e) {}
-
-                form.submit();
+        // Populate exact intact and damaged piece tags for each variant before submit
+        ITEMS.forEach(item => {
+            const vid = item.variant_id;
+            let vReceivedTags = [];
+            let vDamagedTags = [];
+            for (const t of item.dispatchTags || []) {
+                if (SCANNED_TAGS.has(t)) {
+                    vReceivedTags.push(t);
+                } else if (DAMAGED_TAGS.has(t)) {
+                    vDamagedTags.push(t);
+                }
             }
-        }
+
+            let inpRecv = document.getElementById(`hidden-recv-tags-${vid}`);
+            if (!inpRecv) {
+                inpRecv = document.createElement('input');
+                inpRecv.type = 'hidden';
+                inpRecv.id = `hidden-recv-tags-${vid}`;
+                inpRecv.name = `items[${vid}][received_tags]`;
+                form.appendChild(inpRecv);
+            }
+            inpRecv.value = vReceivedTags.join(',');
+
+            let inpDmg = document.getElementById(`hidden-dmg-tags-${vid}`);
+            if (!inpDmg) {
+                inpDmg = document.createElement('input');
+                inpDmg.type = 'hidden';
+                inpDmg.id = `hidden-dmg-tags-${vid}`;
+                inpDmg.name = `items[${vid}][damaged_tags]`;
+                form.appendChild(inpDmg);
+            }
+            inpDmg.value = vDamagedTags.join(',');
+        });
+
+        try {
+            localStorage.removeItem(SCAN_STORAGE_KEY);
+            localStorage.removeItem(DMG_STORAGE_KEY);
+        } catch(e) {}
+
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('inwardCreditConfirmModal')).hide();
+        form.submit();
     }
 
     function showScanFeedback(message, type = 'success') {

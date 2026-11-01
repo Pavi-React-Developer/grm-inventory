@@ -917,6 +917,7 @@ CREATE TABLE `product_variants` (
   `series_start_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `series_end_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `pack_quantity` int DEFAULT '1',
+  `is_complementary` tinyint(1) NOT NULL DEFAULT '0',
   `mrp` decimal(10,2) DEFAULT '0.00',
   `purchase_price` decimal(10,2) DEFAULT '0.00',
   `production_cost` decimal(10,2) DEFAULT '0.00',
@@ -955,6 +956,8 @@ CREATE TABLE `production_batch_items` (
   `received_qty` int NOT NULL DEFAULT '0',
   `damaged_qty` int NOT NULL DEFAULT '0',
   `missing_qty` int NOT NULL DEFAULT '0',
+  `received_qr_codes` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `damaged_qr_codes` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   PRIMARY KEY (`id`),
   KEY `production_batch_id` (`production_batch_id`),
   KEY `variant_id` (`variant_id`),
@@ -1038,6 +1041,21 @@ CREATE TABLE `production_expenses` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_production_expenses_number` (`expense_number`),
   KEY `idx_production_expenses_program` (`program_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `production_expense_items`
+-- --------------------------------------------------------
+CREATE TABLE `production_expense_items` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `category` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'GENERAL',
+  `unit_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PCS',
+  `default_rate` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_production_expense_items_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -1214,6 +1232,7 @@ CREATE TABLE `products` (
   `brand_id` int unsigned DEFAULT NULL,
   `seller_id` int unsigned DEFAULT NULL,
   `source_type` enum('OWN_PRODUCTION','EXTERNAL_PURCHASE') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'OWN_PRODUCTION',
+  `is_complementary` tinyint(1) NOT NULL DEFAULT '0',
   `material` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `hsn_code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -2204,6 +2223,7 @@ DROP TABLE IF EXISTS `warehouse_categories`;
 CREATE TABLE `warehouse_categories` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `category_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'NORMAL',
   `code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `slug` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
@@ -2228,7 +2248,7 @@ CREATE TABLE `warehouse_damages` (
   `warehouse_id` int unsigned NOT NULL,
   `variant_id` int unsigned NOT NULL,
   `tag_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
-  `source_type` enum('INWARD_TRANSIT','STORAGE_HANDLING','CUSTOMER_RETURN','EXPIRED_SPOILED','OTHER') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT 'STORAGE_HANDLING',
+  `source_type` enum('INWARD_TRANSIT','PRODUCTION_INWARD','STORAGE_HANDLING','CUSTOMER_RETURN','EXPIRED_SPOILED','OTHER') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT 'STORAGE_HANDLING',
   `reference_id` int unsigned DEFAULT NULL,
   `quantity` int NOT NULL DEFAULT '1',
   `cost_per_unit` decimal(10,2) DEFAULT '0.00',
@@ -2250,10 +2270,12 @@ CREATE TABLE `warehouse_damages` (
   `unit_cost` decimal(10,2) DEFAULT '0.00',
   `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
   `product_id` int unsigned DEFAULT NULL,
+  `production_unit_id` int unsigned DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `damage_number` (`damage_number`),
   KEY `warehouse_id` (`warehouse_id`),
   KEY `variant_id` (`variant_id`),
+  KEY `idx_warehouse_damages_production_unit` (`production_unit_id`),
   KEY `reported_by` (`reported_by`),
   CONSTRAINT `warehouse_damages_ibfk_1` FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`),
   CONSTRAINT `warehouse_damages_ibfk_2` FOREIGN KEY (`variant_id`) REFERENCES `product_variants` (`id`),

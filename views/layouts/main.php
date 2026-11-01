@@ -70,56 +70,11 @@ if (!empty($authUser['shop_name'])) {
             <div class="sidebar-header">
                 <div class="sidebar-brand">
                     <i class="bi bi-box-seam-fill"></i>
-                    <span class="brand-text">GRM</span>
+                    <span class="brand-text">GRM Inventory</span>
                 </div>
                 <button class="sidebar-toggle-btn d-lg-none" id="sidebarClose">
                     <i class="bi bi-x-lg"></i>
                 </button>
-            </div>
-
-            <!-- Logged-in Role & Identity Card in Sidebar -->
-            <div class="sidebar-user-card px-3 py-2.5 mx-2 my-2 rounded-3">
-                <div class="d-flex align-items-center justify-content-between mb-2">
-                    <span class="badge <?= $isAdminRole ? 'badge-role-admin' : 'badge-role-staff' ?> text-uppercase fw-bold">
-                        <i class="bi <?= $isAdminRole ? 'bi-shield-check' : 'bi-person-badge-fill' ?> me-1"></i>
-                        <?= $isAdminRole ? 'ADMIN' : 'STAFF' ?>
-                    </span>
-                    <?php if (!empty($userDept)): ?>
-                    <span class="badge bg-secondary bg-opacity-25 text-light border border-secondary border-opacity-50 px-1.5 py-0.5" style="font-size: 0.62rem; letter-spacing: 0.5px;">
-                        <?= e($userDept) ?>
-                    </span>
-                    <?php endif; ?>
-                </div>
-                
-                <div class="d-flex align-items-center gap-2">
-                    <div class="sidebar-avatar <?= $isAdminRole ? 'bg-primary' : 'bg-info' ?> text-white fw-bold d-flex align-items-center justify-content-center">
-                        <?= strtoupper(substr($authUser['full_name'] ?? $authUser['username'] ?? 'U', 0, 1)) ?>
-                    </div>
-                    <div class="user-meta overflow-hidden">
-                        <div class="user-name-text text-white fw-semibold text-truncate" title="<?= e($authUser['full_name'] ?? $authUser['username'] ?? 'User') ?>">
-                            <?= e($authUser['full_name'] ?? $authUser['username'] ?? 'User') ?>
-                        </div>
-                        <div class="user-role-text text-secondary text-truncate" style="font-size: 0.72rem;">
-                            <?= e($userRoleName) ?>
-                        </div>
-                    </div>
-                </div>
-
-                <?php if (!empty($userAssignedUnits)): ?>
-                <div class="sidebar-assigned-units mt-2 pt-2 border-top border-secondary border-opacity-25">
-                    <?php foreach ($userAssignedUnits as $uItem): ?>
-                    <div class="d-flex align-items-center text-truncate mb-1" style="font-size: 0.72rem;" title="Assigned <?= e($uItem['type']) ?>: <?= e($uItem['name']) ?>">
-                        <i class="<?= $uItem['icon'] ?> text-info me-1.5 flex-shrink-0"></i>
-                        <span class="text-truncate fw-medium text-light"><?= e($uItem['name']) ?></span>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php elseif ($isAdminRole): ?>
-                <div class="sidebar-assigned-units mt-2 pt-2 border-top border-secondary border-opacity-25 d-flex align-items-center text-truncate" style="font-size: 0.72rem;">
-                    <i class="bi bi-globe-americas text-primary me-1.5 flex-shrink-0"></i>
-                    <span class="text-truncate text-light opacity-75">Enterprise (All Facilities)</span>
-                </div>
-                <?php endif; ?>
             </div>
 
             <nav class="sidebar-nav">

@@ -59,6 +59,9 @@ An enterprise-grade, end-to-end apparel manufacturing, central warehousing, mult
      php database/migrations/create_expenses_and_categories_tables.php
      php database/migrations/create_asset_tables.php
      php database/migrations/create_cash_flow_tables.php
+     php database/migrations/add_complementary_product_columns.php
+     php database/migrations/add_inward_qr_codes_to_production_batch_items.php
+     php database/migrations/fix_warehouse_damage_production_inward_schema.php
      ```
 
 4. Launch Application:
