@@ -286,11 +286,14 @@
                                         $initInputVal = $recQty > 0 ? $recQty : ($allocation['status'] === 'DELIVERED' || $allocation['status'] === 'RECEIVED' ? $expQty : 0);
                                         $totalProc = $initInputVal + $dmgQty;
                                         $diff = $expQty - $totalProc;
+                                        $productType = strtoupper($it['product_type'] ?? 'NORMAL');
+                                        $productTypeBadge = $productType === 'COMPLEMENTARY' ? 'bg-warning text-dark' : ($productType === 'SERIES' ? 'bg-info text-dark' : 'bg-primary');
                                     ?>
                                         <tr>
                                             <td class="text-muted small fw-semibold"><?= $idx + 1 ?></td>
                                             <td>
                                                 <div class="fw-bold text-dark"><?= e($it['product_name'] ?? 'Garment Product') ?></div>
+                                                <span class="badge <?= $productTypeBadge ?> mb-1"><?= e(ucfirst(strtolower($productType))) ?> Type</span>
                                                 <span class="badge bg-dark text-white font-monospace"><?= e($it['sku']) ?></span>
                                             </td>
                                             <td>

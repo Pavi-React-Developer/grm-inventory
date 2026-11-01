@@ -96,19 +96,6 @@ $canReceive = hasPermission('whatsapp_inward', 'receive') || hasPermission('what
                 <i class="bi bi-box-arrow-in-down me-2 text-success"></i>WhatsApp Inward & QR Receiving
             </h2>
         </div>
-        <div class="d-flex gap-2">
-            <?php if ($canReceive): ?>
-            <button type="button" class="btn btn-sm btn-outline-success fw-semibold px-3" data-bs-toggle="modal" data-bs-target="#cameraScanModal" id="btnOpenCam">
-                <i class="bi bi-camera me-1"></i> Camera Scanner
-            </button>
-            <?php endif; ?>
-            <a href="<?= url('warehouse/whatsapp-orders') ?>" class="btn btn-sm btn-outline-secondary px-3">
-                <i class="bi bi-speedometer2 me-1"></i> Dashboard
-            </a>
-            <a href="<?= url('warehouse/whatsapp-orders/allocations') ?>" class="btn btn-sm btn-outline-primary px-3">
-                <i class="bi bi-box-arrow-right me-1"></i> Allocations
-            </a>
-        </div>
     </div>
 
     <!-- Flash Alerts -->
@@ -199,65 +186,7 @@ $canReceive = hasPermission('whatsapp_inward', 'receive') || hasPermission('what
         </div>
     </div>
 
-    <!-- ========================================================================= -->
-    <!-- 2. LIVE QR CODE SCANNER BAR -->
-    <!-- ========================================================================= -->
-    <?php if ($canReceive): ?>
-    <div class="card border-0 shadow-sm mb-3 border-start border-success border-4">
-        <div class="card-body p-3">
-            <div class="row g-3 align-items-center">
-                <!-- Scan Input -->
-                <div class="col-12 col-lg-5">
-                    <label class="form-label fw-bold text-dark mb-1 small">
-                        <i class="bi bi-qr-code-scan me-1 text-success"></i> Scan Allocation / Outward QR Code
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="bi bi-upc-scan text-success"></i></span>
-                        <input type="text" id="qrInput" class="form-control font-monospace" placeholder="Scan or type Allocation # (e.g. ALC-20260917-0005)..." autofocus autocomplete="off">
-                        <button class="btn btn-success px-3 fw-semibold text-nowrap" type="button" id="btnScanSubmit">
-                            <i class="bi bi-box-arrow-in-down me-1"></i> Process QR
-                        </button>
-                    </div>
-                    <small class="text-muted mt-1 d-block fs-8 text-truncate">
-                        <i class="bi bi-info-circle me-1"></i> Handheld barcode guns will submit automatically.
-                    </small>
-                </div>
-
-                <!-- Channel Destination -->
-                <div class="col-12 col-md-6 col-lg-4">
-                    <label class="form-label fw-bold text-dark mb-1 small">
-                        <i class="bi bi-whatsapp me-1 text-success"></i> Receiving Channel
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="bi bi-shop text-success"></i></span>
-                        <input type="text" class="form-control bg-light text-dark fw-bold" value="WhatsApp Channel Inventory" readonly>
-                    </div>
-                    <small class="text-muted mt-1 d-block fs-8 text-truncate">
-                        <i class="bi bi-shield-check me-1"></i> Stock credits to WhatsApp inventory.
-                    </small>
-                </div>
-
-                <!-- Auto Inward Switch -->
-                <div class="col-12 col-md-6 col-lg-3">
-                    <div class="p-2 p-md-3 bg-light rounded border h-100 d-flex flex-column justify-content-center">
-                        <div class="form-check form-switch mb-1">
-                            <input class="form-check-input" type="checkbox" role="switch" id="autoReceiveSwitch" checked>
-                            <label class="form-check-label fw-bold text-dark small" for="autoReceiveSwitch">
-                                ⚡ Auto-Inward on Scan
-                            </label>
-                        </div>
-                        <small class="text-muted d-block text-truncate" id="switchHelpText" style="font-size: 0.74rem;">
-                            <strong class="text-success">ON:</strong> Auto-credits inventory on scan.
-                        </small>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Dynamic Scan Result Feedback Alert -->
-            <div id="scanFeedback" class="mt-2 d-none"></div>
-        </div>
-    </div>
-    <?php else: ?>
+    <?php if (!$canReceive): ?>
     <div class="alert alert-light border border-secondary-subtle d-flex align-items-center justify-content-between mb-3 shadow-sm py-2 px-3">
         <div class="d-flex align-items-center gap-2">
             <i class="bi bi-eye text-success fs-5"></i>
@@ -420,9 +349,6 @@ $canReceive = hasPermission('whatsapp_inward', 'receive') || hasPermission('what
                                     <tr id="row-batch-<?= $b['id'] ?>" class="inward-alloc-row" data-search="<?= $searchHaystack ?>" data-status="<?= $bIsCredited ? 'RECEIVED' : ($bState === 'PARTIAL' ? 'PARTIAL_RECEIVED' : 'DISPATCHED') ?>" data-warehouse-id="<?= (int)($b['warehouse_id'] ?? 0) ?>">
                                         <td class="ps-3">
                                             <div class="d-flex align-items-center gap-2">
-                                                <button type="button" class="btn btn-sm btn-light border p-1 rounded text-primary border-primary" onclick="openCrossCheckModal(<?= $b['id'] ?>)" title="Show / Scan QR Code">
-                                                    <i class="bi bi-qr-code text-primary fs-5"></i>
-                                                </button>
                                                 <div>
                                                     <span class="fw-bold font-monospace text-primary fs-7 d-block"><?= htmlspecialchars($bNum) ?></span>
                                                     <span class="badge bg-light text-dark border font-monospace fs-9 mt-1"><i class="bi bi-box-seam me-1"></i><?= htmlspecialchars($bOutward) ?></span>
@@ -469,9 +395,6 @@ $canReceive = hasPermission('whatsapp_inward', 'receive') || hasPermission('what
                                         </td>
                                         <td class="text-end pe-3">
                                             <div class="d-inline-flex gap-1 align-items-center">
-                                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-2 px-2" onclick="openCrossCheckModal(<?= $b['id'] ?>)" title="Print Carton QR Sticker / Receiving Tag">
-                                                    <i class="bi bi-qr-code"></i>
-                                                </button>
                                                 <button type="button" class="btn btn-sm btn-outline-info rounded-2 px-2" onclick="openBatchHistoryModal(<?= $b['id'] ?>)" title="Batch Traceability &amp; Lifecycle Logs">
                                                     <i class="bi bi-clock-history"></i>
                                                 </button>
@@ -540,9 +463,6 @@ $canReceive = hasPermission('whatsapp_inward', 'receive') || hasPermission('what
                                 <div class="card-header <?= $bIsCredited ? 'bg-success bg-opacity-10 border-success border-opacity-25' : 'bg-primary bg-opacity-10 border-primary border-opacity-25' ?> py-2 px-3 d-flex justify-content-between align-items-center">
                                     <div class="d-flex align-items-center gap-1" style="min-width: 0;">
                                         <span class="fw-bold font-monospace text-dark fs-7 text-truncate"><?= htmlspecialchars($bNum) ?></span>
-                                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none ms-1 flex-shrink-0" onclick="openCrossCheckModal(<?= $b['id'] ?>)" title="Show QR">
-                                            <i class="bi bi-qr-code text-primary fs-6"></i>
-                                        </button>
                                     </div>
                                     <?php if ($bIsCredited): ?>
                                         <span class="badge bg-success rounded-pill px-2 py-1 fs-8 flex-shrink-0 ms-1">
@@ -638,9 +558,6 @@ $canReceive = hasPermission('whatsapp_inward', 'receive') || hasPermission('what
                                             <span><i class="bi bi-calendar3 me-1"></i><?= !empty($b['created_at']) ? date('d M, h:i A', strtotime($b['created_at'])) : date('d M, h:i A') ?></span>
                                         </div>
                                         <div class="d-flex align-items-center gap-1">
-                                            <button type="button" class="btn btn-sm btn-outline-secondary p-1 px-2" onclick="openCrossCheckModal(<?= $b['id'] ?>)" title="Print Carton QR Sticker">
-                                                <i class="bi bi-qr-code"></i>
-                                            </button>
                                             <button type="button" class="btn btn-sm btn-outline-info p-1 px-2" onclick="openBatchHistoryModal(<?= $b['id'] ?>)" title="Batch History &amp; Logs">
                                                 <i class="bi bi-clock-history"></i>
                                             </button>
@@ -1612,86 +1529,5 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     applyInwardListingFilters();
 
-    const qrInput = document.getElementById('qrInput');
-    const btnSubmit = document.getElementById('btnScanSubmit');
-    const autoSwitch = document.getElementById('autoReceiveSwitch');
-    const switchHelp = document.getElementById('switchHelpText');
-    const feedbackBox = document.getElementById('scanFeedback');
-
-    if (autoSwitch && switchHelp) {
-        autoSwitch.addEventListener('change', function() {
-            if (this.checked) {
-                switchHelp.innerHTML = '<strong class="text-success">ON:</strong> Auto-credits inventory on scan.';
-            } else {
-                switchHelp.innerHTML = '<strong class="text-warning text-dark">OFF:</strong> Manual review mode before stock update.';
-            }
-        });
-    }
-
-    if (qrInput) {
-        qrInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                processScannedCode(qrInput.value);
-            }
-        });
-    }
-
-    if (btnSubmit) {
-        btnSubmit.addEventListener('click', function() {
-            processScannedCode(qrInput ? qrInput.value : '');
-        });
-    }
-
-    function processScannedCode(code) {
-        code = (code || '').trim();
-        if (!code) {
-            showFeedback('warning', 'Please enter or scan a valid QR code or Allocation #.');
-            return;
-        }
-
-        const isAuto = autoSwitch ? autoSwitch.checked : true;
-        showFeedback('info', '<div class="spinner-border spinner-border-sm me-2"></div> Processing QR Code: <strong>' + escapeHtml(code) + '</strong>...');
-
-        const formData = new FormData();
-        formData.append('qr_code', code);
-        formData.append('auto_receive', isAuto ? '1' : '0');
-
-        fetch('<?= url("api/warehouse/inward/scan") ?>', {
-            method: 'POST',
-            body: formData
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (!data.success) {
-                showFeedback('danger', '<i class="bi bi-exclamation-triangle-fill me-2"></i> ' + (data.message || 'Allocation/Batch not found.'));
-                return;
-            }
-
-            if (data.data && data.data.already_received) {
-                showFeedback('warning', '<i class="bi bi-info-circle-fill me-2"></i> ' + escapeHtml(data.message));
-            } else if (data.data && data.data.credited) {
-                showFeedback('success', '<i class="bi bi-check-circle-fill me-2 fs-5"></i> <strong>SUCCESS!</strong> ' + escapeHtml(data.message));
-                setTimeout(() => { window.location.reload(); }, 1200);
-            } else {
-                showFeedback('info', '<i class="bi bi-eye-fill me-2"></i> Allocation loaded: ' + escapeHtml(data.message));
-            }
-
-            if (qrInput) {
-                qrInput.value = '';
-                qrInput.focus();
-            }
-        })
-        .catch(err => {
-            showFeedback('danger', 'Server error: ' + err.message);
-        });
-    }
-
-    function showFeedback(type, message) {
-        if (!feedbackBox) return;
-        feedbackBox.className = 'alert alert-' + type + ' alert-dismissible fade show border-0 shadow-sm mt-2 rounded-3';
-        feedbackBox.innerHTML = message + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-        feedbackBox.classList.remove('d-none');
-    }
 });
 </script>

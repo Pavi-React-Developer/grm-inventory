@@ -1222,6 +1222,7 @@ CREATE TABLE `products` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `catalog_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `category_id` int unsigned DEFAULT NULL,
   `subcategory_id` int unsigned DEFAULT NULL,
   `sub_subcategory_id` int unsigned DEFAULT NULL,
@@ -2239,6 +2240,46 @@ CREATE TABLE `warehouse_categories` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
+-- Table structure for table `wh_category_attributes`
+-- --------------------------------------------------------
+CREATE TABLE `wh_category_attributes` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `category_id` int unsigned NOT NULL,
+  `subcategory_id` int unsigned DEFAULT NULL,
+  `sub_subcategory_id` int unsigned DEFAULT NULL,
+  `attr_name` varchar(100) NOT NULL,
+  `attr_type` enum('TEXT','NUMBER','SELECT','MULTI_SELECT') NOT NULL DEFAULT 'TEXT',
+  `attr_options` text,
+  `is_required` tinyint(1) NOT NULL DEFAULT '0',
+  `sort_order` int NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_cat_attrs` (`category_id`,`subcategory_id`,`sub_subcategory_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `wh_category_default_products`
+-- --------------------------------------------------------
+CREATE TABLE `wh_category_default_products` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `category_id` int unsigned NOT NULL,
+  `subcategory_id` int unsigned DEFAULT NULL,
+  `sub_subcategory_id` int unsigned DEFAULT NULL,
+  `product_template_name` varchar(255) NOT NULL,
+  `hsn_code` varchar(20) DEFAULT NULL,
+  `default_gst_pct` decimal(5,2) NOT NULL DEFAULT '5.00',
+  `default_weight_kg` decimal(8,3) NOT NULL DEFAULT '0.000',
+  `sort_order` int NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_cat_defaults` (`category_id`,`subcategory_id`,`sub_subcategory_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
 -- Table structure for table `warehouse_damages`
 -- --------------------------------------------------------
 DROP TABLE IF EXISTS `warehouse_damages`;
@@ -2392,6 +2433,8 @@ CREATE TABLE `warehouse_suppliers` (
   `state` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `payment_terms` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `material_type` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `document_url` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
   `is_active` tinyint(1) DEFAULT '1',
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

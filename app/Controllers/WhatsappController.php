@@ -273,6 +273,7 @@ class WhatsappController {
         $status = trim($_GET['status'] ?? '');
         $dateFrom = trim($_GET['date_from'] ?? '');
         $dateTo = trim($_GET['date_to'] ?? '');
+        $warehouseId = trim($_GET['warehouse_id'] ?? '');
 
         $where = [$allocWhereSql];
         $where[] = "wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED')";
