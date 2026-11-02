@@ -441,14 +441,14 @@ class Router {
         $this->get('production/outward/view-ajax/{id}', 'ProductionController', 'outwardDetailsAjax', ['AuthMiddleware', ['PermissionMiddleware', 'outward', 'view']]);
 
         // Rework from Warehouse
-        $this->get('production/warehouse-rework', 'ProductionController', 'warehouseReworkList', ['AuthMiddleware']);
-        $this->post('production/warehouse-rework/store', 'ProductionController', 'storeWarehouseRework', ['AuthMiddleware']);
-        $this->post('production/warehouse-rework/status/{id}', 'ProductionController', 'updateWarehouseReworkStatus', ['AuthMiddleware']);
-        $this->post('production/warehouse-rework/complete/{id}', 'ProductionController', 'completeWarehouseRework', ['AuthMiddleware']);
-        $this->post('production/warehouse-rework/redispatch/{id}', 'ProductionController', 'redispatchWarehouseRework', ['AuthMiddleware']);
-        $this->get('production/warehouse-rework/view-ajax/{id}', 'ProductionController', 'viewWarehouseReworkAjax', ['AuthMiddleware']);
-        $this->post('production/warehouse-rework/delete/{id}', 'ProductionController', 'deleteWarehouseRework', ['AuthMiddleware']);
-        $this->get('production/warehouse-rework/lookup-batch/{batchId}', 'ProductionController', 'lookupBatchVariantsAjax', ['AuthMiddleware']);
+        $this->get('production/warehouse-rework', 'ProductionController', 'warehouseReworkList', ['AuthMiddleware', ['PermissionMiddleware', 'warehouse_rework', 'view']]);
+        $this->post('production/warehouse-rework/store', 'ProductionController', 'storeWarehouseRework', ['AuthMiddleware', ['PermissionMiddleware', 'warehouse_rework', 'create']]);
+        $this->post('production/warehouse-rework/status/{id}', 'ProductionController', 'updateWarehouseReworkStatus', ['AuthMiddleware', ['PermissionMiddleware', 'warehouse_rework', 'edit']]);
+        $this->post('production/warehouse-rework/complete/{id}', 'ProductionController', 'completeWarehouseRework', ['AuthMiddleware', ['PermissionMiddleware', 'warehouse_rework', 'edit']]);
+        $this->post('production/warehouse-rework/redispatch/{id}', 'ProductionController', 'redispatchWarehouseRework', ['AuthMiddleware', ['PermissionMiddleware', 'warehouse_rework', 'dispatch']]);
+        $this->get('production/warehouse-rework/view-ajax/{id}', 'ProductionController', 'viewWarehouseReworkAjax', ['AuthMiddleware', ['PermissionMiddleware', 'warehouse_rework', 'view']]);
+        $this->post('production/warehouse-rework/delete/{id}', 'ProductionController', 'deleteWarehouseRework', ['AuthMiddleware', ['PermissionMiddleware', 'warehouse_rework', 'delete']]);
+        $this->get('production/warehouse-rework/lookup-batch/{batchId}', 'ProductionController', 'lookupBatchVariantsAjax', ['AuthMiddleware', ['PermissionMiddleware', 'warehouse_rework', 'view']]);
 
         // Production Reports
         $this->get('production/reports', 'ReportController', 'productionReports', ['AuthMiddleware', ['PermissionMiddleware', 'reports', 'view']]);

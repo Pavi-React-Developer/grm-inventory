@@ -6903,7 +6903,7 @@ class ProductionController {
                 'assigned_to'           => trim($_POST['assigned_to'] ?? ''),
                 'production_unit_id'    => !empty($_POST['production_unit_id']) ? (int)$_POST['production_unit_id'] : null,
                 'photo_url'             => $photoUrl,
-                'status'                => !empty($_POST['start_immediately']) ? 'IN_REWORK' : 'RECEIVED',
+                'status'                => !empty($_POST['start_immediately']) && hasPermission('warehouse_rework', 'edit') ? 'IN_REWORK' : 'RECEIVED',
                 'created_by'            => $userId,
             ]);
 

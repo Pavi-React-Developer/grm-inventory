@@ -575,7 +575,7 @@ CREATE TABLE `cutting_batches` (
   `cut_qty` int DEFAULT '0',
   `rejected_qty` int DEFAULT '0',
   `wastage_qty` int DEFAULT '0',
-  `status` enum('PENDING','IN_PROGRESS','COMPLETED') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'PENDING',
+  `status` enum('PENDING','IN_PROGRESS','COMPLETED','HOLD','CANCELLED') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'PENDING',
   `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `is_active` tinyint(1) DEFAULT '1',
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,

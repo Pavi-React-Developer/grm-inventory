@@ -9,12 +9,16 @@
             <span class="text-muted">Manage defective and damaged goods returned from warehouses for factory rework, repair, and re-dispatch</span>
         </div>
         <div class="d-flex gap-2 align-items-center">
-            <a href="<?= url('production/outward') ?>" class="btn btn-outline-secondary">
-                <i class="bi bi-truck me-1"></i> Outward Dispatches
-            </a>
-            <button type="button" class="btn btn-warning text-dark fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#logReworkModal">
-                <i class="bi bi-plus-circle me-1"></i> Receive Rework from Warehouse
-            </button>
+            <?php if (hasPermission('outward', 'view')): ?>
+                <a href="<?= url('production/outward') ?>" class="btn btn-outline-secondary">
+                    <i class="bi bi-truck me-1"></i> Outward Dispatches
+                </a>
+            <?php endif; ?>
+            <?php if (hasPermission('warehouse_rework', 'create')): ?>
+                <button type="button" class="btn btn-warning text-dark fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#logReworkModal">
+                    <i class="bi bi-plus-circle me-1"></i> Receive Rework from Warehouse
+                </button>
+            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -155,9 +159,11 @@
                                 <i class="bi bi-box-seam fs-1 d-block mb-2 text-secondary"></i>
                                 <h6 class="fw-bold text-secondary">No warehouse rework returns found</h6>
                                 <p class="small text-muted mb-3">When products sent outward to warehouses are returned due to damages or defects, log them here to route them through factory repair.</p>
-                                <button type="button" class="btn btn-sm btn-warning text-dark fw-bold" data-bs-toggle="modal" data-bs-target="#logReworkModal">
-                                    <i class="bi bi-plus-circle me-1"></i> Receive First Rework Return
-                                </button>
+                                <?php if (hasPermission('warehouse_rework', 'create')): ?>
+                                    <button type="button" class="btn btn-sm btn-warning text-dark fw-bold" data-bs-toggle="modal" data-bs-target="#logReworkModal">
+                                        <i class="bi bi-plus-circle me-1"></i> Receive First Rework Return
+                                    </button>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php else: ?>
@@ -257,25 +263,27 @@
                                         <button type="button" class="btn btn-outline-primary" onclick="viewReworkDetails(<?= $rw['id'] ?>)" title="View Details">
                                             <i class="bi bi-eye"></i>
                                         </button>
-                                        <?php if ($rw['status'] === 'RECEIVED'): ?>
+                                        <?php if (hasPermission('warehouse_rework', 'edit') && $rw['status'] === 'RECEIVED'): ?>
                                             <button type="button" class="btn btn-outline-warning text-dark" onclick="openStartReworkModal(<?= htmlspecialchars(json_encode($rw), ENT_QUOTES, 'UTF-8') ?>)" title="Assign &amp; Start Rework">
                                                 <i class="bi bi-play-circle me-1"></i> Start
                                             </button>
-                                        <?php elseif ($rw['status'] === 'IN_REWORK'): ?>
+                                        <?php elseif (hasPermission('warehouse_rework', 'edit') && $rw['status'] === 'IN_REWORK'): ?>
                                             <button type="button" class="btn btn-outline-success" onclick="openCompleteReworkModal(<?= htmlspecialchars(json_encode($rw), ENT_QUOTES, 'UTF-8') ?>)" title="Complete Rework &amp; Record Outcome">
                                                 <i class="bi bi-check2-circle me-1"></i> Complete
                                             </button>
-                                        <?php elseif ($rw['status'] === 'REPAIRED'): ?>
+                                        <?php elseif (hasPermission('warehouse_rework', 'dispatch') && $rw['status'] === 'REPAIRED'): ?>
                                             <button type="button" class="btn btn-outline-info text-dark" onclick="openRedispatchModal(<?= htmlspecialchars(json_encode($rw), ENT_QUOTES, 'UTF-8') ?>)" title="Re-dispatch Repaired Goods to Warehouse">
                                                 <i class="bi bi-truck me-1"></i> Dispatch
                                             </button>
                                         <?php endif; ?>
-                                        <form method="POST" action="<?= url('production/warehouse-rework/delete/' . $rw['id']) ?>" class="d-inline" onsubmit="return confirm('Are you sure you want to delete rework record <?= e(addslashes($rw['rework_number'])) ?>?');">
-                                            <?= CSRF::field() ?>
-                                            <button type="submit" class="btn btn-outline-danger" title="Delete Record">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </form>
+                                        <?php if (hasPermission('warehouse_rework', 'delete')): ?>
+                                            <form method="POST" action="<?= url('production/warehouse-rework/delete/' . $rw['id']) ?>" class="d-inline" onsubmit="return confirm('Are you sure you want to delete rework record <?= e(addslashes($rw['rework_number'])) ?>?');">
+                                                <?= CSRF::field() ?>
+                                                <button type="submit" class="btn btn-outline-danger" title="Delete Record">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
@@ -312,6 +320,7 @@
 <!-- ========================================================================= -->
 <!-- MODAL 1: RECEIVE / LOG REWORK FROM WAREHOUSE -->
 <!-- ========================================================================= -->
+<?php if (hasPermission('warehouse_rework', 'create')): ?>
 <div class="modal fade" id="logReworkModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content shadow-lg border-0">
@@ -434,6 +443,7 @@
                         <input type="file" name="photo" class="form-control" accept="image/*">
                     </div>
 
+                    <?php if (hasPermission('warehouse_rework', 'edit')): ?>
                     <div class="form-check form-switch p-3 bg-light rounded-3 border">
                         <input class="form-check-input ms-0 me-2" type="checkbox" name="start_immediately" id="startImmediatelyCheck" value="1" checked>
                         <label class="form-check-label fw-semibold" for="startImmediatelyCheck">
@@ -441,6 +451,7 @@
                         </label>
                         <small class="text-muted d-block">If unchecked, status will remain "RECEIVED" until work is initiated.</small>
                     </div>
+                    <?php endif; ?>
                 </div>
                 <div class="modal-footer bg-light py-2">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -452,10 +463,12 @@
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- MODAL 2: START REWORK -->
 <!-- ========================================================================= -->
+<?php if (hasPermission('warehouse_rework', 'edit')): ?>
 <div class="modal fade" id="startReworkModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -489,10 +502,12 @@
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- MODAL 3: COMPLETE REWORK -->
 <!-- ========================================================================= -->
+<?php if (hasPermission('warehouse_rework', 'edit')): ?>
 <div class="modal fade" id="completeReworkModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -541,10 +556,12 @@
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- MODAL 4: RE-DISPATCH REWORKED GOODS -->
 <!-- ========================================================================= -->
+<?php if (hasPermission('warehouse_rework', 'dispatch')): ?>
 <div class="modal fade" id="redispatchReworkModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -579,6 +596,7 @@
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- MODAL 5: VIEW REWORK DETAILS -->
