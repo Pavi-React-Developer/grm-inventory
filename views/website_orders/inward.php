@@ -96,19 +96,6 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                 <i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Website Inward & QR Receiving
             </h2>
         </div>
-        <div class="d-flex gap-2">
-            <?php if ($canReceive): ?>
-            <button type="button" class="btn btn-sm btn-outline-primary fw-semibold px-3" data-bs-toggle="modal" data-bs-target="#cameraScanModal" id="btnOpenCam">
-                <i class="bi bi-camera me-1"></i> Camera Scanner
-            </button>
-            <?php endif; ?>
-            <a href="<?= url('warehouse/website-orders') ?>" class="btn btn-sm btn-outline-secondary px-3">
-                <i class="bi bi-speedometer2 me-1"></i> Dashboard
-            </a>
-            <a href="<?= url('warehouse/website-orders/allocations') ?>" class="btn btn-sm btn-outline-primary px-3">
-                <i class="bi bi-box-arrow-right me-1"></i> Allocations
-            </a>
-        </div>
     </div>
 
     <!-- Flash Alerts -->
@@ -228,13 +215,6 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                                 <?php endif; ?>
                             </button>
                         </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link d-flex align-items-center gap-2" id="tab-returns-btn" data-bs-toggle="pill" data-bs-target="#tab-returns-view" type="button" role="tab">
-                                <i class="bi bi-arrow-return-left fs-6 text-warning"></i>
-                                <span>Returns QC Re-Inward</span>
-                                <span class="badge bg-warning text-dark"><?= count($returnInwards ?? []) ?></span>
-                            </button>
-                        </li>
                     </ul>
                 </div>
                 <div class="text-muted fs-8 d-none d-lg-block">
@@ -266,15 +246,6 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                             </div>
                         </div>
                         <div class="col-12 col-sm-6 col-lg-2">
-                            <label class="form-label small fw-semibold text-muted mb-1">Inward Status</label>
-                            <select name="status" id="inwardStatusSelect" class="form-select form-select-sm">
-                                <option value="">All Statuses</option>
-                                <option value="DISPATCHED" <?= ($status ?? '') === 'DISPATCHED' ? 'selected' : '' ?>>Dispatched</option>
-                                <option value="PARTIAL_RECEIVED" <?= ($status ?? '') === 'PARTIAL_RECEIVED' ? 'selected' : '' ?>>Partial</option>
-                                <option value="RECEIVED" <?= ($status ?? '') === 'RECEIVED' ? 'selected' : '' ?>>Received</option>
-                            </select>
-                        </div>
-                        <div class="col-12 col-sm-6 col-lg-2">
                             <label class="form-label small fw-semibold text-muted mb-1">Source Warehouse</label>
                             <select name="warehouse_id" id="inwardWarehouseSelect" class="form-select form-select-sm">
                                 <option value="">All Warehouses</option>
@@ -293,7 +264,7 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
                             <label class="form-label small fw-semibold text-muted mb-1">To Date</label>
                             <input type="date" name="date_to" class="form-control form-control-sm" value="<?= htmlspecialchars($dateTo ?? '') ?>">
                         </div>
-                        <div class="col-12 col-lg-1 d-flex gap-2">
+                        <div class="col-12 col-lg-3 d-flex gap-2">
                             <button type="submit" class="btn btn-primary btn-sm w-100 fw-semibold">
                                 <i class="bi bi-funnel me-1"></i> Filter
                             </button>
@@ -533,84 +504,6 @@ $canReceive = hasPermission('website_inward', 'receive') || hasPermission('websi
             </div>
             <div id="noBatchCardsMatch" class="text-center py-4 d-none text-muted">
                 <i class="bi bi-search fs-3 d-block mb-1"></i> No matching allocation cards found for the selected filter or search term.
-            </div>
-        </div>
-
-        <!-- --------------------------------------------------------------------- -->
-        <!-- TAB 3: RETURNS QC RE-INWARD -->
-        <!-- --------------------------------------------------------------------- -->
-        <div class="tab-pane fade" id="tab-returns-view" role="tabpanel">
-            <div class="card border-0 shadow-sm rounded-3">
-                <div class="card-header bg-white py-3 border-0 d-flex align-items-center justify-content-between">
-                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-arrow-return-left me-2 text-warning"></i>Website Customer Returns QC Ledger</h6>
-                    <span class="text-muted small">Quality Inspection stock re-inward tracking</span>
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="bg-light text-secondary small text-uppercase">
-                            <tr>
-                                <th class="ps-3">Return #</th>
-                                <th>Invoice / Order</th>
-                                <th>Customer Name</th>
-                                <th>Returned Qty</th>
-                                <th>QC Good Stock</th>
-                                <th>QC Damaged Stock</th>
-                                <th>Date</th>
-                                <th class="text-end pe-3">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (empty($returnInwards)): ?>
-                                <tr>
-                                    <td colspan="8" class="text-center py-5 text-muted">
-                                        <i class="bi bi-shield-check fs-1 d-block mb-2 text-secondary opacity-50"></i>
-                                        No Website customer return re-inwards recorded yet.
-                                    </td>
-                                </tr>
-                            <?php else: ?>
-                                <?php foreach ($returnInwards as $ret): ?>
-                                    <tr>
-                                        <td class="ps-3 fw-bold text-primary">
-                                            <?= htmlspecialchars($ret['return_number'] ?? ('#RET-' . $ret['id'])) ?>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-light text-dark border"><?= htmlspecialchars($ret['invoice_number'] ?? 'N/A') ?></span>
-                                        </td>
-                                        <td>
-                                            <div class="fw-semibold text-dark"><?= htmlspecialchars($ret['customer_name']) ?></div>
-                                            <small class="text-muted"><?= htmlspecialchars($ret['customer_phone'] ?? '') ?></small>
-                                        </td>
-                                        <td>
-                                            <span class="fw-bold text-dark"><?= number_format($ret['total_returned_qty'] ?? 0) ?> pcs</span>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">
-                                                +<?= number_format($ret['good_qty'] ?? 0) ?> Good Stock
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <?php if (($ret['damaged_qty'] ?? 0) > 0): ?>
-                                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1">
-                                                    <?= number_format($ret['damaged_qty']) ?> Damaged
-                                                </span>
-                                            <?php else: ?>
-                                                <span class="text-muted small">0 Damaged</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td class="text-muted small">
-                                            <?= !empty($ret['created_at']) ? date('d M Y, h:i A', strtotime($ret['created_at'])) : 'N/A' ?>
-                                        </td>
-                                        <td class="text-end pe-3">
-                                            <a href="<?= url('warehouse/website-orders/returns/view/' . $ret['id']) ?>" class="btn btn-outline-secondary btn-sm rounded-2">
-                                                <i class="bi bi-eye me-1"></i> Details
-                                            </a>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
             </div>
         </div>
 
@@ -1212,7 +1105,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const inwardSearchInput = document.getElementById('inwardSearchInput');
     const batchSearchInput = document.getElementById('batchCardSearch');
     const warehouseSelect = document.getElementById('inwardWarehouseSelect');
-    const statusSelect = document.getElementById('inwardStatusSelect');
     const inwardRows = Array.from(document.querySelectorAll('.inward-alloc-row'));
     const batchCards = Array.from(document.querySelectorAll('.batch-card-item'));
     const countBadge = document.getElementById('inwardTableCountBadge');
@@ -1224,26 +1116,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const tableQuery = (inwardSearchInput ? inwardSearchInput.value : '').trim().toLowerCase();
         const cardQuery = (batchSearchInput ? batchSearchInput.value : '').trim().toLowerCase();
         const warehouseId = warehouseSelect ? warehouseSelect.value : '';
-        const status = statusSelect ? statusSelect.value : '';
         let visibleRows = 0;
         let visibleCards = 0;
 
         inwardRows.forEach(row => {
             const matches = (!tableQuery || (row.dataset.search || '').includes(tableQuery))
-                && (!warehouseId || row.dataset.warehouseId === warehouseId)
-                && (!status || row.dataset.status === status);
+                && (!warehouseId || row.dataset.warehouseId === warehouseId);
             row.classList.toggle('d-none', !matches);
             visibleRows += matches ? 1 : 0;
         });
 
         batchCards.forEach(card => {
-            const cardStatus = card.dataset.inwardStatus || '';
             const matchesFilter = batchFilter === 'all' || card.dataset.status === batchFilter;
             const matches = matchesFilter
                 && (!tableQuery || (card.dataset.search || '').includes(tableQuery))
                 && (!cardQuery || (card.dataset.search || '').includes(cardQuery))
-                && (!warehouseId || card.dataset.warehouseId === warehouseId)
-                && (!status || cardStatus === status);
+                && (!warehouseId || card.dataset.warehouseId === warehouseId);
             card.classList.toggle('d-none', !matches);
             visibleCards += matches ? 1 : 0;
         });
@@ -1282,9 +1170,7 @@ document.addEventListener('DOMContentLoaded', function() {
     [inwardSearchInput, batchSearchInput].forEach(input => {
         if (input) input.addEventListener('input', applyInwardListingFilters);
     });
-    [warehouseSelect, statusSelect].forEach(select => {
-        if (select) select.addEventListener('change', applyInwardListingFilters);
-    });
+    if (warehouseSelect) warehouseSelect.addEventListener('change', applyInwardListingFilters);
     applyInwardListingFilters();
 
     const qrInput = document.getElementById('qrInput');

@@ -882,7 +882,10 @@ class WarehouseController {
         $stockState = $_GET['stock_state'] ?? 'AVAILABLE';
         $categoryId = $_GET['category_id'] ?? '';
         $search = $_GET['search'] ?? '';
-        $activeTab = $_GET['tab'] ?? 'normal'; // Default to Normal Products tab
+        $activeTab = $_GET['tab'] ?? 'production';
+        if ($activeTab === 'normal') {
+            $activeTab = 'third_party';
+        }
 
         $scopedWarehouseId = function_exists('currentWarehouseId') ? currentWarehouseId() : null;
         $warehouses = function_exists('getScopedWarehouses') ? getScopedWarehouses() : Warehouse::getAll(['is_active' => 1]);
@@ -985,7 +988,10 @@ class WarehouseController {
         $seriesItems = [];
         $returnedItems = [];
         $returnedVariantIds = array_fill_keys(array_map('intval', array_column(Database::fetchAll(
-            "SELECT DISTINCT variant_id FROM stock_transactions WHERE location_type = 'WAREHOUSE' AND transaction_type = 'RETURN_INWARD'"
+            "SELECT DISTINCT variant_id
+             FROM stock_transactions
+             WHERE location_type = 'WAREHOUSE' AND location_id = ? AND transaction_type = 'RETURN_INWARD'",
+            [$selectedWarehouseId]
         ), 'variant_id')), true);
         $prodAvailableQty = 0;
         $prodValuation = 0.0;
@@ -1036,6 +1042,7 @@ class WarehouseController {
             // which made returned rows show ₹0.00.
             if (isset($returnedVariantIds[(int)$item['variant_id']])) {
                 $returnedItems[] = $item;
+                continue;
             }
 
             if ($isComp) {
@@ -1080,18 +1087,12 @@ class WarehouseController {
             }
         }
 
-        if ($activeTab === 'normal') {
-            $productionItems = $normalItems;
-            $thirdPartyItems = [];
-            $complementaryItems = [];
-        } elseif ($activeTab === 'series') {
+        if ($activeTab === 'series') {
             $productionItems = $seriesItems;
             $thirdPartyItems = [];
-            $complementaryItems = [];
         } elseif ($activeTab === 'returned') {
             $productionItems = $returnedItems;
             $thirdPartyItems = [];
-            $complementaryItems = [];
         }
 
         // Complementary Sales (Realized sales from sale_items)
@@ -9038,10 +9039,28 @@ class WarehouseController {
         }
 
         // Inward is explicitly QR-selection driven; never credit warehouse stock without selected labels.
-        if (empty($tagCodes) || !is_array($tagCodes) || count(array_filter($tagCodes, 'is_scalar')) === 0) {
+        if (empty($tagCodes) || !is_array($tagCodes)) {
             Response::json(['success' => false, 'message' => 'Select at least one generated QR sticker before inwarding stock.'], 400);
             return;
         }
+        $normalizedTagCodes = [];
+        foreach ($tagCodes as $tagCode) {
+            if (!is_scalar($tagCode)) {
+                Response::json(['success' => false, 'message' => 'The selected QR sticker list is invalid.'], 400);
+                return;
+            }
+            $tagCode = strtoupper(trim((string)$tagCode));
+            if ($tagCode === '' || strlen($tagCode) > 100 || !preg_match('/^[\p{L}\p{N}_-]+$/u', $tagCode)) {
+                Response::json(['success' => false, 'message' => 'The selected QR sticker list contains an invalid QR code.'], 400);
+                return;
+            }
+            if (isset($normalizedTagCodes[$tagCode])) {
+                Response::json(['success' => false, 'message' => "QR code {$tagCode} was selected more than once."], 409);
+                return;
+            }
+            $normalizedTagCodes[$tagCode] = true;
+        }
+        $tagCodes = array_keys($normalizedTagCodes);
 
         $scopedWhId = function_exists('currentWarehouseId') ? currentWarehouseId() : null;
         if ($scopedWhId !== null) {
@@ -9170,9 +9189,42 @@ class WarehouseController {
         } else {
             $tagSummary = 'QR Stickers Generated';
         }
-
         $typeLabel = $isComp ? "Complementary Product" : ($isSeries ? "Master Series Pack" : "Third-Party Product");
         $inwardNote = !empty($notes) ? $notes : "Third-Party Stickered QR Inward (+{$quantity} pcs) for {$typeLabel} SKU {$variant['sku']}. Tags: {$tagSummary}";
+
+            if (!$packTransactionStarted) {
+                Database::beginTransaction();
+                $packTransactionStarted = true;
+            }
+            foreach ($tagCodes as $tagCode) {
+                $qrRecord = Database::fetchOne(
+                    "SELECT id, variant_id, warehouse_id, inwarded_at FROM warehouse_qr_codes WHERE qr_code = ? FOR UPDATE",
+                    [$tagCode]
+                );
+                if ($qrRecord) {
+                    if ($qrRecord['inwarded_at'] !== null) {
+                        throw new DomainException("QR code {$tagCode} has already been inwarded.");
+                    }
+                    if ((int)$qrRecord['variant_id'] !== $variantId || (int)$qrRecord['warehouse_id'] !== $warehouseId) {
+                        throw new DomainException("QR code {$tagCode} is reserved for a different product or warehouse.");
+                    }
+                    if (Database::fetchOne("SELECT id FROM product_variants WHERE qr_code = ? LIMIT 1", [$tagCode])) {
+                        throw new DomainException("QR code {$tagCode} is already assigned to a product variant.");
+                    }
+                    Database::execute(
+                        "UPDATE warehouse_qr_codes SET inwarded_at = CURRENT_TIMESTAMP, created_by = ? WHERE id = ?",
+                        [$userId, $qrRecord['id']]
+                    );
+                } else {
+                    if (Database::fetchOne("SELECT id FROM product_variants WHERE qr_code = ? LIMIT 1", [$tagCode])) {
+                        throw new DomainException("QR code {$tagCode} is already assigned to a product variant.");
+                    }
+                    Database::execute(
+                        "INSERT INTO warehouse_qr_codes (qr_code, variant_id, warehouse_id, created_by, inwarded_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                        [$tagCode, $variantId, $warehouseId, $userId]
+                    );
+                }
+            }
 
             // Central Stock Service safely increases AVAILABLE stock in stock_balances with audit log
             StockService::increase(
@@ -9238,6 +9290,14 @@ class WarehouseController {
         } catch (Throwable $e) {
             if ($packTransactionStarted) {
                 Database::rollback();
+            }
+            if ($e instanceof DomainException) {
+                Response::json(['success' => false, 'message' => $e->getMessage()], 409);
+                return;
+            }
+            if ($e instanceof PDOException && (string)$e->getCode() === '23000' && str_contains($e->getMessage(), 'uq_warehouse_qr_code')) {
+                Response::json(['success' => false, 'message' => 'One or more selected QR codes have already been inwarded. Generate new labels before trying again.'], 409);
+                return;
             }
             error_log("confirmStickeredInward error: " . $e->getMessage());
             Response::json(['success' => false, 'message' => 'Failed to inward inventory: ' . $e->getMessage()], 500);
@@ -13914,10 +13974,10 @@ class WarehouseController {
             }
 
             foreach ($attributes as $idx => $attr) {
-                $attrName = trim($attr['attr_name'] ?? '');
+                $attrName = mb_strtoupper(trim($attr['attr_name'] ?? ''));
                 if (empty($attrName)) continue;
                 $attrType = in_array($attr['attr_type'] ?? '', ['TEXT', 'NUMBER', 'SELECT', 'MULTI_SELECT']) ? $attr['attr_type'] : 'SELECT';
-                $attrOptions = !empty($attr['attr_options']) ? (is_array($attr['attr_options']) ? implode(',', $attr['attr_options']) : trim($attr['attr_options'])) : null;
+                $attrOptions = !empty($attr['attr_options']) ? mb_strtoupper(is_array($attr['attr_options']) ? implode(',', $attr['attr_options']) : trim($attr['attr_options'])) : null;
                 $isRequired = !empty($attr['is_required']) ? 1 : 0;
                 $sortOrder = (int)($attr['sort_order'] ?? ($idx + 1));
 
@@ -14335,6 +14395,7 @@ class WarehouseController {
                     COALESCE(wc.name, '') AS category_name,
                     COALESCE(wsc.name, '') AS subcategory_name,
                     COALESCE(wss.name, '') AS sub_subcategory_name,
+                    COALESCE(wc.category_type, 'NORMAL') AS product_type,
                     COALESCE(p.hsn_code, '') AS hsn_code,
                     COALESCE(pv.weight, p.weight, 0) AS weight,
                     COALESCE(pv.mrp, 0) AS mrp,
@@ -14558,7 +14619,7 @@ class WarehouseController {
         // Validate mandatory product fields
         foreach ($productsToInsert as $idx => $item) {
             $lineNum = $idx + 1;
-            $pName = trim($item['product_name'] ?? '');
+            $pName = mb_strtoupper(trim($item['product_name'] ?? ''));
             $hsn = trim($item['hsn_code'] ?? '');
             $weight = (float)($item['weight'] ?? 0);
             $mrp = (float)($item['mrp'] ?? 0);
@@ -14642,7 +14703,7 @@ class WarehouseController {
             $itemsForPo = [];
 
             foreach ($productsToInsert as $item) {
-                $pName = trim($item['product_name']);
+                $pName = mb_strtoupper(trim($item['product_name']));
                 $hsn = trim($item['hsn_code']);
                 $weight = (float)$item['weight'];
                 $mrp = (float)$item['mrp'];
@@ -15160,10 +15221,10 @@ class WarehouseController {
             // 4. Save Pre-set Attributes (if provided)
             if (!empty($attributes)) {
                 foreach ($attributes as $idx => $attr) {
-                    $attrName = trim($attr['attr_name'] ?? '');
+                    $attrName = mb_strtoupper(trim($attr['attr_name'] ?? ''));
                     if (empty($attrName)) continue;
                     $attrType = in_array($attr['attr_type'] ?? '', ['TEXT', 'NUMBER', 'SELECT', 'MULTI_SELECT']) ? $attr['attr_type'] : 'SELECT';
-                    $attrOptions = !empty($attr['attr_options']) ? (is_array($attr['attr_options']) ? implode(',', $attr['attr_options']) : trim($attr['attr_options'])) : null;
+                    $attrOptions = !empty($attr['attr_options']) ? mb_strtoupper(is_array($attr['attr_options']) ? implode(',', $attr['attr_options']) : trim($attr['attr_options'])) : null;
                     $isRequired = !empty($attr['is_required']) ? 1 : 0;
                     $sortOrder = (int)($attr['sort_order'] ?? ($idx + 1));
 
@@ -15325,10 +15386,10 @@ class WarehouseController {
                 );
 
                 foreach ($attributes as $idx => $attr) {
-                    $attrName = trim($attr['attr_name'] ?? '');
+                    $attrName = mb_strtoupper(trim($attr['attr_name'] ?? ''));
                     if (empty($attrName)) continue;
                     $attrType = in_array($attr['attr_type'] ?? '', ['TEXT', 'NUMBER', 'SELECT', 'MULTI_SELECT']) ? $attr['attr_type'] : 'SELECT';
-                    $attrOptions = !empty($attr['attr_options']) ? (is_array($attr['attr_options']) ? implode(',', $attr['attr_options']) : trim($attr['attr_options'])) : null;
+                    $attrOptions = !empty($attr['attr_options']) ? mb_strtoupper(is_array($attr['attr_options']) ? implode(',', $attr['attr_options']) : trim($attr['attr_options'])) : null;
                     $isRequired = !empty($attr['is_required']) ? 1 : 0;
                     $sortOrder = (int)($attr['sort_order'] ?? ($idx + 1));
 

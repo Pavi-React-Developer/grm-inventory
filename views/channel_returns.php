@@ -1,23 +1,34 @@
+<?php
+$isWebsiteReturns = !empty($isWebsiteReturns);
+$returnChannelLabel = $isWebsiteReturns ? 'Website' : 'WhatsApp';
+$returnBasePath = $isWebsiteReturns ? 'warehouse/website-orders/returns' : 'warehouse/whatsapp-orders/returns';
+$returnApiPath = $isWebsiteReturns ? 'api/website/returns/lookup-piece' : 'api/whatsapp/returns/lookup-piece';
+$returnHistoryPath = $isWebsiteReturns ? 'warehouse/website-orders/history' : 'sales/whatsapp';
+$returnTheme = $isWebsiteReturns ? 'primary' : 'success';
+$canProcessReturns = !$isWebsiteReturns || hasPermission('website_returns', 'create');
+?>
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
-        <h2 class="mb-1"><i class="bi bi-arrow-left-right me-2 text-success"></i>WhatsApp Returns &amp; Exchanges</h2>
-        <span class="text-muted">Process customer product returns, size &amp; color exchanges, and refunds for WhatsApp orders</span>
+        <h2 class="mb-1"><i class="bi bi-arrow-left-right me-2 text-<?= $returnTheme ?>"></i><?= htmlspecialchars($returnChannelLabel) ?> Returns &amp; Exchanges</h2>
+        <span class="text-muted">Process customer product returns, size &amp; color exchanges, and refunds for <?= htmlspecialchars($returnChannelLabel) ?> orders</span>
     </div>
 </div>
 
-<!-- Customer invoice lookup (WhatsApp returns/exchanges) -->
+<?php if ($canProcessReturns): ?>
+<!-- Customer invoice lookup (returns/exchanges) -->
 <div class="card border-0 shadow-sm rounded-3 mb-4 bg-white" style="border-top:3px solid #198754 !important;">
     <div class="card-body p-3">
-        <label class="form-label small fw-semibold text-dark mb-2"><i class="bi bi-search text-success me-1"></i>Search WhatsApp Customer Order</label>
+        <label class="form-label small fw-semibold text-dark mb-2"><i class="bi bi-search text-success me-1"></i>Search <?= htmlspecialchars($returnChannelLabel) ?> Customer Order</label>
         <div class="input-group input-group-lg mb-2" style="max-width:590px;">
             <span class="input-group-text bg-white border-end-0"><i class="bi bi-qr-code-scan text-success"></i></span>
             <input id="waPageLookupInput" type="text" class="form-control border-start-0" placeholder="Phone number, invoice number, or customer name">
-            <button id="waPageLookupBtn" class="btn btn-success px-4 fw-semibold" type="button">Lookup Order</button>
+            <button id="waPageLookupBtn" class="btn btn-<?= $returnTheme ?> px-4 fw-semibold" type="button">Lookup Order</button>
         </div>
         <div id="waPageLookupMessage" class="small text-primary fw-semibold mb-2" style="display:none;"></div>
         <div id="waPageInvoiceList" class="list-group" style="display:none; max-height:245px; overflow:auto;"></div>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- Summary Metrics Chips -->
 <div class="row g-3 mb-4">
@@ -82,7 +93,7 @@
 <!-- Search & Filter Card -->
 <div class="card border-0 shadow-sm rounded-3 mb-4 bg-white">
     <div class="card-body p-3">
-        <form method="GET" action="<?= url('warehouse/whatsapp-orders/returns') ?>" class="row g-2 align-items-end">
+        <form method="GET" action="<?= url($returnBasePath) ?>" class="row g-2 align-items-end">
             <!-- Search Keyword -->
             <div class="col-lg-4 col-md-6">
                 <label class="form-label small fw-semibold text-secondary mb-1">Search Returns</label>
@@ -125,7 +136,7 @@
 
             <!-- Filter Buttons -->
             <div class="col-12 d-flex justify-content-end gap-2 mt-2">
-                <a href="<?= url('warehouse/whatsapp-orders/returns') ?>" class="btn btn-sm btn-light border">
+                <a href="<?= url($returnBasePath) ?>" class="btn btn-sm btn-light border">
                     <i class="bi bi-x-circle me-1"></i> Clear
                 </a>
                 <button type="submit" class="btn btn-sm btn-primary">
@@ -140,7 +151,7 @@
 <div class="card border-0 shadow-sm rounded-3 bg-white">
     <div class="card-header bg-transparent border-0 pt-3 pb-2 d-flex justify-content-between align-items-center">
         <h5 class="card-title fw-bold mb-0 text-dark">
-            <i class="bi bi-list-check me-2 text-primary"></i>WhatsApp Returns &amp; Exchanges Register
+            <i class="bi bi-list-check me-2 text-primary"></i><?= htmlspecialchars($returnChannelLabel) ?> Returns &amp; Exchanges Register
         </h5>
         <span class="badge bg-light text-secondary border"><?= count($returns ?? []) ?> Records</span>
     </div>
@@ -165,7 +176,7 @@
                         <tr>
                             <td colspan="9" class="text-center py-5 text-muted">
                                 <i class="bi bi-inbox fs-1 d-block mb-2 text-secondary opacity-50"></i>
-                                No WhatsApp returns or exchanges found matching your criteria.
+                                No <?= htmlspecialchars($returnChannelLabel) ?> returns or exchanges found matching your criteria.
                             </td>
                         </tr>
                     <?php else: ?>
@@ -178,7 +189,7 @@
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <a href="<?= url('sales/whatsapp/history?search=' . urlencode($row['sale_invoice'])) ?>" class="fw-semibold text-decoration-none">
+                                    <a href="<?= url($returnHistoryPath . '?search=' . urlencode($row['sale_invoice'])) ?>" class="fw-semibold text-decoration-none">
                                         <?= htmlspecialchars($row['sale_invoice']) ?>
                                     </a>
                                 </td>
@@ -235,7 +246,7 @@
                                     <small class="text-muted"><?= date('h:i A', strtotime($row['created_at'])) ?></small>
                                 </td>
                                 <td class="text-end pe-3">
-                                    <a href="<?= url('warehouse/whatsapp-orders/returns/invoice/' . $row['id']) ?>" class="btn btn-sm btn-outline-primary" title="Print Return / Exchange Slip" target="_blank">
+                                    <a href="<?= url($returnBasePath . '/invoice/' . $row['id']) ?>" class="btn btn-sm btn-outline-primary" title="Print Return / Exchange Slip" target="_blank">
                                         <i class="bi bi-printer me-1"></i> Slip
                                     </a>
                                 </td>
@@ -257,7 +268,7 @@
                 <div>
                     <div class="d-flex align-items-center gap-2 mb-1">
                         <span class="badge bg-success text-white rounded-pill font-monospace" style="font-size:10px; padding:3px 8px;">
-                            <i class="bi bi-whatsapp me-1"></i>WHATSAPP ORDERS
+                            <i class="bi <?= $isWebsiteReturns ? 'bi-globe2' : 'bi-whatsapp' ?> me-1"></i><?= strtoupper(htmlspecialchars($returnChannelLabel)) ?> ORDERS
                         </span>
                         <span class="text-muted small">Return &amp; Exchange Portal</span>
                     </div>
@@ -273,12 +284,12 @@
                 <div class="card border-0 shadow-sm mb-4" style="border-radius:12px;">
                     <div class="card-body p-3">
                         <label class="form-label fw-bold text-dark mb-2" style="font-size:13px;">
-                            <i class="bi bi-search text-success me-1"></i>Step 1: Search WhatsApp Order / Customer
+                            <i class="bi bi-search text-success me-1"></i>Step 1: Search <?= htmlspecialchars($returnChannelLabel) ?> Order / Customer
                         </label>
                         <div class="input-group input-group-lg shadow-sm rounded-3 overflow-hidden">
                             <span class="input-group-text bg-white border-end-0"><i class="bi bi-upc-scan text-success fs-5"></i></span>
                             <input type="text" id="orderSearchInput" class="form-control border-start-0 font-monospace fw-bold" 
-                                   placeholder="Type WhatsApp Invoice # (e.g. INV-WA-...), Customer Phone, or Name..." style="font-size:14px;">
+                                   placeholder="Type <?= htmlspecialchars($returnChannelLabel) ?> Invoice #, Customer Phone, or Name..." style="font-size:14px;">
                             <button class="btn btn-success px-4 fw-bold" type="button" id="btnSearchOrder">
                                 <i class="bi bi-search me-1"></i> Lookup Order
                             </button>
@@ -290,7 +301,7 @@
                 <div id="lookupResultsContainer" style="display: none;">
                     <div id="invoiceChoices" class="card border-primary-subtle shadow-sm mb-3 p-3" style="display:none; border-radius:12px;"></div>
                     
-                    <form id="processReturnForm" method="POST" action="<?= url('warehouse/whatsapp-orders/returns/process') ?>">
+                    <form id="processReturnForm" method="POST" action="<?= url($returnBasePath . '/process') ?>">
                         <?= CSRF::field() ?>
                         <input type="hidden" name="sale_id" id="formSaleId" value="">
                         <input type="hidden" name="return_type" id="formReturnTypeInput" value="EXCHANGE_SAME">
@@ -540,7 +551,7 @@
                         <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top bg-white p-3 rounded-3">
                             <button type="button" class="btn btn-outline-secondary rounded-pill px-4 fw-semibold" data-bs-dismiss="modal">Cancel</button>
                             <button type="submit" class="btn btn-success rounded-pill px-5 fw-bold shadow-sm">
-                                <i class="bi bi-check2-circle me-1"></i> Process WhatsApp Return / Exchange
+                                <i class="bi bi-check2-circle me-1"></i> Process <?= htmlspecialchars($returnChannelLabel) ?> Return / Exchange
                             </button>
                         </div>
                     </form>
@@ -1020,14 +1031,14 @@ document.addEventListener('DOMContentLoaded', function() {
         btnSearch.disabled = true;
         btnSearch.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Searching...';
 
-        fetch('<?= url('warehouse/whatsapp-orders/returns/lookup') ?>?q=' + encodeURIComponent(query))
+        fetch('<?= url($returnBasePath . '/lookup') ?>?q=' + encodeURIComponent(query))
             .then(res => res.json())
             .then(res => {
                 btnSearch.disabled = false;
                 btnSearch.innerHTML = '<i class="bi bi-search me-1"></i> Lookup Order';
 
                 if (!res.success || !res.data) {
-                    alert(res.message || 'No matching WhatsApp orders found.');
+                    alert(res.message || 'No matching <?= htmlspecialchars($returnChannelLabel) ?> orders found.');
                     resultsContainer.style.display = 'none';
                     return;
                 }
@@ -1051,7 +1062,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 const match = matches[0];
                 if (!match) {
-                    alert(res.message || 'No matching WhatsApp orders found.');
+                    alert(res.message || 'No matching <?= htmlspecialchars($returnChannelLabel) ?> orders found.');
                     resultsContainer.style.display = 'none';
                     return;
                 }
@@ -1088,13 +1099,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     // Pre-populate any billed piece tags attached to this sale item
                     if (item.scanned_qr_codes) {
-                        const parts = item.scanned_qr_codes.split(',').map(s => s.trim()).filter(Boolean);
+                        let parts;
+                        try {
+                            const decoded = JSON.parse(item.scanned_qr_codes);
+                            parts = Array.isArray(decoded) ? decoded.map(tag =>
+                                typeof tag === 'object' && tag !== null ? (tag.tag_code || tag.qr_code || '') : tag
+                            ) : String(item.scanned_qr_codes).split(',');
+                        } catch {
+                            parts = String(item.scanned_qr_codes).split(',');
+                        }
+                        parts = parts.map(tag => String(tag).trim()).filter(Boolean);
                         parts.forEach(p => rowPieceTagsMap[item.id].add(p));
                     }
-                    if (item.qr_code && !rowPieceTagsMap[item.id].has(item.qr_code)) {
-                        rowPieceTagsMap[item.id].add(item.qr_code);
-                    }
-
                     const row = document.createElement('tr');
                     row.id = `returnRow_${item.id}`;
                     row.innerHTML = `
@@ -1205,7 +1221,7 @@ document.addEventListener('DOMContentLoaded', function() {
             recalculateSettlementSummary();
         } else {
             // Live piece lookup if not matched in plain text
-            fetch('<?= url('api/whatsapp/returns/lookup-piece') ?>?q=' + encodeURIComponent(tag))
+            fetch('<?= url($returnApiPath) ?>?q=' + encodeURIComponent(tag))
                 .then(r => r.json())
                 .then(res => {
                     const variant = (res && (res.variant || res.data || res.product));
@@ -1258,18 +1274,29 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.scanSameProductSwap = function(itemId, rawCode, inputEl) {
-        const code = (rawCode || '').trim().toLowerCase();
+        const code = (rawCode || '').trim();
         if (!code) return;
 
         const swapSelect = document.getElementById('swap_' + itemId);
         if (!swapSelect) return;
 
-        // Replacement is selected by scanning/entering the new QR or SKU.
-        fetch('<?= url('api/whatsapp/returns/lookup-piece') ?>?q=' + encodeURIComponent(rawCode))
+        fetch('<?= url($returnApiPath) ?>?q=' + encodeURIComponent(rawCode))
             .then(r => r.json())
             .then(res => {
                 const variant = res && (res.variant || res.data || res.product);
                 if (!res.success || !variant) { alert(res.message || `Product matching "${rawCode}" not found.`); return; }
+                const item = loadedOrderItemsMap[itemId];
+                if (item && Number(item.product_id) !== Number(variant.product_id)) {
+                    alert(`Scanned product "${variant.product_name || 'Product'}" is not a size/color variant of the returned item.`);
+                    return;
+                }
+                const quantity = parseInt(document.getElementById('qty_' + itemId)?.value || 1, 10) || 1;
+                const available = Number(variant.stock || 0);
+                if (available < quantity) {
+                    alert(`This replacement has only ${available} available in Website stock; ${quantity} requested.`);
+                    return;
+                }
+
                 swapSelect.value = String(variant.variant_id || variant.id);
                 swapSelect.dataset.price = variant.selling_price || variant.price || swapSelect.dataset.price;
                 const detail = document.getElementById('swapProductDetails_' + itemId);
@@ -1277,7 +1304,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const mrp = Number(variant.mrp || variant.selling_price || 0);
                     const selling = Number(variant.selling_price || variant.price || 0);
                     const discount = mrp > selling ? (((mrp - selling) / mrp) * 100).toFixed(0) : '0';
-                    detail.innerHTML = `<strong>${variant.product_name || 'Product'}</strong> · ${variant.sku || ''}<br><span class="text-muted">Base Price: ₹${mrp.toFixed(2)}</span> · <strong>Discount Price: ₹${selling.toFixed(2)}</strong>${discount > 0 ? ` · <span class="text-danger">${discount}% OFF</span>` : ''}`;
+                    detail.innerHTML = `<strong>${variant.product_name || 'Product'}</strong> · ${variant.sku || ''}<br><span class="text-muted">${variant.size_name || ''} / ${variant.color_name || ''} · ${available} available · Base Price: ₹${mrp.toFixed(2)}</span> · <strong>Discount Price: ₹${selling.toFixed(2)}</strong>${discount > 0 ? ` · <span class="text-danger">${discount}% OFF</span>` : ''}`;
                     detail.style.display = 'block';
                 }
                 if (inputEl) inputEl.value = '';
@@ -1286,73 +1313,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 recalculateSettlementSummary();
             })
             .catch(() => alert(`Product matching "${rawCode}" not found.`));
-        return;
-
-        let matchedVal = null;
-        let matchedText = '';
-
-        for (let i = 0; i < swapSelect.options.length; i++) {
-            const opt = swapSelect.options[i];
-            const optVal = opt.value;
-            const optTxt = (opt.textContent || '').toLowerCase();
-            const optSku = (opt.getAttribute('data-sku') || '').toLowerCase();
-            const optSize = (opt.getAttribute('data-size') || '').toLowerCase();
-            const optColor = (opt.getAttribute('data-color') || '').toLowerCase();
-
-            if (optVal && (optTxt.includes(code) || (optSku && (optSku === code || code.includes(optSku) || optSku.includes(code))) || optSize === code || optColor === code)) {
-                matchedVal = optVal;
-                matchedText = opt.textContent;
-                break;
-            }
-        }
-
-        if (matchedVal) {
-            swapSelect.value = matchedVal;
-            if (inputEl) inputEl.value = '';
-            addSwapReplacementPieceTag(itemId, rawCode);
-            updateSameSwapRow(itemId);
-            recalculateSettlementSummary();
-        } else {
-            // Check live product lookup via AJAX for scanned tag or barcode
-            fetch('<?= url('api/whatsapp/returns/lookup-piece') ?>?q=' + encodeURIComponent(rawCode))
-                .then(r => r.json())
-                .then(res => {
-                    const variant = (res && (res.variant || res.data || res.product));
-                    if (res && res.success && variant) {
-                        const vId = String(variant.variant_id || variant.id);
-                        let found = false;
-                        for (let j = 0; j < swapSelect.options.length; j++) {
-                            if (String(swapSelect.options[j].value) === vId) {
-                                swapSelect.selectedIndex = j;
-                                found = true;
-                                break;
-                            }
-                        }
-                        // Also check if vId matches the original order item and option value is empty (Even Swap)
-                        if (!found) {
-                            const item = loadedOrderItemsMap[itemId];
-                            if (item && String(item.variant_id) === vId) {
-                                swapSelect.value = "";
-                                found = true;
-                            }
-                        }
-                        if (found) {
-                            if (inputEl) inputEl.value = '';
-                            addSwapReplacementPieceTag(itemId, res.tag_code || rawCode);
-                            updateSameSwapRow(itemId);
-                            recalculateSettlementSummary();
-                            return;
-                        }
-                        alert(`Scanned piece "${rawCode}" belongs to "${variant.product_name || 'Product'}" (${variant.size_name || ''} / ${variant.color_name || ''}), which is not a sibling variant for this garment. Please scan a matching size or color variant for this garment.`);
-                        return;
-                    }
-                    alert(res && res.message ? res.message : `Variant matching "${rawCode}" not found.`);
-                })
-                .catch(err => {
-                    console.error("Scan lookup error:", err);
-                    alert(`Variant matching "${rawCode}" not found.`);
-                });
-        }
     };
 
     window.addSwapReplacementPieceTag = function(itemId, raw) {
@@ -1425,7 +1385,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Attach piece_tags & replacement swap tags payload on submit
     document.getElementById('processReturnForm').addEventListener('submit', function(e) {
+        const selectedItems = [...document.querySelectorAll('.item-select-cb:checked')];
+        if (selectedItems.length === 0) {
+            e.preventDefault();
+            alert('Select at least one invoice item to return.');
+            return;
+        }
+        const selectedItemIds = new Set(selectedItems.map(cb => cb.getAttribute('data-item-id')));
+
+        if (document.getElementById('formReturnTypeInput')?.value === 'EXCHANGE_SAME') {
+            const missingReplacement = selectedItems.find(cb => {
+                const itemId = cb.getAttribute('data-item-id');
+                return !document.getElementById('swap_' + itemId)?.value || !currentSwapTags[itemId];
+            });
+            if (missingReplacement) {
+                e.preventDefault();
+                alert('Scan a replacement QR/SKU for every selected item before processing the exchange.');
+                return;
+            }
+        }
+
         Object.keys(rowPieceTagsMap).forEach(itemId => {
+            if (!selectedItemIds.has(itemId)) return;
             const tags = [...rowPieceTagsMap[itemId]];
             if (tags.length > 0) {
                 tags.forEach(t => {
@@ -1440,6 +1421,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Attach swap piece tags
         Object.keys(currentSwapTags).forEach(itemId => {
+            if (!selectedItemIds.has(itemId)) return;
             const swapTag = currentSwapTags[itemId];
             if (swapTag) {
                 const hidden = document.createElement('input');
@@ -1452,7 +1434,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Full-page WhatsApp customer invoice lookup (same workflow as Direct Purchases).
+// Full-page channel customer invoice lookup.
 document.addEventListener('DOMContentLoaded', function () {
     const input = document.getElementById('waPageLookupInput');
     const button = document.getElementById('waPageLookupBtn');
@@ -1467,12 +1449,12 @@ document.addEventListener('DOMContentLoaded', function () {
         list.style.display = 'none';
         message.textContent = 'Searching customer invoices...';
         message.style.display = 'block';
-        fetch('<?= url('warehouse/whatsapp-orders/returns/lookup') ?>?q=' + encodeURIComponent(q))
+        fetch('<?= url($returnBasePath . '/lookup') ?>?q=' + encodeURIComponent(q))
             .then(r => r.json())
             .then(result => {
                 button.disabled = false;
                 if (!result.success || !result.data || !result.data.length) {
-                    message.textContent = result.message || 'No WhatsApp invoices found.';
+                    message.textContent = result.message || 'No <?= htmlspecialchars($returnChannelLabel) ?> invoices found.';
                     return;
                 }
                 const orders = Array.isArray(result.data) ? result.data : [result.data];

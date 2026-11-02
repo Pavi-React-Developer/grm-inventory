@@ -3,19 +3,6 @@
         <h2 class="mb-1"><i class="bi bi-globe me-2 text-primary"></i>Website E-Commerce Channel Dashboard</h2>
         <span class="text-muted">Dynamic tracking of Website allocated stock, orders count, total revenue, and available stock valuation</span>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
-        <a href="<?= url('warehouse/website-orders/history') ?>" class="btn btn-outline-primary">
-            <i class="bi bi-clock-history me-1"></i> Orders History
-        </a>
-        <a href="<?= url('warehouse/website-orders/damage') ?>" class="btn btn-outline-danger">
-            <i class="bi bi-exclamation-octagon me-1"></i> Damage Management
-        </a>
-        <?php if (hasPermission('website_inventory.adjust') || hasPermission('website_inventory.create')): ?>
-        <a href="<?= url('warehouse/website-orders/requests/create') ?>" class="btn btn-primary">
-            <i class="bi bi-plus-lg me-1"></i> Request Stock
-        </a>
-        <?php endif; ?>
-    </div>
 </div>
 
 <!-- 5 Dynamic KPI Cards -->

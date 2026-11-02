@@ -82,24 +82,12 @@
     <div class="card-body p-3">
         <form method="GET" action="<?= url('warehouse/website-orders/history') ?>" class="row g-2 align-items-end">
             <!-- Search Keyword -->
-            <div class="col-lg-4 col-md-6">
+            <div class="col-lg-5 col-md-6">
                 <label class="form-label small fw-semibold text-secondary mb-1">Search Orders</label>
                 <div class="input-group input-group-sm">
                     <span class="input-group-text bg-light text-muted"><i class="bi bi-search"></i></span>
                     <input type="text" name="search" class="form-control" placeholder="Invoice #, Customer name, Phone, Staff..." value="<?= htmlspecialchars($search ?? '') ?>">
                 </div>
-            </div>
-
-            <!-- Status Filter -->
-            <div class="col-lg-2 col-md-3 col-6">
-                <label class="form-label small fw-semibold text-secondary mb-1">Status</label>
-                <select name="status" class="form-select form-select-sm">
-                    <option value="">-- All Statuses --</option>
-                    <option value="COMPLETED" <?= ($status ?? '') === 'COMPLETED' ? 'selected' : '' ?>>COMPLETED</option>
-                    <option value="PAID" <?= ($status ?? '') === 'PAID' ? 'selected' : '' ?>>PAID</option>
-                    <option value="PENDING" <?= ($status ?? '') === 'PENDING' ? 'selected' : '' ?>>PENDING</option>
-                    <option value="CANCELLED" <?= ($status ?? '') === 'CANCELLED' ? 'selected' : '' ?>>CANCELLED</option>
-                </select>
             </div>
 
             <!-- Date Range From -->
@@ -115,11 +103,11 @@
             </div>
 
             <!-- Action Buttons -->
-            <div class="col-lg-2 col-md-3 col-6 d-flex gap-2">
+            <div class="col-lg-3 col-md-3 col-6 d-flex gap-2">
                 <button type="submit" class="btn btn-sm btn-primary w-100 fw-semibold">
                     <i class="bi bi-funnel me-1"></i> Filter
                 </button>
-                <?php if (!empty($search) || !empty($status) || !empty($dateFrom) || !empty($dateTo)): ?>
+                <?php if (!empty($search) || !empty($dateFrom) || !empty($dateTo)): ?>
                     <a href="<?= url('warehouse/website-orders/history') ?>" class="btn btn-sm btn-outline-secondary" title="Clear Filters">
                         <i class="bi bi-x-lg"></i>
                     </a>

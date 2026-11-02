@@ -174,13 +174,12 @@
                     <th class="text-center" style="width: 6%;">Qty</th>
                     <th class="text-end" style="width: 9%;">Loss Value</th>
                     <th class="text-center" style="width: 8%;">Status</th>
-                    <th class="text-end pe-4" style="width: 7%;">Action</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($damages)): ?>
                     <tr>
-                        <td colspan="9" class="text-center py-5 text-muted">
+                        <td colspan="8" class="text-center py-5 text-muted">
                             <div class="py-4">
                                 <i class="bi bi-shield-check fs-1 text-success d-block mb-2"></i>
                                 <h6 class="fw-bold text-dark">No Damaged Stock Found</h6>
@@ -274,13 +273,6 @@
                                         <?= e($d['outward_batch_number']) ?>
                                     </small>
                                 <?php endif; ?>
-                            </td>
-                            <td class="text-end pe-4" style="white-space: nowrap;">
-                                <div class="d-flex justify-content-end gap-1">
-                                    <a href="<?= url('warehouse/website-orders/damage/view/' . $d['id']) ?>" class="btn btn-sm btn-outline-primary rounded-pill px-2" title="View Full Damage Details">
-                                        <i class="bi bi-eye-fill"></i>
-                                    </a>
-                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>

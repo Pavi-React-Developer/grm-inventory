@@ -26,7 +26,7 @@
     <?php unset($_SESSION['flash_error']); ?>
 <?php endif; ?>
 
-<form method="POST" action="<?= url('warehouse/website-orders/damage/store') ?>" enctype="multipart/form-data" id="logDamageForm" onsubmit="return validateBeforeSubmit();">
+<form method="POST" action="<?= url('warehouse/website-orders/damage/store') ?>" id="logDamageForm" onsubmit="return validateBeforeSubmit();">
     <?= CSRF::field() ?>
     
     <div class="row g-4">
@@ -93,53 +93,12 @@
                 <div id="hiddenInputsContainer"></div>
             </div>
 
-            <!-- 2. Defect Classification & Reason Card -->
+            <!-- 2. Damage Reason Card -->
             <div class="card border-0 shadow-sm rounded-4 bg-white p-4">
-                <h5 class="fw-bold text-dark mb-3"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>2. Defect Details &amp; Reason</h5>
-                
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold text-muted text-uppercase">Defect Type <span class="text-danger">*</span></label>
-                        <select name="defect_type" class="form-select bg-light" required>
-                            <option value="TRANSIT_DAMAGE">Transit Damage (Inward Delivery)</option>
-                            <option value="FABRIC_DEFECT">Fabric Defect / Weaving Tear</option>
-                            <option value="COLOR_FADE">Color Fade / Bleed / Shade Variation</option>
-                            <option value="STITCHING_ERROR">Stitching Error / Open Seam</option>
-                            <option value="PACKAGING_DAMAGE">Packaging Torn / Damaged Polybag</option>
-                            <option value="WATER_STAIN">Water Stain / Dirt / Oil Mark</option>
-                            <option value="OTHER">Other Issue</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold text-muted text-uppercase">Source of Damage <span class="text-danger">*</span></label>
-                        <select name="source_type" class="form-select bg-light" required>
-                            <option value="STORAGE_HANDLING">Channel Storage &amp; Handling</option>
-                            <option value="INWARD_TRANSIT">Inward Transit Inspection</option>
-                            <option value="CUSTOMER_RETURN">Customer Return Defect</option>
-                            <option value="EXPIRED_SPOILED">Expired / Spoiled</option>
-                            <option value="OTHER">Other</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="mb-3">
+                <h5 class="fw-bold text-dark mb-3"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>2. Damage Reason</h5>
+                <div>
                     <label class="form-label small fw-bold text-muted text-uppercase">Damage Reason / Title <span class="text-danger">*</span></label>
                     <input type="text" name="damage_reason" class="form-control bg-light" placeholder="e.g. Sleeve stitch unraveled during handling" required>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted text-uppercase">Detailed Defect Notes</label>
-                    <textarea name="defect_notes" rows="3" class="form-control bg-light" placeholder="Enter full observations or physical inspection notes..."></textarea>
-                </div>
-
-                <div>
-                    <label class="form-label small fw-bold text-muted text-uppercase"><i class="bi bi-camera me-1 text-primary"></i>Photo Evidence (Optional)</label>
-                    <div class="input-group">
-                        <input type="file" name="photo" id="photoInput" class="form-control bg-light" accept="image/*" onchange="previewDamagePhoto(this)">
-                    </div>
-                    <div id="photoPreviewContainer" class="mt-2" style="display: none;">
-                        <img id="photoPreviewImg" src="" class="rounded-3 border shadow-sm" style="max-height: 120px; max-width: 200px; object-fit: cover;">
-                    </div>
                 </div>
             </div>
         </div>
@@ -206,22 +165,6 @@
 <script>
 let scannedItems = [];
 
-function previewDamagePhoto(input) {
-    const container = document.getElementById('photoPreviewContainer');
-    const img = document.getElementById('photoPreviewImg');
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            img.src = e.target.result;
-            container.style.display = 'block';
-        };
-        reader.readAsDataURL(input.files[0]);
-    } else {
-        container.style.display = 'none';
-        img.src = '';
-    }
-}
-
 function showScanAlert(msg, type = 'danger') {
     const box = document.getElementById('scanAlertBox');
     box.className = `alert alert-${type} py-2 px-3 rounded-3 small mb-3`;
@@ -259,12 +202,25 @@ function lookupScannedProduct() {
             if (res.success && (res.data || res.variant)) {
                 const item = res.data || res.variant;
                 const tag = (item.tag_code || res.tag_code || query).trim();
+                const isAggregateStock = item.is_aggregate_stock === true || Number(item.is_aggregate_stock) === 1;
 
                 // Check if this piece tag is already added in the current list
-                if (tag) {
+                if (tag && !isAggregateStock) {
                     const alreadyInList = scannedItems.some(it => it.tag_code && it.tag_code.toUpperCase() === tag.toUpperCase());
                     if (alreadyInList) {
                         showScanAlert(`<i class="bi bi-info-circle me-1"></i> Piece tag <strong>${tag}</strong> is already added in this quarantine list.`, 'warning');
+                        input.value = '';
+                        input.focus();
+                        return;
+                    }
+                }
+
+                const variantId = parseInt(item.variant_id || item.id);
+                const availableStock = parseInt(item.available_stock || 0);
+                if (isAggregateStock) {
+                    const requestedQty = scannedItems.filter(it => it.variant_id === variantId && it.is_aggregate_stock).length + 1;
+                    if (requestedQty > availableStock) {
+                        showScanAlert(`<i class="bi bi-exclamation-triangle me-1"></i> No more available stock for <strong>${item.product_name}</strong> (${availableStock} available).`, 'warning');
                         input.value = '';
                         input.focus();
                         return;
@@ -277,8 +233,9 @@ function lookupScannedProduct() {
                 const priceExGst = item.price_ex_gst ? parseFloat(item.price_ex_gst) : Math.round((priceInclGst / (1 + (gstRate / 100))) * 100) / 100;
 
                 const newItem = {
-                    variant_id: parseInt(item.variant_id || item.id),
+                    variant_id: variantId,
                     tag_code: tag,
+                    is_aggregate_stock: isAggregateStock,
                     allocation_id: item.allocation_id || null,
                     sku: item.sku || '',
                     product_name: item.product_name || '',
@@ -288,7 +245,7 @@ function lookupScannedProduct() {
                     mrp: parseFloat(item.mrp || priceInclGst),
                     gst_rate: gstRate,
                     price_ex_gst: priceExGst,
-                    available_stock: parseInt(item.available_stock || 0),
+                    available_stock: availableStock,
                     image: item.image || ''
                 };
 

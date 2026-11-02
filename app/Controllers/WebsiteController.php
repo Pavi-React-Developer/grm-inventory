@@ -36,6 +36,26 @@ class WebsiteController {
         return array_unique($ids);
     }
 
+    private function isAggregateStockVariant(int $variantId): bool {
+        $type = Database::fetchOne(
+            "SELECT COALESCE(wc.category_type, 'NORMAL') as category_type,
+                    pv.is_complementary as variant_is_complementary,
+                    p.is_complementary as product_is_complementary,
+                    pv.qr_type, pv.pack_quantity
+             FROM product_variants pv
+             JOIN products p ON p.id = pv.product_id
+             LEFT JOIN warehouse_categories wc ON wc.id = p.warehouse_category_id
+             WHERE pv.id = ? LIMIT 1",
+            [$variantId]
+        ) ?: [];
+
+        return in_array(strtoupper((string)($type['category_type'] ?? 'NORMAL')), ['SERIES', 'COMPLEMENTARY'], true)
+            || !empty($type['variant_is_complementary'])
+            || !empty($type['product_is_complementary'])
+            || strtoupper((string)($type['qr_type'] ?? '')) === 'SERIES_BATCH'
+            || (int)($type['pack_quantity'] ?? 1) > 1;
+    }
+
     private function buildWebsiteAllocWhere(string $prefix = 'wa'): array {
         $chanIds = $this->getWebsiteChannelIds();
         $placeholders = implode(',', array_fill(0, count($chanIds), '?'));
@@ -65,7 +85,6 @@ class WebsiteController {
         list($allocWhereSql, $allocWhereParams) = $this->buildWebsiteAllocWhere('wa');
 
         $search = trim($_GET['search'] ?? '');
-        $status = trim($_GET['status'] ?? '');
         $dateFrom = trim($_GET['date_from'] ?? '');
         $dateTo = trim($_GET['date_to'] ?? '');
 
@@ -294,17 +313,6 @@ class WebsiteController {
             $params[] = (int)$warehouseId;
         }
 
-        if ($status === 'RECEIVED') {
-            $where[] = "wa.status IN ('RECEIVED', 'COMPLETED', 'DELIVERED')";
-        } elseif ($status === 'PARTIAL_RECEIVED') {
-            $where[] = "wa.status IN ('PARTIAL_RECEIVED', 'IN_PROGRESS')";
-        } elseif ($status === 'DISPATCHED') {
-            $where[] = "wa.status IN ('DISPATCHED', 'APPROVED')";
-        } elseif (!empty($status)) {
-            $where[] = "wa.status = ?";
-            $params[] = $status;
-        }
-
         if (!empty($dateFrom)) {
             $where[] = "DATE(wa.created_at) >= ?";
             $params[] = $dateFrom;
@@ -429,7 +437,6 @@ class WebsiteController {
             'totalDispatchedQty'     => $totalDispatchedQty,
             'totalValuation'         => $totalValuation,
             'search'                 => $search,
-            'status'                 => $status,
             'dateFrom'               => $dateFrom,
             'dateTo'                 => $dateTo,
         ]);
@@ -471,8 +478,12 @@ class WebsiteController {
 
         $items = Database::fetchAll(
             "SELECT ai.*, pv.sku, pv.qr_code, pv.size_id, pv.color_id, pv.selling_price, pv.mrp,
+                    pv.qr_type as variant_qr_type, pv.pack_quantity,
+                    pv.is_complementary as variant_is_complementary,
                     p.name as product_name, p.code as product_code, p.image_url as product_image,
                     p.qr_code_prefix, p.category_code, p.subcategory_code, p.sub_subcategory_code,
+                    p.is_complementary as product_is_complementary,
+                    wc.category_type as warehouse_category_type,
                     cat.name as category_name, cat.code as category_code_tbl,
                     subcat.name as subcategory_name, subcat.code as subcategory_code_tbl,
                     subsub.name as sub_subcategory_name, subsub.code as sub_subcategory_code_tbl,
@@ -480,6 +491,7 @@ class WebsiteController {
              FROM allocation_items ai
              JOIN product_variants pv ON ai.variant_id = pv.id
              JOIN products p ON pv.product_id = p.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN categories cat ON p.category_id = cat.id
              LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
              LEFT JOIN sub_subcategories subsub ON p.sub_subcategory_id = subsub.id
@@ -514,6 +526,16 @@ class WebsiteController {
             $totalReceived += $rec;
             $totalDamaged += $dmg;
             $totalMissing += $mis;
+
+            $warehouseCategoryType = strtoupper(trim((string)($item['warehouse_category_type'] ?? 'NORMAL')));
+            $variantQrType = strtoupper(trim((string)($item['variant_qr_type'] ?? '')));
+            $item['product_type'] = (!empty($item['product_is_complementary']) || !empty($item['variant_is_complementary']) || $warehouseCategoryType === 'COMPLEMENTARY')
+                ? 'COMPLEMENTARY'
+                : ($warehouseCategoryType === 'SERIES'
+                    || in_array($variantQrType, ['SERIES', 'SERIES_BATCH'], true)
+                    || (int)($item['pack_quantity'] ?? 1) > 1
+                    ? 'SERIES'
+                    : 'NORMAL');
 
             // Generate dynamic piece QR codes identical to warehouse allocation
             $c1 = !empty($item['category_name']) ? trim($item['category_name']) : (!empty($item['category_code']) ? trim($item['category_code']) : '');
@@ -947,7 +969,7 @@ class WebsiteController {
                        SELECT SUM(ai.received_qty) 
                        FROM allocation_items ai 
                        JOIN warehouse_allocations wa ON ai.allocation_id = wa.id 
-                       WHERE ai.variant_id = pv.id AND (wa.channel_id IN ($chanIn) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WEBSITE')
+                       WHERE ai.variant_id = pv.id AND ((wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WEBSITE')
                    ), 0) as total_inward_quantity
             FROM product_variants pv
             JOIN products p ON pv.product_id = p.id
@@ -967,7 +989,7 @@ class WebsiteController {
                     WHERE ai.variant_id = pv.id
                       AND (COALESCE(ai.received_qty, 0) > 0 OR COALESCE(ai.damaged_qty, 0) > 0)
                       AND wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED')
-                      AND (wa.channel_id IN ($chanIn) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WEBSITE')
+                      AND ((wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WEBSITE')
                 )
             )
         ";
@@ -976,9 +998,9 @@ class WebsiteController {
             $chanIds, // available
             $chanIds, // damaged
             // sold has no params
-            $chanIds, $chanIds, $destList, // inward
+            $chanIds, $destList, // inward
             $chanIds, // where exists stock
-            $chanIds, $chanIds, $destList // where exists inward
+            $chanIds, $destList // where exists inward
         );
         $allStockItems = Database::fetchAll($stockSql, $stockParams);
 
@@ -1243,9 +1265,9 @@ class WebsiteController {
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
              LEFT JOIN warehouses w ON wa.warehouse_id = w.id
              LEFT JOIN allocation_outwards ao ON ao.allocation_id = wa.id
-             WHERE ai.variant_id = ? AND wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED') AND (wa.channel_id IN ($chanIn) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WEBSITE')
+             WHERE ai.variant_id = ? AND wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED') AND ((wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WEBSITE')
              ORDER BY wa.id DESC",
-            array_merge([$variantId], $chanIds, $chanIds, $destList)
+            array_merge([$variantId], $chanIds, $destList)
         );
 
         // 3. Website Sales Orders History for this variant
@@ -2023,7 +2045,6 @@ class WebsiteController {
         }
         $chan = $this->getChannel();
         $search = trim($_GET['search'] ?? '');
-        $status = trim($_GET['status'] ?? '');
         $dateFrom = trim($_GET['date_from'] ?? '');
         $dateTo = trim($_GET['date_to'] ?? '');
 
@@ -2040,11 +2061,6 @@ class WebsiteController {
             $params[] = $sWild;
             $params[] = $sWild;
             $params[] = $sWild;
-        }
-
-        if (!empty($status)) {
-            $where[] = "s.status = ?";
-            $params[] = $status;
         }
 
         if (!empty($dateFrom)) {
@@ -2115,7 +2131,6 @@ class WebsiteController {
             'completedCount'     => $completedCount,
             'pendingCount'       => $pendingCount,
             'search'             => $search,
-            'status'             => $status,
             'dateFrom'           => $dateFrom,
             'dateTo'             => $dateTo,
         ]);
@@ -2260,6 +2275,7 @@ class WebsiteController {
         }
 
         // Validate all items first
+        $aggregateRequestedQty = [];
         foreach ($items as $idx => $itm) {
             $vId = (int)($itm['variant_id'] ?? 0);
             $qty = max(1, (int)($itm['quantity'] ?? 1));
@@ -2271,8 +2287,9 @@ class WebsiteController {
                 return;
             }
 
+            $isAggregateStock = $this->isAggregateStockVariant($vId);
             if (!empty($tCode)) {
-                $existingDamage = Database::fetchOne(
+                $existingDamage = $isAggregateStock ? null : Database::fetchOne(
                     "SELECT damage_number FROM channel_damages 
                      WHERE (tag_code = ? OR tag_code LIKE ? OR tag_code LIKE ? OR tag_code LIKE ?)
                        AND status NOT IN ('REWORK_RETURNED_TO_STOCK', 'CANCELLED', 'RESOLVED')
@@ -2285,7 +2302,7 @@ class WebsiteController {
                     return;
                 }
 
-                $existingSale = Database::fetchOne(
+                $existingSale = $isAggregateStock ? null : Database::fetchOne(
                     "SELECT s.invoice_number 
                      FROM sale_items si 
                      JOIN sales s ON si.sale_id = s.id 
@@ -2306,14 +2323,19 @@ class WebsiteController {
             foreach ($websiteChanIds as $wId) {
                 $avail += StockService::getBalance($vId, 'CHANNEL', $wId, 'AVAILABLE');
             }
-            if ($avail < $qty) {
+            $requiredQty = $qty;
+            if ($isAggregateStock) {
+                $requiredQty = ($aggregateRequestedQty[$vId] ?? 0) + $qty;
+                $aggregateRequestedQty[$vId] = $requiredQty;
+            }
+            if ($avail < $requiredQty && !$isAggregateStock) {
                 $shopBal = StockService::getBalance($vId, 'SHOP', 1, 'AVAILABLE');
-                if ($shopBal >= $qty) {
+                if ($shopBal >= $requiredQty) {
                     $avail = $shopBal;
                 }
             }
-            if ($avail < $qty) {
-                $_SESSION['flash_error'] = "Insufficient available good stock in Website Channel for item #" . ($idx + 1) . " (Available: {$avail}, Requested: {$qty}).";
+            if ($avail < $requiredQty) {
+                $_SESSION['flash_error'] = "Insufficient available good stock in Website Channel for item #" . ($idx + 1) . " (Available: {$avail}, Requested: {$requiredQty}).";
                 Response::redirect(url('warehouse/website-orders/damage/create'));
                 return;
             }
@@ -2783,7 +2805,7 @@ class WebsiteController {
                 "SELECT ai.variant_id, ai.allocation_id, ai.selected_qr_codes
                  FROM allocation_items ai
                  JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
-                 WHERE (ai.selected_qr_codes = ? 
+                 WHERE (ai.selected_qr_codes = ?
                     OR ai.selected_qr_codes LIKE ? 
                     OR ai.selected_qr_codes LIKE ? 
                     OR ai.selected_qr_codes LIKE ?
@@ -2948,9 +2970,11 @@ class WebsiteController {
         }
 
         if ($foundVariant) {
+            $isAggregateStock = $this->isAggregateStockVariant((int)$foundVariant['id']);
+
             // Restriction 1: Check if piece tag is already logged as damaged / quarantined
             if (!empty($matchedTagCode)) {
-                $existingDamage = Database::fetchOne(
+                $existingDamage = $isAggregateStock ? null : Database::fetchOne(
                     "SELECT damage_number, status, created_at FROM channel_damages 
                      WHERE (tag_code = ? OR tag_code LIKE ? OR tag_code LIKE ? OR tag_code LIKE ?)
                        AND status NOT IN ('REWORK_RETURNED_TO_STOCK', 'CANCELLED', 'RESOLVED')
@@ -2967,7 +2991,7 @@ class WebsiteController {
                 }
 
                 // Restriction 2: Check if piece tag has already been billed / sold
-                $existingSale = Database::fetchOne(
+                $existingSale = $isAggregateStock ? null : Database::fetchOne(
                     "SELECT s.invoice_number, s.status, s.created_at 
                      FROM sale_items si 
                      JOIN sales s ON si.sale_id = s.id 
@@ -2992,7 +3016,7 @@ class WebsiteController {
                 $avail += StockService::getBalance((int)$foundVariant['id'], 'CHANNEL', $wId, 'AVAILABLE');
                 $dmgStock += StockService::getBalance((int)$foundVariant['id'], 'CHANNEL', $wId, 'DAMAGED');
             }
-            if ($avail <= 0) {
+            if ($avail <= 0 && !$isAggregateStock) {
                 $avail = StockService::getBalance((int)$foundVariant['id'], 'SHOP', 1, 'AVAILABLE');
             }
 
@@ -3029,6 +3053,7 @@ class WebsiteController {
                 'cost_price'      => $costPrice,
                 'available_stock' => $avail,
                 'damaged_stock'   => $dmgStock,
+                'is_aggregate_stock' => $isAggregateStock,
                 'image'           => $foundVariant['product_image'] ?? $foundVariant['image_url'] ?? ''
             ];
 
@@ -3065,7 +3090,7 @@ class WebsiteController {
         $dateFrom = trim($_GET['date_from'] ?? '');
         $dateTo = trim($_GET['date_to'] ?? '');
 
-        $where = ["(s.sales_channel = 'WEBSITE' OR s.notes LIKE '%Website%')"];
+        $where = ["r.source_type = 'WEBSITE'", "(s.sales_channel = 'WEBSITE' OR s.sale_type = 'WEBSITE' OR s.notes LIKE '%Website%' OR s.invoice_number LIKE 'WEB-%')"];
         $params = [];
 
         if (!empty($search)) {
@@ -3150,7 +3175,7 @@ class WebsiteController {
              ORDER BY p.name ASC, sz.sort_order ASC"
         );
 
-        Response::view('website_orders.returns', [
+        Response::view('channel_returns', [
             'pageTitle'           => 'Website Returns & Exchanges',
             'activeModule'        => 'website',
             'activeMenu'          => 'wh-website-returns',
@@ -3164,6 +3189,7 @@ class WebsiteController {
             'totalRefundAmount'   => $totalRefundAmount,
             'totalDamagedQty'     => $totalDamagedQty,
             'catalogVariants'     => $catalogVariants,
+            'isWebsiteReturns'    => true,
             'search'              => $search,
             'status'              => $status,
             'returnType'          => $returnType,
@@ -3177,6 +3203,66 @@ class WebsiteController {
         if (empty($term)) {
             Response::jsonError("Please provide an invoice number, customer phone, or piece QR tag.");
             return;
+        }
+
+        if (preg_match('/^[+0-9().\-\s]+$/', $term)) {
+            $phoneTerm = preg_replace('/[^0-9+]/', '', $term);
+            if (strlen(preg_replace('/[^0-9]/', '', $phoneTerm)) >= 7) {
+                $phoneSales = Database::fetchAll(
+                    "SELECT s.*, COALESCE(c.name, s.customer_name, 'Website Customer') as customer_name,
+                            COALESCE(c.phone, s.customer_phone, '-') as customer_phone, c.email as customer_email
+                     FROM sales s LEFT JOIN customers c ON s.customer_id = c.id
+                     WHERE (c.phone LIKE ? OR s.customer_phone LIKE ?)
+                       AND (s.sales_channel = 'WEBSITE' OR s.sale_type = 'WEBSITE' OR s.notes LIKE '%Website%' OR s.invoice_number LIKE 'WEB-%')
+                     ORDER BY s.id DESC LIMIT 50",
+                    ["%{$phoneTerm}%", "%{$phoneTerm}%"]
+                );
+                $phoneOrders = [];
+                foreach ($phoneSales as $phoneSale) {
+                    $phoneItems = Database::fetchAll(
+                        "SELECT si.*, p.id as product_id, p.name as product_name, p.code as product_code,
+                                pv.sku, pv.qr_code, pv.mrp,
+                                COALESCE(sz.name, 'Free Size') as size_name,
+                                COALESCE(clr.name, 'Standard') as color_name
+                         FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id
+                         JOIN products p ON pv.product_id = p.id
+                         LEFT JOIN sizes sz ON pv.size_id = sz.id LEFT JOIN colors clr ON pv.color_id = clr.id
+                         WHERE si.sale_id = ?",
+                        [(int)$phoneSale['id']]
+                    );
+                    foreach ($phoneItems as &$phoneItem) {
+                        $returned = Database::fetchOne(
+                            "SELECT COALESCE(SUM(quantity), 0) total FROM return_items WHERE sale_item_id = ?",
+                            [(int)$phoneItem['id']]
+                        );
+                        $phoneItem['returnable_quantity'] = max(0, (int)$phoneItem['quantity'] - (int)($returned['total'] ?? 0));
+                        $phoneItem['sibling_variants'] = Database::fetchAll(
+                            "SELECT pv2.id, pv2.sku, pv2.selling_price as price, pv2.mrp,
+                                    sz2.name as size_name, clr2.name as color_name
+                             FROM product_variants pv2 LEFT JOIN sizes sz2 ON pv2.size_id = sz2.id
+                             LEFT JOIN colors clr2 ON pv2.color_id = clr2.id
+                             WHERE pv2.product_id = ? AND pv2.is_active = 1
+                             ORDER BY sz2.sort_order ASC, clr2.name ASC",
+                            [(int)$phoneItem['product_id']]
+                        );
+                    }
+                    unset($phoneItem);
+                    $existingInvoiceReturn = Database::fetchOne(
+                        "SELECT id, return_number FROM returns WHERE sale_id = ? AND source_type = 'WEBSITE' ORDER BY id DESC LIMIT 1",
+                        [(int)$phoneSale['id']]
+                    );
+                    $phoneOrders[] = [
+                        'sale' => $phoneSale,
+                        'items' => $phoneItems,
+                        'already_returned' => (bool)$existingInvoiceReturn,
+                        'return_number' => $existingInvoiceReturn['return_number'] ?? null,
+                    ];
+                }
+                if (count($phoneOrders) > 1) {
+                    Response::jsonSuccess('Website invoices found for this customer.', $phoneOrders);
+                    return;
+                }
+            }
         }
 
         $sale = Database::fetchOne(
@@ -3214,45 +3300,8 @@ class WebsiteController {
             ]
         );
 
-        // Fallback search across all sales channels if not matched by Website filter
         if (!$sale) {
-            $sale = Database::fetchOne(
-                "SELECT s.*, 
-                        COALESCE(c.name, s.customer_name, 'Customer') as customer_name,
-                        COALESCE(c.phone, s.customer_phone, '-') as customer_phone,
-                        c.email as customer_email
-                 FROM sales s
-                 LEFT JOIN customers c ON s.customer_id = c.id
-                 WHERE (s.invoice_number = ? 
-                    OR s.invoice_number LIKE ? 
-                    OR c.phone = ? 
-                    OR c.phone LIKE ? 
-                    OR s.customer_phone = ? 
-                    OR s.customer_phone LIKE ? 
-                    OR c.name LIKE ? 
-                    OR s.customer_name LIKE ?
-                    OR s.id IN (
-                        SELECT si_sub.sale_id FROM sale_items si_sub 
-                        WHERE si_sub.scanned_qr_codes LIKE ? 
-                           OR si_sub.scanned_qr_codes = ?
-                           OR si_sub.qr_code LIKE ?
-                           OR si_sub.qr_code = ?
-                    )
-                 )
-                 ORDER BY s.id DESC LIMIT 1",
-                [
-                    $term, "%{$term}%", 
-                    $term, "%{$term}%", 
-                    $term, "%{$term}%", 
-                    "%{$term}%", "%{$term}%", 
-                    "%{$term}%", $term,
-                    "%{$term}%", $term
-                ]
-            );
-        }
-
-        if (!$sale) {
-            Response::jsonError("No billed order found for search: " . htmlspecialchars($term));
+            Response::jsonError("No billed Website order found for search: " . htmlspecialchars($term));
             return;
         }
 
@@ -3291,10 +3340,17 @@ class WebsiteController {
         }
         unset($it);
 
+        $existingInvoiceReturn = Database::fetchOne(
+            "SELECT id, return_number FROM returns WHERE sale_id = ? AND source_type = 'WEBSITE' ORDER BY id DESC LIMIT 1",
+            [(int)$sale['id']]
+        );
+
         Response::jsonSuccess("Website Sale record loaded successfully", [
             [
-                'sale'  => $sale,
-                'items' => $items
+                'sale'             => $sale,
+                'items'            => $items,
+                'already_returned' => (bool)$existingInvoiceReturn,
+                'return_number'    => $existingInvoiceReturn['return_number'] ?? null,
             ]
         ]);
     }
@@ -3338,6 +3394,8 @@ class WebsiteController {
         $candidateCodes = array_values(array_unique(array_filter($candidateCodes)));
         $foundVariant = null;
         $matchedTagCode = $extractedTag;
+        $websiteChannelIds = $this->getWebsiteChannelIds();
+        $channelPlaceholders = implode(',', array_fill(0, count($websiteChannelIds), '?'));
 
         // Strategy 1: Piece tag in allocation_items (selected_qr_codes)
         foreach ($candidateCodes as $c) {
@@ -3345,13 +3403,16 @@ class WebsiteController {
             $allocItem = Database::fetchOne(
                 "SELECT ai.variant_id, ai.selected_qr_codes
                  FROM allocation_items ai
+                 JOIN warehouse_allocations wa ON wa.id = ai.allocation_id
                  WHERE (ai.selected_qr_codes = ? 
                     OR ai.selected_qr_codes LIKE ? 
                     OR ai.selected_qr_codes LIKE ? 
                     OR ai.selected_qr_codes LIKE ?
                     OR FIND_IN_SET(?, REPLACE(COALESCE(ai.selected_qr_codes, ''), ' ', '')) > 0)
+                    AND (wa.channel_id IN ({$channelPlaceholders})
+                         OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ({$channelPlaceholders})))
                  ORDER BY ai.id DESC LIMIT 1",
-                [$c, "{$c},%", "%,{$c}", "%,{$c},%", $c]
+                array_merge([$c, "{$c},%", "%,{$c}", "%,{$c},%", $c], $websiteChannelIds, $websiteChannelIds)
             );
 
             if ($allocItem && !empty($allocItem['variant_id'])) {
@@ -3372,7 +3433,45 @@ class WebsiteController {
             }
         }
 
-        // Strategy 2: Direct variant match by SKU or QR code
+        // Strategy 2: Piece tag in a billed Website sale item
+        if (!$foundVariant) {
+            foreach ($candidateCodes as $c) {
+                if (empty($c) || strlen($c) < 2) continue;
+                $saleItem = Database::fetchOne(
+                    "SELECT si.variant_id
+                     FROM sale_items si
+                     JOIN sales s ON s.id = si.sale_id
+                     WHERE (si.scanned_qr_codes = ?
+                        OR si.scanned_qr_codes LIKE ?
+                        OR si.scanned_qr_codes LIKE ?
+                        OR si.scanned_qr_codes LIKE ?
+                        OR FIND_IN_SET(?, REPLACE(COALESCE(si.scanned_qr_codes, ''), ' ', '')) > 0
+                        OR si.qr_code = ?)
+                       AND (s.sales_channel = 'WEBSITE' OR s.sale_type = 'WEBSITE'
+                            OR s.notes LIKE '%Website%' OR s.invoice_number LIKE 'WEB-%')
+                     ORDER BY si.id DESC LIMIT 1",
+                    [$c, "{$c},%", "%,{$c}", "%,{$c},%", $c, $c]
+                );
+                if ($saleItem && !empty($saleItem['variant_id'])) {
+                    $foundVariant = Database::fetchOne(
+                        "SELECT pv.*, p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
+                                c.name as color_name, s.name as size_name
+                         FROM product_variants pv
+                         JOIN products p ON pv.product_id = p.id
+                         LEFT JOIN colors c ON pv.color_id = c.id
+                         LEFT JOIN sizes s ON pv.size_id = s.id
+                         WHERE pv.id = ? LIMIT 1",
+                        [$saleItem['variant_id']]
+                    );
+                    if ($foundVariant) {
+                        $matchedTagCode = $c;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Strategy 3: Direct variant match by SKU or QR code
         if (!$foundVariant) {
             foreach ($candidateCodes as $c) {
                 if (empty($c)) continue;
@@ -3393,7 +3492,7 @@ class WebsiteController {
             }
         }
 
-        // Strategy 3: Dynamic Piece Tag resolution (e.g. KB102648 -> Category KB, Month 10, Year 26, Sequence 48)
+        // Strategy 4: Dynamic Piece Tag resolution (e.g. KB102648 -> Category KB, Month 10, Year 26, Sequence 48)
         if (!$foundVariant) {
             foreach ($candidateCodes as $c) {
                 if (preg_match('/^([A-Za-z]+)(\d{2})(\d{2})(\d+)$/', $c, $m)) {
@@ -3456,7 +3555,7 @@ class WebsiteController {
             }
         }
 
-        // Strategy 4: Fuzzy / Substring match by product name or code
+        // Strategy 5: Fuzzy / Substring match by product name or code
         if (!$foundVariant && !empty($rawCode)) {
             $foundVariant = Database::fetchOne(
                 "SELECT pv.*, p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
@@ -3471,14 +3570,10 @@ class WebsiteController {
         }
 
         if ($foundVariant) {
-            $chan = $this->getChannel();
-            $channelId = (int)$chan['id'];
-            $stock = (float)(Database::fetchOne(
-                "SELECT COALESCE(SUM(quantity), 0) as qty 
-                 FROM stock_balances 
-                 WHERE variant_id = ? AND location_type = 'CHANNEL' AND location_id = ? AND stock_state = 'AVAILABLE'",
-                [$foundVariant['id'], $channelId]
-            )['qty'] ?? 0);
+            $stock = 0.0;
+            foreach ($this->getWebsiteChannelIds() as $websiteChannelId) {
+                $stock += (float)StockService::getBalance((int)$foundVariant['id'], 'CHANNEL', (int)$websiteChannelId, 'AVAILABLE');
+            }
 
             echo json_encode([
                 'success'       => true,
@@ -3504,7 +3599,7 @@ class WebsiteController {
     }
 
     public function processWebsiteReturn(): void {
-        if (!hasPermission('website_returns', 'process')) {
+        if (!hasPermission('website_returns', 'create')) {
             Session::flash('error', 'Access denied. You do not have permission to process Website returns.');
             Response::redirect(url('warehouse/website-orders/returns'));
             return;
@@ -3516,9 +3611,8 @@ class WebsiteController {
         $reason = trim($_POST['reason'] ?? 'Website Customer Request');
         $refundMethod = strtoupper(trim($_POST['refund_mode'] ?? $_POST['refund_method'] ?? 'UPI'));
         $items = $_POST['items'] ?? [];
-        $replacements = $_POST['replacement_items'] ?? [];
 
-        if (!$saleId || empty($items) || !is_array($items)) {
+        if (!$saleId || empty($items) || !is_array($items) || !in_array($returnType, ['RETURN', 'EXCHANGE_SAME'], true)) {
             Session::flash('error', 'Invalid Website return request payload. Please select items to return.');
             Response::redirect(url('warehouse/website-orders/returns'));
             return;
@@ -3531,192 +3625,418 @@ class WebsiteController {
             return;
         }
 
-        $chan = $this->getChannel();
-        $channelId = (int)$chan['id'];
-
-        $totalReturnVal = 0.0;
-        foreach ($items as $k => $itm) {
-            $qty = (int)($itm['qty'] ?? $itm['quantity'] ?? 0);
-            $price = (float)($itm['unit_price'] ?? 0);
-            if ($price <= 0 && is_numeric($k)) {
-                $siRow = Database::fetchOne("SELECT unit_price FROM sale_items WHERE id = ?", [(int)$k]);
-                if ($siRow) $price = (float)$siRow['unit_price'];
-            }
-            if ($qty > 0) {
-                $totalReturnVal += ($qty * $price);
-            }
+        $saleChannel = strtoupper((string)($sale['sales_channel'] ?? ''));
+        $saleType = strtoupper((string)($sale['sale_type'] ?? ''));
+        $saleNotes = (string)($sale['notes'] ?? '');
+        if (!in_array($saleChannel, ['WEBSITE'], true)
+            && !in_array($saleType, ['WEBSITE'], true)
+            && stripos($saleNotes, 'website') === false
+            && !str_starts_with(strtoupper((string)($sale['invoice_number'] ?? '')), 'WEB-')) {
+            Session::flash('error', 'Only Website orders can be processed in this return module.');
+            Response::redirect(url('warehouse/website-orders/returns'));
+            return;
         }
 
+        $existingInvoiceReturn = Database::fetchOne(
+            "SELECT return_number FROM returns WHERE sale_id = ? AND source_type = 'WEBSITE' ORDER BY id DESC LIMIT 1",
+            [$saleId]
+        );
+        if ($existingInvoiceReturn) {
+            Session::flash('error', "Invoice {$sale['invoice_number']} was already returned/exchanged under {$existingInvoiceReturn['return_number']}.");
+            Response::redirect(url('warehouse/website-orders/returns'));
+            return;
+        }
+
+        $chan = $this->getChannel();
+        $channelId = (int)$chan['id'];
+        $websiteChannelIds = $this->getWebsiteChannelIds();
+        $validatedItems = [];
+        $replacementQtyByVariant = [];
+        $replacementStockPlan = [];
+        $replacementStockDispatched = [];
+        $replacementTagsSeen = [];
+        $totalReturnVal = 0.0;
         $totalReplacementVal = 0.0;
-        if (($returnType === 'EXCHANGE' || $returnType === 'EXCHANGE_DIFFERENT') && !empty($replacements) && is_array($replacements)) {
-            foreach ($replacements as $rep) {
-                $q = (int)($rep['quantity'] ?? 0);
-                $p = (float)($rep['unit_price'] ?? 0);
-                if ($q > 0) {
-                    $totalReplacementVal += ($q * $p);
+
+        foreach ($items as $k => $itm) {
+            if (!is_array($itm)) {
+                Session::flash('error', 'Invalid Website return item data.');
+                Response::redirect(url('warehouse/website-orders/returns'));
+                return;
+            }
+            $qtyInput = $itm['qty'] ?? $itm['quantity'] ?? null;
+            $qty = filter_var($qtyInput, FILTER_VALIDATE_INT);
+            if ($qty === false || $qty <= 0) {
+                Session::flash('error', 'Return quantities must be positive whole numbers.');
+                Response::redirect(url('warehouse/website-orders/returns'));
+                return;
+            }
+
+            $saleItemId = is_numeric($k) ? (int)$k : (int)($itm['sale_item_id'] ?? 0);
+            if ($saleItemId <= 0 || isset($validatedItems[$saleItemId])) {
+                Session::flash('error', 'Invalid or duplicate sale item selected for return.');
+                Response::redirect(url('warehouse/website-orders/returns'));
+                return;
+            }
+
+            $saleItem = Database::fetchOne(
+                "SELECT si.id, si.variant_id, si.quantity, si.unit_price, si.scanned_qr_codes,
+                        si.qr_code, pv.product_id
+                 FROM sale_items si
+                 JOIN product_variants pv ON pv.id = si.variant_id
+                 WHERE si.id = ? AND si.sale_id = ? LIMIT 1",
+                [$saleItemId, $saleId]
+            );
+            if (!$saleItem) {
+                Session::flash('error', 'Selected item does not belong to this Website invoice.');
+                Response::redirect(url('warehouse/website-orders/returns'));
+                return;
+            }
+
+            $returned = Database::fetchOne(
+                "SELECT COALESCE(SUM(quantity), 0) as total FROM return_items WHERE sale_item_id = ?",
+                [$saleItemId]
+            );
+            $remainingQty = max(0, (int)$saleItem['quantity'] - (int)($returned['total'] ?? 0));
+            if ($qty > $remainingQty) {
+                Session::flash('error', "This item from {$sale['invoice_number']} has only {$remainingQty} piece(s) remaining for return.");
+                Response::redirect(url('warehouse/website-orders/returns'));
+                return;
+            }
+
+            $condition = strtoupper(trim($itm['condition'] ?? $itm['item_condition'] ?? 'GOOD'));
+            if (!in_array($condition, ['GOOD', 'DAMAGED', 'DEFECTIVE'], true)) {
+                Session::flash('error', 'Invalid returned item condition.');
+                Response::redirect(url('warehouse/website-orders/returns'));
+                return;
+            }
+
+            $unitPrice = (float)$saleItem['unit_price'];
+            $pieceTags = $itm['piece_tags'] ?? [];
+            if (!is_array($pieceTags)) {
+                $pieceTags = array_filter(array_map('trim', explode(',', (string)$pieceTags)));
+            }
+            $pieceTags = array_values(array_unique(array_filter(array_map('trim', $pieceTags))));
+            $soldTagsRaw = (string)($saleItem['scanned_qr_codes'] ?? '');
+            $decodedSoldTags = json_decode($soldTagsRaw, true);
+            if (is_array($decodedSoldTags)) {
+                $soldTags = array_map(static function ($tag) {
+                    return is_array($tag) ? (string)($tag['tag_code'] ?? $tag['qr_code'] ?? '') : (string)$tag;
+                }, $decodedSoldTags);
+            } else {
+                $soldTags = explode(',', $soldTagsRaw);
+            }
+            $soldTags = array_values(array_unique(array_filter(array_map(
+                static fn($tag) => strtoupper(trim((string)$tag)),
+                $soldTags
+            ))));
+            if (!empty($soldTags)) {
+                foreach ($pieceTags as $pieceTag) {
+                    if (!in_array(strtoupper($pieceTag), $soldTags, true)) {
+                        Session::flash('error', "Piece tag {$pieceTag} was not billed on this Website invoice.");
+                        Response::redirect(url('warehouse/website-orders/returns'));
+                        return;
+                    }
                 }
             }
-        } elseif ($returnType === 'EXCHANGE_SAME') {
-            foreach ($items as $k => $itm) {
-                $q = (int)($itm['qty'] ?? $itm['quantity'] ?? 0);
-                $swapVarId = (int)($itm['exchange_variant_id'] ?? $itm['variant_id'] ?? 0);
-                $p = 0.0;
-                if ($swapVarId > 0) {
-                    $pvRow = Database::fetchOne("SELECT selling_price FROM product_variants WHERE id = ?", [$swapVarId]);
-                    if ($pvRow) $p = (float)$pvRow['selling_price'];
+
+            $validatedItem = [
+                'sale_item_id' => $saleItemId,
+                'variant_id' => (int)$saleItem['variant_id'],
+                'qty' => $qty,
+                'condition' => $condition,
+                'unit_price' => $unitPrice,
+                'piece_tags' => $pieceTags,
+            ];
+            if ($returnType === 'EXCHANGE_SAME') {
+                $swapVariantId = (int)($itm['exchange_variant_id'] ?? 0);
+                $replacementTag = trim((string)($itm['replacement_tag'] ?? ''));
+                if ($swapVariantId <= 0 || $replacementTag === '') {
+                    Session::flash('error', 'Scan a valid Website-stock replacement QR/SKU for every exchanged item.');
+                    Response::redirect(url('warehouse/website-orders/returns'));
+                    return;
                 }
-                if ($p <= 0) {
-                    $p = (float)($itm['unit_price'] ?? 0);
+
+                $replacement = Database::fetchOne(
+                    "SELECT id, product_id, sku, qr_code, selling_price, mrp, is_active
+                     FROM product_variants WHERE id = ? LIMIT 1",
+                    [$swapVariantId]
+                );
+                if (!$replacement || (int)$replacement['is_active'] !== 1 || (int)$replacement['product_id'] !== (int)$saleItem['product_id']) {
+                    Session::flash('error', 'The replacement must be an active size/color variant of the returned product.');
+                    Response::redirect(url('warehouse/website-orders/returns'));
+                    return;
                 }
-                if ($q > 0) {
-                    $totalReplacementVal += ($q * $p);
+
+                $normalizedTag = strtoupper($replacementTag);
+                $validReplacementTag = $normalizedTag === strtoupper((string)$replacement['sku'])
+                    || ($replacement['qr_code'] && $normalizedTag === strtoupper((string)$replacement['qr_code']));
+                $isUniquePieceTag = false;
+                if (!$validReplacementTag) {
+                    $channelPlaceholders = implode(',', array_fill(0, count($websiteChannelIds), '?'));
+                    $allocationRows = Database::fetchAll(
+                        "SELECT ai.selected_qr_codes FROM allocation_items ai
+                         JOIN warehouse_allocations wa ON wa.id = ai.allocation_id
+                         WHERE ai.variant_id = ? AND ai.selected_qr_codes IS NOT NULL AND ai.selected_qr_codes != ''
+                           AND (wa.channel_id IN ({$channelPlaceholders})
+                                OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ({$channelPlaceholders})))",
+                        array_merge([$swapVariantId], $websiteChannelIds, $websiteChannelIds)
+                    );
+                    foreach ($allocationRows as $allocationRow) {
+                        $rawTags = (string)$allocationRow['selected_qr_codes'];
+                        $decodedTags = json_decode($rawTags, true);
+                        if (!is_array($decodedTags)) {
+                            $decodedTags = explode(',', $rawTags);
+                        }
+                        foreach ($decodedTags as $tag) {
+                            $tag = is_array($tag) ? ($tag['tag_code'] ?? $tag['qr_code'] ?? '') : $tag;
+                            if ($normalizedTag === strtoupper(trim((string)$tag))) {
+                                $validReplacementTag = true;
+                                $isUniquePieceTag = true;
+                                break 2;
+                            }
+                        }
+                    }
+                }
+                if (!$validReplacementTag) {
+                    Session::flash('error', 'The scanned replacement tag does not belong to the selected replacement variant.');
+                    Response::redirect(url('warehouse/website-orders/returns'));
+                    return;
+                }
+                if ($isUniquePieceTag && isset($replacementTagsSeen[$normalizedTag])) {
+                    Session::flash('error', 'The same replacement QR/SKU cannot be used more than once in an exchange.');
+                    Response::redirect(url('warehouse/website-orders/returns'));
+                    return;
+                }
+                if ($isUniquePieceTag) {
+                    $replacementTagsSeen[$normalizedTag] = true;
+                }
+
+                $replacementPrice = (float)($replacement['selling_price'] > 0 ? $replacement['selling_price'] : $replacement['mrp']);
+                $validatedItem['exchange_variant_id'] = $swapVariantId;
+                $validatedItem['replacement_tag'] = $replacementTag;
+                $replacementQtyByVariant[$swapVariantId] = ($replacementQtyByVariant[$swapVariantId] ?? 0) + $qty;
+                $totalReplacementVal += $qty * $replacementPrice;
+            }
+
+            $totalReturnVal += $qty * $unitPrice;
+            $validatedItems[$saleItemId] = $validatedItem;
+        }
+
+        if (empty($validatedItems)) {
+            Session::flash('error', 'Select at least one returnable Website invoice item.');
+            Response::redirect(url('warehouse/website-orders/returns'));
+            return;
+        }
+
+        foreach ($replacementQtyByVariant as $variantId => $requestedQty) {
+            $remainingQty = $requestedQty;
+            $stockPlan = [];
+            foreach ($websiteChannelIds as $stockChannelId) {
+                $available = (int)StockService::getBalance((int)$variantId, 'CHANNEL', (int)$stockChannelId, 'AVAILABLE');
+                $allocated = min($available, $remainingQty);
+                if ($allocated > 0) {
+                    $stockPlan[(int)$stockChannelId] = $allocated;
+                    $remainingQty -= $allocated;
+                }
+                if ($remainingQty === 0) {
+                    break;
                 }
             }
+            if ($remainingQty > 0) {
+                $replacement = Database::fetchOne("SELECT sku FROM product_variants WHERE id = ?", [$variantId]);
+                Session::flash('error', "Replacement " . ($replacement['sku'] ?? ('#' . $variantId)) . " has insufficient Website stock. Requested: {$requestedQty}.");
+                Response::redirect(url('warehouse/website-orders/returns'));
+                return;
+            }
+            $replacementStockPlan[(int)$variantId] = $stockPlan;
         }
 
         $differenceAmount = $totalReplacementVal - $totalReturnVal;
 
         $dbReturnType = ($returnType === 'RETURN') ? 'RETURN' : 'EXCHANGE';
         $validRefundModes = ['CASH', 'UPI', 'CARD', 'ONLINE', 'CASH_UPI', 'CREDIT_NOTE'];
-        $dbRefundMode = in_array($refundMethod, $validRefundModes) ? $refundMethod : 'UPI';
+        if (!in_array($refundMethod, $validRefundModes, true)) {
+            Session::flash('error', 'Select a valid refund payment mode.');
+            Response::redirect(url('warehouse/website-orders/returns'));
+            return;
+        }
+        $dbRefundMode = $refundMethod;
         $refundAmount = $differenceAmount < 0 ? abs($differenceAmount) : ($returnType === 'RETURN' ? $totalReturnVal : 0.0);
         $userId = Auth::id() ?? Session::userId() ?? 1;
+        $items = $validatedItems;
 
-        $returnNumber = 'RET-WEB-' . date('Ymd') . '-' . mt_rand(1000, 9999);
-        Database::execute(
-            "INSERT INTO returns (return_number, source_type, sale_id, customer_id, return_type, reason, inspection_status, 
-                                 refund_amount, refund_mode, refund_status, total_amount, status, processed_by, approved_by, notes, created_at, updated_at)
-             VALUES (?, 'WEBSITE', ?, ?, ?, ?, 'APPROVED', ?, ?, 'COMPLETED', ?, ?, ?, ?, ?, NOW(), NOW())",
-            [
-                $returnNumber,
-                $saleId,
-                $sale['customer_id'] ?? null,
-                $dbReturnType,
-                $reason,
-                $refundAmount,
-                $dbRefundMode,
-                $totalReturnVal,
-                $refundAmount > 0 ? 'REFUNDED' : 'APPROVED',
-                $userId,
-                $userId,
-                $reason
-            ]
-        );
-        $returnId = (int)Database::lastInsertId();
-
-        foreach ($items as $k => $itm) {
-            $saleItemId = is_numeric($k) ? (int)$k : (int)($itm['sale_item_id'] ?? 0);
-            $varId = (int)($itm['variant_id'] ?? 0);
-            $qty = (int)($itm['qty'] ?? $itm['quantity'] ?? 0);
-            $cond = strtoupper(trim($itm['condition'] ?? $itm['item_condition'] ?? 'GOOD'));
-            if (!in_array($cond, ['GOOD', 'DAMAGED', 'DEFECTIVE'])) $cond = 'GOOD';
-            $uPrice = (float)($itm['unit_price'] ?? 0);
-
-            if ($saleItemId > 0 && ($varId <= 0 || $uPrice <= 0)) {
-                $siRow = Database::fetchOne("SELECT variant_id, unit_price FROM sale_items WHERE id = ?", [$saleItemId]);
-                if ($siRow) {
-                    if ($varId <= 0) $varId = (int)$siRow['variant_id'];
-                    if ($uPrice <= 0) $uPrice = (float)$siRow['unit_price'];
-                }
+        try {
+            if (!Database::beginTransaction()) {
+                throw new RuntimeException('Unable to start Website return transaction.');
             }
 
-            if ($varId > 0 && $qty > 0) {
-                Database::execute(
-                    "INSERT INTO return_items (return_id, sale_item_id, variant_id, quantity, item_condition, destination, refund_amount, condition_type, reason)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        $returnId,
-                        $saleItemId ?: null,
-                        $varId,
-                        $qty,
-                        $cond,
-                        $cond === 'GOOD' ? 'AVAILABLE' : 'DAMAGE',
-                        $qty * $uPrice,
-                        $cond,
-                        $reason
-                    ]
-                );
-
-                if ($cond === 'GOOD') {
-                    StockService::increase($varId, 'CHANNEL', $channelId, 'AVAILABLE', (float)$qty, 'RETURN_REINWARD', 'returns', $returnId, $userId, "Website Return Good Stock Re-Inward");
-                } else {
-                    StockService::increase($varId, 'CHANNEL', $channelId, 'DAMAGED', (float)$qty, 'RETURN_DAMAGED', 'returns', $returnId, $userId, "Website Return Damaged Stock");
-                }
+            Database::fetchOne("SELECT id FROM sales WHERE id = ? FOR UPDATE", [$saleId]);
+            $lockedInvoiceReturn = Database::fetchOne(
+                "SELECT return_number FROM returns WHERE sale_id = ? AND source_type = 'WEBSITE' ORDER BY id DESC LIMIT 1",
+                [$saleId]
+            );
+            if ($lockedInvoiceReturn) {
+                Database::rollback();
+                Session::flash('error', "Invoice {$sale['invoice_number']} was already returned/exchanged under {$lockedInvoiceReturn['return_number']}.");
+                Response::redirect(url('warehouse/website-orders/returns'));
+                return;
             }
-        }
 
-        if ($returnType === 'EXCHANGE' || $returnType === 'EXCHANGE_SAME' || $returnType === 'EXCHANGE_DIFFERENT') {
-            $exchNumber = 'EXC-WEB-' . date('Ymd') . '-' . mt_rand(1000, 9999);
-            $payAction = $differenceAmount > 0 ? 'COLLECT' : ($differenceAmount < 0 ? 'REFUND' : 'NONE');
+            $returnNumber = 'RET-WEB-' . date('Ymd') . '-' . mt_rand(1000, 9999);
             Database::execute(
-                "INSERT INTO exchanges (exchange_number, return_id, source_type, sale_id, original_amount, new_amount, difference_amount, settlement_mode, payment_action, status, payment_status, notes, created_at, updated_at)
-                 VALUES (?, ?, 'WEBSITE', ?, ?, ?, ?, ?, ?, 'COMPLETED', 'PAID', ?, NOW(), NOW())",
+                "INSERT INTO returns (return_number, source_type, sale_id, customer_id, return_type, reason, inspection_status,
+                                     refund_amount, refund_mode, refund_status, total_amount, status, processed_by, approved_by, notes, created_at, updated_at)
+                 VALUES (?, 'WEBSITE', ?, ?, ?, ?, 'APPROVED', ?, ?, 'COMPLETED', ?, ?, ?, ?, ?, NOW(), NOW())",
                 [
-                    $exchNumber,
-                    $returnId,
+                    $returnNumber,
                     $saleId,
-                    $totalReturnVal,
-                    $totalReplacementVal,
-                    $differenceAmount,
+                    $sale['customer_id'] ?? null,
+                    $dbReturnType,
+                    $reason,
+                    $refundAmount,
                     $dbRefundMode,
-                    $payAction,
-                    'Website Product Exchange'
+                    $totalReturnVal,
+                    $refundAmount > 0 ? 'REFUNDED' : 'APPROVED',
+                    $userId,
+                    $userId,
+                    $reason
                 ]
             );
-            $exchangeId = (int)Database::lastInsertId();
+            $returnId = (int)Database::lastInsertId();
 
-            // Record old returning items in exchange_items
             foreach ($items as $k => $itm) {
+                $saleItemId = is_numeric($k) ? (int)$k : (int)($itm['sale_item_id'] ?? 0);
                 $varId = (int)($itm['variant_id'] ?? 0);
                 $qty = (int)($itm['qty'] ?? $itm['quantity'] ?? 0);
+                $cond = strtoupper(trim($itm['condition'] ?? $itm['item_condition'] ?? 'GOOD'));
+                if (!in_array($cond, ['GOOD', 'DAMAGED', 'DEFECTIVE'])) $cond = 'GOOD';
                 $uPrice = (float)($itm['unit_price'] ?? 0);
-                $pTag = is_array($itm['piece_tags'] ?? null) ? implode(',', $itm['piece_tags']) : ($itm['piece_tags'] ?? '');
+
+                if ($saleItemId > 0 && ($varId <= 0 || $uPrice <= 0)) {
+                    $siRow = Database::fetchOne("SELECT variant_id, unit_price FROM sale_items WHERE id = ?", [$saleItemId]);
+                    if ($siRow) {
+                        if ($varId <= 0) $varId = (int)$siRow['variant_id'];
+                        if ($uPrice <= 0) $uPrice = (float)$siRow['unit_price'];
+                    }
+                }
+
                 if ($varId > 0 && $qty > 0) {
                     Database::execute(
-                        "INSERT INTO exchange_items (exchange_id, item_type, variant_id, quantity, unit_price, total_amount, piece_tag)
-                         VALUES (?, 'OLD', ?, ?, ?, ?, ?)",
-                        [$exchangeId, $varId, $qty, $uPrice, $qty * $uPrice, $pTag ?: null]
+                        "INSERT INTO return_items (return_id, sale_item_id, variant_id, quantity, item_condition, destination, refund_amount, condition_type, reason)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            $returnId,
+                            $saleItemId ?: null,
+                            $varId,
+                            $qty,
+                            $cond,
+                            $cond === 'GOOD' ? 'AVAILABLE' : 'DAMAGE',
+                            $qty * $uPrice,
+                            $cond,
+                            $reason
+                        ]
                     );
+
+                    if ($cond === 'GOOD') {
+                        StockService::increase($varId, 'CHANNEL', $channelId, 'AVAILABLE', (float)$qty, 'RETURN_REINWARD', 'returns', $returnId, $userId, "Website Return Good Stock Re-Inward");
+                    } else {
+                        StockService::increase($varId, 'CHANNEL', $channelId, 'DAMAGED', (float)$qty, 'RETURN_DAMAGED', 'returns', $returnId, $userId, "Website Return Damaged Stock");
+                    }
                 }
             }
 
             if ($returnType === 'EXCHANGE_SAME') {
-                foreach ($items as $k => $itm) {
-                    $swapVarId = (int)($itm['exchange_variant_id'] ?? $itm['variant_id'] ?? 0);
-                    $swapQty = (int)($itm['qty'] ?? $itm['quantity'] ?? 0);
-                    $swapTag = trim($itm['replacement_tag'] ?? '');
-                    $p = 0.0;
-                    if ($swapVarId > 0) {
-                        $pvRow = Database::fetchOne("SELECT selling_price FROM product_variants WHERE id = ?", [$swapVarId]);
-                        if ($pvRow) $p = (float)$pvRow['selling_price'];
-                    }
-                    if ($p <= 0) $p = (float)($itm['unit_price'] ?? 0);
+                $exchNumber = 'EXC-WEB-' . date('Ymd') . '-' . mt_rand(1000, 9999);
+                $payAction = $differenceAmount > 0 ? 'COLLECT' : ($differenceAmount < 0 ? 'REFUND' : 'NONE');
+                Database::execute(
+                    "INSERT INTO exchanges (exchange_number, return_id, source_type, sale_id, original_amount, new_amount, difference_amount, settlement_mode, payment_action, status, payment_status, notes, created_at, updated_at)
+                     VALUES (?, ?, 'WEBSITE', ?, ?, ?, ?, ?, ?, 'COMPLETED', 'PAID', ?, NOW(), NOW())",
+                    [
+                        $exchNumber,
+                        $returnId,
+                        $saleId,
+                        $totalReturnVal,
+                        $totalReplacementVal,
+                        $differenceAmount,
+                        $dbRefundMode,
+                        $payAction,
+                        'Website Product Exchange'
+                    ]
+                );
+                $exchangeId = (int)Database::lastInsertId();
 
-                    if ($swapVarId > 0 && $swapQty > 0) {
+                // Record old returning items in exchange_items
+                foreach ($items as $k => $itm) {
+                    $varId = (int)($itm['variant_id'] ?? 0);
+                    $qty = (int)($itm['qty'] ?? $itm['quantity'] ?? 0);
+                    $uPrice = (float)($itm['unit_price'] ?? 0);
+                    $pTag = is_array($itm['piece_tags'] ?? null) ? implode(',', $itm['piece_tags']) : ($itm['piece_tags'] ?? '');
+                    if ($varId > 0 && $qty > 0) {
                         Database::execute(
                             "INSERT INTO exchange_items (exchange_id, item_type, variant_id, quantity, unit_price, total_amount, piece_tag)
-                             VALUES (?, 'NEW', ?, ?, ?, ?, ?)",
-                            [$exchangeId, $swapVarId, $swapQty, $p, $swapQty * $p, $swapTag ?: null]
+                             VALUES (?, 'OLD', ?, ?, ?, ?, ?)",
+                            [$exchangeId, $varId, $qty, $uPrice, $qty * $uPrice, $pTag ?: null]
                         );
-                        StockService::decrease($swapVarId, 'CHANNEL', $channelId, 'AVAILABLE', $swapQty, 'EXCHANGE_DISPATCH', 'exchanges', $returnId, $userId, "Website Same Product Swap Dispatch");
                     }
                 }
-            } elseif (!empty($replacements) && is_array($replacements)) {
-                foreach ($replacements as $rep) {
-                    $repVarId = (int)($rep['variant_id'] ?? 0);
-                    $repQty = (int)($rep['quantity'] ?? 0);
-                    $repPrice = (float)($rep['unit_price'] ?? 0);
-                    $repTag = trim($rep['piece_tag'] ?? '');
-                    if ($repVarId > 0 && $repQty > 0) {
-                        Database::execute(
-                            "INSERT INTO exchange_items (exchange_id, item_type, variant_id, quantity, unit_price, total_amount, piece_tag)
-                             VALUES (?, 'NEW', ?, ?, ?, ?, ?)",
-                            [$exchangeId, $repVarId, $repQty, $repPrice, $repQty * $repPrice, $repTag ?: null]
-                        );
-                        StockService::decrease($repVarId, 'CHANNEL', $channelId, 'AVAILABLE', $repQty, 'EXCHANGE_DISPATCH', 'exchanges', $returnId, $userId, "Website Exchange New Catalog Swap Dispatch");
+
+                if ($returnType === 'EXCHANGE_SAME') {
+                    foreach ($items as $k => $itm) {
+                        $swapVarId = (int)($itm['exchange_variant_id'] ?? 0);
+                        $swapQty = (int)($itm['qty'] ?? $itm['quantity'] ?? 0);
+                        $swapTag = trim($itm['replacement_tag'] ?? '');
+                        $pvRow = Database::fetchOne("SELECT selling_price, mrp FROM product_variants WHERE id = ?", [$swapVarId]);
+                        $p = $pvRow ? (float)($pvRow['selling_price'] > 0 ? $pvRow['selling_price'] : $pvRow['mrp']) : 0.0;
+
+                        if ($swapVarId > 0 && $swapQty > 0) {
+                            Database::execute(
+                                "INSERT INTO exchange_items (exchange_id, item_type, variant_id, quantity, unit_price, total_amount, piece_tag)
+                                 VALUES (?, 'NEW', ?, ?, ?, ?, ?)",
+                                [$exchangeId, $swapVarId, $swapQty, $p, $swapQty * $p, $swapTag ?: null]
+                            );
+                            $remainingSwapQty = $swapQty;
+                            foreach ($replacementStockPlan[$swapVarId] ?? [] as $stockChannelId => $plannedQty) {
+                                $alreadyDispatched = $replacementStockDispatched[$swapVarId][$stockChannelId] ?? 0;
+                                $dispatchQty = min($remainingSwapQty, $plannedQty - $alreadyDispatched);
+                                if ($dispatchQty <= 0) {
+                                    continue;
+                                }
+                                StockService::decrease(
+                                    $swapVarId,
+                                    'CHANNEL',
+                                    (int)$stockChannelId,
+                                    'AVAILABLE',
+                                    (float)$dispatchQty,
+                                    'EXCHANGE_DISPATCH',
+                                    'exchanges',
+                                    $returnId,
+                                    $userId,
+                                    'Website Same Product Swap Dispatch'
+                                );
+                                $replacementStockDispatched[$swapVarId][$stockChannelId] = $alreadyDispatched + $dispatchQty;
+                                $remainingSwapQty -= $dispatchQty;
+                                if ($remainingSwapQty === 0) {
+                                    break;
+                                }
+                            }
+                            if ($remainingSwapQty > 0) {
+                                throw new RuntimeException('Website replacement stock changed while the exchange was being processed.');
+                            }
+                        }
                     }
                 }
             }
+
+            if (!Database::commit()) {
+                throw new RuntimeException('Unable to commit Website return transaction.');
+            }
+        } catch (Throwable $e) {
+            Database::rollback();
+            error_log('Website return processing failed: ' . $e->getMessage());
+            Session::flash('error', 'Website return/exchange could not be completed. No return or stock changes were saved.');
+            Response::redirect(url('warehouse/website-orders/returns'));
+            return;
         }
 
         Session::flash('success', "Website Return/Exchange #{$returnNumber} processed successfully!");
@@ -4050,9 +4370,9 @@ class WebsiteController {
             "SELECT ai.variant_id, ai.selected_qr_codes
              FROM allocation_items ai
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
-             WHERE (wa.channel_id IN ($placeholders) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($placeholders)))
+             WHERE wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($placeholders)
                AND ai.selected_qr_codes IS NOT NULL AND ai.selected_qr_codes != ''",
-            array_merge($chanIds, $chanIds)
+            $chanIds
         );
 
         $variantTagsMap = [];
@@ -4421,7 +4741,8 @@ class WebsiteController {
                 'tracking_no'   => $trackingNo,
                 'carton_count'  => max(1, $cartonCount),
                 'dispatch_date' => $dispatchDate,
-                'remarks'       => $remarks
+                'remarks'       => $remarks,
+                'item_qr_codes' => []
             ];
             $serializedNotes = json_encode($notesData);
 
@@ -4433,6 +4754,7 @@ class WebsiteController {
             $returnId = (int)Database::lastInsertId();
 
             $processedCount = 0;
+            $itemQrCodes = [];
             foreach ($items as $it) {
                 $variantId = (int)($it['variant_id'] ?? 0);
                 $qty = (int)($it['quantity'] ?? 0);
@@ -4495,6 +4817,22 @@ class WebsiteController {
                      VALUES (?, ?, ?, ?, ?, ?, ?)",
                     [$returnId, $variantId, $qty, $goodQty, $damQty, $defQty, $classification]
                 );
+                $returnItemId = (int)Database::lastInsertId();
+                $rawQrCodes = $it['scanned_qr_codes'] ?? '[]';
+                $scannedQrCodes = is_array($rawQrCodes) ? $rawQrCodes : json_decode((string)$rawQrCodes, true);
+                if (!is_array($scannedQrCodes)) {
+                    throw new InvalidArgumentException('Scanned product QR data is invalid.');
+                }
+                $scannedQrCodes = array_values(array_unique(array_filter(array_map(
+                    static fn($qr): string => trim((string)$qr),
+                    $scannedQrCodes
+                ), static fn(string $qr): bool => $qr !== '')));
+                if (count($scannedQrCodes) > $qty || array_filter($scannedQrCodes, static fn(string $qr): bool => strlen($qr) > 255)) {
+                    throw new InvalidArgumentException('Scanned product QR tags do not match the selected return quantity.');
+                }
+                if ($scannedQrCodes) {
+                    $itemQrCodes[$returnItemId] = $scannedQrCodes;
+                }
 
                 $remainingToDeduct = (float)$qty;
                 foreach ($chanStockRows as $csRow) {
@@ -4525,6 +4863,11 @@ class WebsiteController {
             if ($processedCount === 0) {
                 throw new InvalidArgumentException("No valid items with quantity > 0 were provided.");
             }
+            $notesData['item_qr_codes'] = $itemQrCodes;
+            Database::execute(
+                "UPDATE warehouse_returns SET notes = ? WHERE id = ?",
+                [json_encode($notesData), $returnId]
+            );
 
             if (class_exists('AuditService')) {
                 AuditService::log('WEBSITE', 'RETURN_TO_WAREHOUSE_DISPATCH', 'warehouse_returns', $returnId, null, [
@@ -4578,13 +4921,16 @@ class WebsiteController {
             'dispatch_date' => $ret['created_at'],
             'remarks'       => ''
         ];
+        $itemQrCodes = [];
         if (!empty($ret['notes'])) {
             $decoded = json_decode($ret['notes'], true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
                 $outward = array_merge($outward, $decoded);
+                $itemQrCodes = is_array($decoded['item_qr_codes'] ?? null) ? $decoded['item_qr_codes'] : [];
                 $ret['notes'] = $outward['remarks'] ?? '';
             }
         }
+        unset($outward['item_qr_codes']);
         $ret['outward_logistics'] = $outward;
 
         $items = Database::fetchAll(
@@ -4608,6 +4954,10 @@ class WebsiteController {
 
         foreach ($items as &$it) {
             $totalReturnedQty += (int)$it['returned_qty'];
+            $it['scanned_qr_codes'] = array_values(array_filter(
+                array_map('strval', $itemQrCodes[(string)$it['id']] ?? []),
+                static fn(string $qr): bool => trim($qr) !== ''
+            ));
             $it['image'] = !empty($it['variant_image']) ? $it['variant_image'] : ($it['product_image'] ?? null);
             $it['unit_price'] = (float)($it['selling_price'] ?? ($it['mrp'] ?? 0));
             $it['line_total'] = $it['unit_price'] * (int)$it['returned_qty'];
@@ -4634,9 +4984,9 @@ class WebsiteController {
              FROM allocation_items ai
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
              WHERE ai.variant_id = ? 
-               AND (wa.channel_id IN ($placeholders) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($placeholders)))
+               AND wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($placeholders)
              ORDER BY wa.id ASC, ai.id ASC",
-            array_merge([$variantId], $chanIds, $chanIds)
+            array_merge([$variantId], $chanIds)
         );
 
         $allAllocatedTags = [];

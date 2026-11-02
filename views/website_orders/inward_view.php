@@ -840,12 +840,23 @@ function updateInspectionUI() {
         if (piece.status === 'good') perItemCounts[piece.itemId].good++;
         if (piece.status === 'damaged') perItemCounts[piece.itemId].damaged++;
     });
-    inspState.goodCount = inspState.pieces.filter(piece => piece.status === 'good').length;
-    inspState.damagedCount = inspState.pieces.filter(piece => piece.status === 'damaged').length;
-    if (inspState.productType === 'SERIES' || inspState.productType === 'COMPLEMENTARY') {
-        inspState.goodCount = inspState.goodCount > 0 ? inspState.totalQty : 0;
-        inspState.damagedCount = inspState.damagedCount > 0 ? inspState.totalQty : 0;
-    }
+    inspState.goodCount = 0;
+    inspState.damagedCount = 0;
+    Object.entries(perItemCounts).forEach(([itemId, counts]) => {
+        const productType = String(ITEM_PRODUCT_TYPES[itemId] || 'NORMAL').toUpperCase();
+        if (productType === 'SERIES' || productType === 'COMPLEMENTARY') {
+            const packQuantity = parseInt(ITEM_EXPECTED_QTY[itemId], 10) || counts.pieces.length;
+            if (counts.damaged > 0) {
+                counts.good = 0;
+                counts.damaged = packQuantity;
+            } else if (counts.good > 0) {
+                counts.good = packQuantity;
+                counts.damaged = 0;
+            }
+        }
+        inspState.goodCount += counts.good;
+        inspState.damagedCount += counts.damaged;
+    });
     const missing = inspState.totalQty - (inspState.goodCount + inspState.damagedCount);
     document.getElementById('inspGood').textContent = inspState.goodCount;
     document.getElementById('inspDamaged').textContent = inspState.damagedCount;
@@ -1163,18 +1174,37 @@ function triggerScan() {
             }
 
             const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            targetStatus.status = isDamageMode ? 'damaged' : 'good';
-            targetStatus.scannedAt = now;
-            const recvCount = pieceStatuses.filter(piece => piece.status === 'good').length;
-            const damageCount = pieceStatuses.filter(piece => piece.status === 'damaged').length;
+            const productType = String(ITEM_PRODUCT_TYPES[itemId] || 'NORMAL').toUpperCase();
+            const isPackType = productType === 'SERIES' || productType === 'COMPLEMENTARY';
+            const targetPieceStatus = isDamageMode ? 'damaged' : 'good';
+            if (isPackType) {
+                pieceStatuses.forEach(piece => {
+                    piece.status = targetPieceStatus;
+                    piece.scannedAt = now;
+                });
+            } else {
+                targetStatus.status = targetPieceStatus;
+                targetStatus.scannedAt = now;
+            }
+            const packQuantity = parseInt(ITEM_EXPECTED_QTY[itemId], 10) || pieces.length;
+            const recvCount = isPackType
+                ? (isDamageMode ? 0 : packQuantity)
+                : pieceStatuses.filter(piece => piece.status === 'good').length;
+            const damageCount = isPackType
+                ? (isDamageMode ? packQuantity : 0)
+                : pieceStatuses.filter(piece => piece.status === 'damaged').length;
             if (recvInput) recvInput.value = recvCount;
             if (dmgInput) dmgInput.value = damageCount;
 
             const inspectionModalOpen = document.getElementById('pieceInspectionModal')?.classList.contains('show');
             const inspectionPiece = inspState.pieces.find(piece => piece.tag === targetStatus.tag);
             if (inspectionModalOpen && inspState.itemIds.includes(String(itemId)) && inspectionPiece) {
-                inspectionPiece.status = targetStatus.status;
-                inspectionPiece.scannedAt = now;
+                inspState.pieces
+                    .filter(piece => isPackType ? piece.itemId === String(itemId) : piece.tag === targetStatus.tag)
+                    .forEach(piece => {
+                        piece.status = targetPieceStatus;
+                        piece.scannedAt = now;
+                    });
                 updateInspectionUI();
             } else {
                 updateMatrixRow(itemId, true);

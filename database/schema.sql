@@ -1,7 +1,7 @@
 -- =================================================
 -- GRM Inventory Management System Canonical Database Schema
 -- Generated: 2026-09-28 13:55:55
--- Total Tables: 86
+-- Total Tables: 87
 -- =================================================
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -2567,6 +2567,24 @@ CREATE TABLE `production_warehouse_reworks` (
   KEY `idx_pwr_batch` (`production_batch_id`),
   KEY `idx_pwr_variant` (`variant_id`),
   KEY `idx_pwr_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `warehouse_qr_codes`
+-- --------------------------------------------------------
+DROP TABLE IF EXISTS `warehouse_qr_codes`;
+CREATE TABLE `warehouse_qr_codes` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `qr_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `variant_id` int unsigned DEFAULT NULL,
+  `warehouse_id` int unsigned DEFAULT NULL,
+  `created_by` int unsigned DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `inwarded_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_warehouse_qr_code` (`qr_code`),
+  KEY `idx_warehouse_qr_variant` (`variant_id`),
+  KEY `idx_warehouse_qr_warehouse` (`warehouse_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
