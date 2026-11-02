@@ -142,37 +142,8 @@ usort($pieceTags, static function ($a, $b) {
 
     <!-- Product Hero & Metrics Row -->
     <div class="row g-4 mb-4">
-        <!-- 1. Product Image & Piece QR Card -->
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm rounded-4 h-100 overflow-hidden bg-white">
-                <div class="card-body p-4 text-center bg-light bg-opacity-50 d-flex flex-column justify-content-between">
-                    <div>
-                        <div class="position-relative d-inline-block mb-3">
-                            <?php if ($imgUrl): ?>
-                                <img src="<?= htmlspecialchars($imgUrl) ?>" alt="<?= htmlspecialchars($item['product_name']) ?>" 
-                                     class="img-fluid rounded-4 shadow-sm border bg-white" 
-                                     style="max-height: 220px; width: 100%; object-fit: cover;">
-                            <?php endif; ?>
-
-                        </div>
-
-                    </div>
-
-                    <!-- Master SKU QR Code Canvas -->
-                    <div class="p-3 bg-white rounded-3 border shadow-sm">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="small fw-bold text-muted text-uppercase"><i class="bi bi-qr-code me-1 text-primary"></i>Master SKU QR</span>
-                            <span class="badge bg-light text-secondary border font-monospace"><?= htmlspecialchars($item['qr_code_prefix'] ?? 'PREFIX') ?></span>
-                        </div>
-                        <div id="productQrCanvas" class="d-flex justify-content-center my-2"></div>
-                        <span class="badge bg-dark text-white font-monospace px-3 py-1"><?= htmlspecialchars($item['qr_code'] ?: $item['sku']) ?></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 2. Commercials & Stock Balances Summary -->
-        <div class="col-lg-8">
+        <!-- Commercials & Stock Balances Summary -->
+        <div class="col-12">
             <div class="row g-3 mb-4">
                 <!-- 1. Selling Price -->
                 <div class="col-sm-6 col-xl-3">
@@ -223,42 +194,6 @@ usort($pieceTags, static function ($a, $b) {
 
             </div>
 
-            <!-- Product Specifications Card -->
-            <div class="card border-0 shadow-sm rounded-4 bg-white p-4">
-                <h6 class="fw-bold text-dark mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>Garment Catalog Specifications</h6>
-                <div class="row g-3">
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">Material / Fabric</small>
-                        <span class="fw-semibold text-dark"><?= htmlspecialchars($item['material'] ?? '100% Cotton / Combed') ?></span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">HSN Code</small>
-                        <span class="fw-semibold font-monospace text-dark"><?= htmlspecialchars($item['hsn_code'] ?? '61091000') ?></span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">GST Tax Rate</small>
-                        <span class="fw-semibold text-dark"><?= (float)($item['gst_percentage'] ?? 5) ?>% GST</span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">Production Cost</small>
-                        <span class="fw-semibold text-dark">₹<?= number_format((float)($item['production_cost'] ?? 0), 2) ?></span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">Reorder Min / Max</small>
-                        <span class="fw-semibold text-dark"><?= (int)($item['min_stock'] ?? 5) ?> / <?= (int)($item['max_stock'] ?? 100) ?> pcs</span>
-                    </div>
-                    <div class="col-md-4 col-6">
-                        <small class="text-muted d-block">Piece QR Range</small>
-                        <span class="badge bg-light text-primary border font-monospace"><?= htmlspecialchars($tagRangeStr) ?></span>
-                    </div>
-                    <?php if (!empty($item['description'])): ?>
-                        <div class="col-12 mt-2">
-                            <small class="text-muted d-block">Description / Style Notes</small>
-                            <div class="p-2 bg-light rounded text-dark small"><?= nl2br(htmlspecialchars($item['description'])) ?></div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -880,13 +815,12 @@ usort($pieceTags, static function ($a, $b) {
                                     <th class="text-center">Status</th>
                                     <th>Outward Return Batch</th>
                                     <th>Logged On</th>
-                                    <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($damageHistory)): ?>
                                     <tr>
-                                        <td colspan="9" class="text-center py-4 text-muted">No damage or defect records reported for this product in Website channel.</td>
+                                        <td colspan="8" class="text-center py-4 text-muted">No damage or defect records reported for this product in Website channel.</td>
                                     </tr>
                                 <?php else: foreach ($damageHistory as $dmg): ?>
                                     <tr>
@@ -928,11 +862,6 @@ usort($pieceTags, static function ($a, $b) {
                                         </td>
                                         <td class="small text-muted">
                                             <?= date('d M Y, h:i A', strtotime($dmg['created_at'])) ?>
-                                        </td>
-                                        <td class="text-end">
-                                            <a href="<?= url('warehouse/website-orders/damage/view/' . $dmg['id']) ?>" class="btn btn-xs btn-outline-danger px-2 py-1">
-                                                <i class="bi bi-eye"></i> View Details
-                                            </a>
                                         </td>
                                     </tr>
                                 <?php endforeach; endif; ?>
@@ -1216,20 +1145,7 @@ const mrpVal = <?= json_encode($mrp) ?>;
 const sellVal = <?= json_encode($sellingPrice) ?>;
 
 document.addEventListener('DOMContentLoaded', function() {
-    // 1. Initialize Master SKU QR Canvas
-    const masterCanvas = document.getElementById("productQrCanvas");
-    if (masterCanvas) {
-        new QRCode(masterCanvas, {
-            text: <?= json_encode($item['qr_code'] ?: $item['sku']) ?>,
-            width: 90,
-            height: 90,
-            colorDark : "#000000",
-            colorLight : "#ffffff",
-            correctLevel : QRCode.CorrectLevel.M
-        });
-    }
-
-    // 2. Initialize Individual Piece QR Canvases for Card Grid
+    // Initialize individual piece QR canvases for the card grid.
     document.querySelectorAll('.piece-qr-canvas').forEach(function(el) {
         const payload = el.getAttribute('data-payload');
         if (payload) {

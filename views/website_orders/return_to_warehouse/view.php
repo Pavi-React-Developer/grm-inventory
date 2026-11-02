@@ -149,10 +149,9 @@
         </div>
     </div>
 
-    <!-- Itemized Consignment Table & QR Scanner Canvas -->
+    <!-- Itemized Consignment Table -->
     <div class="row g-4 mb-4">
-        <!-- Left: Itemized Return Table -->
-        <div class="col-lg-9">
+        <div class="col-12">
             <div class="card border-0 shadow-sm rounded-4 bg-white">
                 <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
                     <h5 class="fw-bold text-dark mb-0"><i class="bi bi-list-check me-2 text-primary"></i>Manifest Item Breakdown</h5>
@@ -168,9 +167,7 @@
                                 <th style="width: 35%;">Product & Variant</th>
                                 <th style="width: 15%;">Classification</th>
                                 <th class="text-center" style="width: 12%;">Dispatched Qty</th>
-                                <th style="width: 15%;">QC Breakdown</th>
-                                <th class="text-end" style="width: 15%;">Est. Line Value</th>
-                                <th class="text-end pe-4" style="width: 10%;">Action</th>
+                                <th class="text-end pe-4" style="width: 23%;">Est. Line Value</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -192,7 +189,14 @@
                                                     <?php if (!empty($it['product_code'])): ?>
                                                         <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace">Code: <?= e($it['product_code']) ?></span>
                                                     <?php endif; ?>
-                                                    <span class="badge bg-light text-dark border"><i class="bi bi-qr-code text-primary me-1"></i><?= e($it['sku']) ?></span>
+                                                    <span class="badge bg-light text-dark border"><i class="bi bi-upc-scan text-primary me-1"></i>SKU: <?= e($it['sku']) ?></span>
+                                                    <?php if (!empty($it['scanned_qr_codes'])): ?>
+                                                        <?php foreach ($it['scanned_qr_codes'] as $scannedQr): ?>
+                                                            <span class="badge bg-warning-subtle text-dark border border-warning-subtle font-monospace" title="Scanned product QR"><i class="bi bi-qr-code text-warning-emphasis me-1"></i>QR: <?= e($scannedQr) ?></span>
+                                                        <?php endforeach; ?>
+                                                    <?php else: ?>
+                                                        <span class="text-muted small">QR not captured</span>
+                                                    <?php endif; ?>
                                                     <?= !empty($it['size_name']) ? '<span class="badge bg-light text-dark border">' . e($it['size_name']) . '</span>' : '' ?>
                                                     <?= !empty($it['color_name']) ? '<span class="badge bg-light text-dark border">' . e($it['color_name']) . '</span>' : '' ?>
                                                 </div>
@@ -218,27 +222,9 @@
                                             <?= $it['returned_qty'] ?>
                                         </span>
                                     </td>
-                                    <td class="text-center">
-                                        <?php if ($return['status'] === 'COMPLETED' || $return['status'] === 'CLASSIFIED'): ?>
-                                            <div class="small">
-                                                <span class="text-success fw-bold" title="Good Qty">✓ <?= (int)$it['good_qty'] ?></span> • 
-                                                <span class="text-danger fw-bold" title="Damaged Qty">✗ <?= (int)$it['damaged_qty'] ?></span> • 
-                                                <span class="text-warning-emphasis fw-bold" title="Defective Qty">⚠ <?= (int)$it['defective_qty'] ?></span>
-                                            </div>
-                                        <?php else: ?>
-                                            <span class="badge bg-light text-muted border">Pending QC</span>
-                                        <?php endif; ?>
-                                    </td>
                                     <td class="text-end">
                                         <div class="fw-bold text-dark font-monospace">₹<?= number_format((float)$it['line_total'], 2) ?></div>
                                         <small class="text-muted">@ ₹<?= number_format((float)$it['unit_price'], 2) ?>/pc</small>
-                                    </td>
-                                    <td class="text-end pe-4">
-                                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 shadow-sm fw-semibold" 
-                                                onclick="openProductDetailModal(<?= (int)$it['variant_id'] ?>, <?= (int)$it['returned_qty'] ?>, '<?= e($it['classification']) ?>')" 
-                                                title="View Complete Product Details, Images & Piece QR Codes">
-                                            <i class="bi bi-eye me-1"></i> View
-                                        </button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -247,9 +233,7 @@
                             <tr>
                                 <th colspan="3" class="ps-4 fw-bold text-dark">Consignment Totals</th>
                                 <th class="text-center fw-bold text-danger"><?= $totalReturnedQty ?> pcs</th>
-                                <th></th>
                                 <th class="text-end fw-bold text-success font-monospace">₹<?= number_format((float)$totalEstimatedValue, 2) ?></th>
-                                <th></th>
                             </tr>
                         </tfoot>
                     </table>
@@ -257,23 +241,6 @@
             </div>
         </div>
 
-        <!-- Right: 2D Consignment QR Code Badge -->
-        <div class="col-lg-3">
-            <div class="card border-0 shadow-sm rounded-4 bg-white text-center p-4 h-100">
-                <small class="text-muted text-uppercase fw-bold mb-3" style="font-size: 10px; letter-spacing: 0.5px;">Master Consignment QR</small>
-                <div class="p-3 bg-light rounded-4 border d-inline-block mx-auto mb-3">
-                    <div id="consignmentQrCanvas" class="d-flex justify-content-center"></div>
-                </div>
-                <div class="fw-bold font-monospace text-dark mb-1"><?= e($return['return_number']) ?></div>
-                <p class="text-muted small mb-3" style="font-size: 11px;">Scan this QR sticker at the Central Warehouse inward terminal for automatic receipt.</p>
-                
-                <div class="d-grid gap-2">
-                    <a href="<?= url('warehouse/website-orders/return-to-warehouse/label/' . $return['id']) ?>" target="_blank" class="btn btn-outline-primary btn-sm rounded-pill">
-                        <i class="bi bi-printer me-1"></i> Print QR Label
-                    </a>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -458,20 +425,6 @@
 <!-- QRCode Library -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const qrContainer = document.getElementById('consignmentQrCanvas');
-    if (qrContainer && typeof QRCode !== 'undefined') {
-        new QRCode(qrContainer, {
-            text: '<?= e($return["return_number"]) ?>',
-            width: 140,
-            height: 140,
-            colorDark: "#111827",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.H
-        });
-    }
-});
-
 let currentModalPieces = [];
 let currentModalReturnedQty = 0;
 let currentModalClassification = '';

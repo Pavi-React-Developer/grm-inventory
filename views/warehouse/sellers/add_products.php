@@ -126,6 +126,7 @@
                     <th>#</th>
                     <th>Product</th>
                     <th>Category</th>
+                    <th>Product Type</th>
                     <th>Variant</th>
                     <th>SKU</th>
                     <th>HSN</th>
@@ -139,7 +140,7 @@
             <tbody>
                 <?php if (empty($existingSupplierProducts)): ?>
                     <tr>
-                        <td colspan="11" class="text-center text-muted py-4">No existing products are linked to this supplier.</td>
+                        <td colspan="12" class="text-center text-muted py-4">No existing products are linked to this supplier.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($existingSupplierProducts as $index => $product): ?>
@@ -154,6 +155,12 @@
                             <td><?= $index + 1 ?></td>
                             <td class="fw-semibold"><?= e($product['product_name'] ?? '') ?></td>
                             <td><?= e(implode(' › ', $categoryPath) ?: '—') ?></td>
+                            <?php $productType = strtoupper((string)($product['product_type'] ?? 'NORMAL')); ?>
+                            <td>
+                                <span class="badge rounded-pill <?= $productType === 'SERIES' ? 'bg-info-subtle text-info-emphasis' : ($productType === 'COMPLEMENTARY' ? 'bg-warning-subtle text-warning-emphasis' : 'bg-primary-subtle text-primary') ?>">
+                                    <?= e(ucfirst(strtolower($productType))) ?>
+                                </span>
+                            </td>
                             <td><?= e($product['variant_name'] ?? 'Standard') ?></td>
                             <td class="font-monospace"><?= e($product['sku'] ?? '') ?: '—' ?></td>
                             <td class="font-monospace"><?= e($product['hsn_code'] ?? '') ?: '—' ?></td>
@@ -338,7 +345,7 @@
             <div class="row g-2 align-items-end">
                 <div class="col-xl-2 col-lg-3 col-md-4 col-12">
                     <label class="form-label fs-8 text-muted mb-1 fw-bold">Product Name:</label>
-                    <input type="text" class="form-control form-control-sm fw-semibold" id="qfProductName" placeholder="e.g. Cotton Shirt">
+                    <input type="text" class="form-control form-control-sm fw-semibold text-uppercase" id="qfProductName" placeholder="e.g. Cotton Shirt" oninput="this.value=this.value.toUpperCase()">
                 </div>
                 <div class="col-xl-2 col-lg-2 col-md-4 col-6">
                     <label class="form-label fs-8 text-muted mb-1 fw-bold">Category Type:</label>
@@ -883,7 +890,7 @@ function regenerateMatrixProducts() {
 
             // Product name: empty by default unless user entered a name in Quick Fill bar
             const qfNameInput = document.getElementById('qfProductName');
-            const vProductName = (qfNameInput && qfNameInput.value.trim()) ? qfNameInput.value.trim() : '';
+            const vProductName = (qfNameInput && qfNameInput.value.trim()) ? qfNameInput.value.trim().toUpperCase() : '';
 
             const qfCatType = document.getElementById('qfCategoryType');
             const initialCatType = (qfCatType && qfCatType.value) ? qfCatType.value : 'NORMAL';
@@ -1243,10 +1250,10 @@ function renderAddedProductsTable() {
                     </div>
                 </td>
                 <td>
-                    <input type="text" class="form-control form-control-sm fw-semibold" id="name_${item.id}"
+                    <input type="text" class="form-control form-control-sm fw-semibold text-uppercase" id="name_${item.id}"
                             value="${escapeHtml(item.product_name || '')}" 
                             placeholder="Product Name"
-                            oninput="updateItemField(${item.id}, 'product_name', this.value)">
+                            oninput="this.value=this.value.toUpperCase();updateItemField(${item.id}, 'product_name', this.value)">
                 </td>
                 <td>
                     <input type="text" class="form-control form-control-sm font-monospace text-center fw-bold" id="hsn_${item.id}"
@@ -1558,7 +1565,7 @@ function applyQuickFillToAll() {
         return;
     }
 
-    const pName = (document.getElementById('qfProductName')?.value || '').trim();
+    const pName = (document.getElementById('qfProductName')?.value || '').trim().toUpperCase();
     const catType = (document.getElementById('qfCategoryType')?.value || 'NORMAL');
     const hsn = (document.getElementById('qfHsn')?.value || '').trim();
     const weightVal = document.getElementById('qfWeight')?.value;

@@ -25,13 +25,6 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
         <h2 class="fw-bold mb-1 text-dark"><i class="bi bi-boxes me-2 text-primary"></i>Website Stock &amp; Inventory</h2>
         <span class="text-muted">Real-time Website stock balances, catalog specifications, and piece-by-piece quarantine.</span>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
-        <?php if (hasPermission('website_inventory.adjust') || hasPermission('website_inventory.create')): ?>
-        <a href="<?= url('warehouse/website-orders/requests/create') ?>" class="btn btn-primary rounded-pill px-3 shadow-sm fw-semibold">
-            <i class="bi bi-plus-lg me-1"></i> Request Warehouse Stock
-        </a>
-        <?php endif; ?>
-    </div>
 </div>
 
 <!-- 5 Dynamic KPI Analysis Cards -->

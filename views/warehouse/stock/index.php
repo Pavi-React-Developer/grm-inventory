@@ -303,8 +303,13 @@ if (!function_exists('renderCategoryTypeBadge')) {
 <!-- PRODUCT TYPE TABS -->
 <ul class="nav nav-pills mb-3 gap-2" id="inventorySectionTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <a class="nav-link fw-semibold px-4 py-2 <?= $currTab === 'normal' ? 'active shadow-sm bg-primary text-white' : 'bg-white text-dark border' ?>" href="<?= url('warehouse/stock?warehouse_id=' . ($selectedWarehouseId ?? '') . '&stock_state=' . ($stockState ?? '') . '&search=' . urlencode($search ?? '') . '&tab=normal') ?>">
-            <i class="bi bi-tag me-1"></i> Normal Products <span class="badge <?= $currTab === 'normal' ? 'bg-white text-primary' : 'bg-primary' ?> ms-1"><?= count($normalItems ?? []) ?></span>
+        <a class="nav-link fw-semibold px-4 py-2 <?= $currTab === 'production' ? 'active shadow-sm bg-success text-white' : 'bg-white text-dark border' ?>" href="<?= url('warehouse/stock?warehouse_id=' . ($selectedWarehouseId ?? '') . '&stock_state=' . ($stockState ?? '') . '&search=' . urlencode($search ?? '') . '&tab=production') ?>">
+            <i class="bi bi-buildings me-1"></i> Production Unit Products <span class="badge <?= $currTab === 'production' ? 'bg-white text-success' : 'bg-success' ?> ms-1"><?= count($productionItems ?? []) ?></span>
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link fw-semibold px-4 py-2 <?= $currTab === 'third_party' ? 'active shadow-sm bg-warning text-dark' : 'bg-white text-dark border' ?>" href="<?= url('warehouse/stock?warehouse_id=' . ($selectedWarehouseId ?? '') . '&stock_state=' . ($stockState ?? '') . '&search=' . urlencode($search ?? '') . '&tab=third_party') ?>">
+            <i class="bi bi-shop me-1"></i> Third-Party Products <span class="badge <?= $currTab === 'third_party' ? 'bg-dark text-white' : 'bg-warning text-dark' ?> ms-1"><?= count($thirdPartyItems ?? []) ?></span>
         </a>
     </li>
     <li class="nav-item" role="presentation">
@@ -331,7 +336,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
         <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
                 <h5 class="card-title mb-0 fw-bold text-dark">
-                    <i class="bi bi-boxes text-primary me-2"></i> <?= $currTab === 'series' ? 'Series Products' : ($currTab === 'returned' ? 'Returned Products' : 'Normal Products') ?>
+                    <i class="bi bi-boxes text-primary me-2"></i> <?= $currTab === 'production' ? 'Production Unit Products' : ($currTab === 'series' ? 'Series Products' : ($currTab === 'returned' ? 'Returned Products' : 'Normal Products')) ?>
                 </h5>
                 
             </div>
@@ -358,12 +363,18 @@ if (!function_exists('renderCategoryTypeBadge')) {
         <div class="card-body p-0">
             <?php if (empty($productionItems)): ?>
                 <div class="text-center py-5">
-                    <i class="bi bi-gear fs-1 text-muted d-block mb-3"></i>
-                    <h5 class="text-muted">No In-House Production Stock Records Found</h5>
-                    <p class="text-muted small">Perform a Production Inward GRN verification to credit manufactured garments into this warehouse.</p>
-                    <a href="<?= url('warehouse/inward') ?>" class="btn btn-primary px-4 py-2">
-                        <i class="bi bi-box-arrow-in-down me-1"></i> Verify Production Inward Batch
-                    </a>
+                    <?php if ($currTab === 'returned'): ?>
+                        <i class="bi bi-arrow-return-left fs-1 text-muted d-block mb-3"></i>
+                        <h5 class="text-muted">No Returned Products Found</h5>
+                        <p class="text-muted small">Products will appear here after their return QR codes are inwarded into this warehouse.</p>
+                    <?php else: ?>
+                        <i class="bi bi-gear fs-1 text-muted d-block mb-3"></i>
+                        <h5 class="text-muted">No In-House Production Stock Records Found</h5>
+                        <p class="text-muted small">Perform a Production Inward GRN verification to credit manufactured garments into this warehouse.</p>
+                        <a href="<?= url('warehouse/inward') ?>" class="btn btn-primary px-4 py-2">
+                            <i class="bi bi-box-arrow-in-down me-1"></i> Verify Production Inward Batch
+                        </a>
+                    <?php endif; ?>
                 </div>
             <?php else: ?>
                 <div class="table-responsive">

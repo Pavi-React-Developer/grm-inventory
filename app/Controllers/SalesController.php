@@ -204,6 +204,7 @@ class SalesController {
             $isSeries = $categoryType === 'SERIES'
                 || strtoupper((string)$variant['qr_type']) === 'SERIES_BATCH'
                 || (int)($variant['pack_quantity'] ?? 1) > 1;
+            $isAggregateStock = $isComplementary || $isSeries;
 
             $tagValue = $item['scanned_qr_codes'] ?? '';
             if (!is_string($tagValue)) {
@@ -211,15 +212,18 @@ class SalesController {
             }
             $tagValue = trim($tagValue);
             $tags = array_values(array_unique(array_filter(array_map('trim', explode(',', $tagValue)))));
-            if (!$isSeries) {
+            if (!$isAggregateStock && count($tags) !== $quantity) {
+                throw new RuntimeException("Scan one available piece QR for each unit of normal product '{$variant['sku']}'.");
+            }
+            if (!$isAggregateStock) {
                 $this->assertChannelPieceTagsReceived($tags, $variantId, $channelType, $channelIds);
             }
             foreach ($tags as $tag) {
-                if (!$isSeries && isset($seenPieceTags[strtoupper($tag)])) {
+                if (!$isAggregateStock && isset($seenPieceTags[strtoupper($tag)])) {
                     throw new RuntimeException("Piece QR '{$tag}' is included more than once in this order.");
                 }
 
-                if (!isset($damageTagsByVariant[$variantId])) {
+                if (!$isAggregateStock && !isset($damageTagsByVariant[$variantId])) {
                     $damageTagsByVariant[$variantId] = [];
                     $damageRecords = Database::fetchAll(
                         "SELECT 'CHANNEL' AS damage_source, damage_number, tag_code FROM channel_damages
@@ -239,12 +243,12 @@ class SalesController {
                     }
                 }
 
-                if (isset($damageTagsByVariant[$variantId][strtoupper($tag)])) {
+                if (!$isAggregateStock && isset($damageTagsByVariant[$variantId][strtoupper($tag)])) {
                     $damageNumber = $damageTagsByVariant[$variantId][strtoupper($tag)];
                     throw new RuntimeException("Piece QR '{$tag}' is recorded as damaged in {$damageNumber}. Damaged products cannot be billed.");
                 }
 
-                if (!$isSeries) {
+                if (!$isAggregateStock) {
                     $alreadySold = $this->findPreviousSaleForPieceTag($tag);
                     if ($alreadySold) {
                         throw new RuntimeException("Piece Serial Tag '{$tag}' was already sold in Invoice #{$alreadySold['invoice_number']}. It cannot be billed again.");
@@ -311,7 +315,7 @@ class SalesController {
             $availableByVariant = $this->getSalesChannelAvailableStock($channelIds);
             $available = (float)($availableByVariant[$variantId] ?? 0);
             if ($available < 1) {
-                Response::jsonError("This product is not available in {$channelType} inventory.", ['available_stock' => $available], 422);
+                Response::jsonError("Out of stock in {$channelType} inventory.", ['available_stock' => $available], 422);
                 return;
             }
 

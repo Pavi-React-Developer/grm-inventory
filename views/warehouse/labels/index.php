@@ -34,16 +34,60 @@ $generatedItems = [];
 $monthStr = sprintf('%02d', date('n'));
 $yearStr = date('y');
 
+if (!function_exists('getWarehouseQrSequenceOffset')) {
+    function getWarehouseQrSequenceOffset(string $prefix, ?int $excludeVariantId = null): int {
+        $maxSequence = 0;
+        $pattern = '/^' . preg_quote($prefix, '/') . '\d{4}(\d+)$/i';
+
+        $registrySql = "SELECT qr_code FROM warehouse_qr_codes WHERE qr_code LIKE ?";
+        $registryParams = [$prefix . '%'];
+        if ($excludeVariantId !== null) {
+            $registrySql .= " AND (variant_id IS NULL OR variant_id != ?)";
+            $registryParams[] = $excludeVariantId;
+        }
+        foreach (Database::fetchAll($registrySql, $registryParams) as $row) {
+            if (preg_match($pattern, (string)$row['qr_code'], $match)) {
+                $maxSequence = max($maxSequence, (int)$match[1]);
+            }
+        }
+
+        $notesSql = "SELECT notes FROM stock_transactions WHERE notes LIKE ? AND reference_type IN ('THIRD_PARTY_STICKERED', 'warehouse_returns')";
+        $notesParams = ['%' . $prefix . '%'];
+        if ($excludeVariantId !== null) {
+            $notesSql .= " AND (variant_id IS NULL OR variant_id != ?)";
+            $notesParams[] = $excludeVariantId;
+        }
+        foreach (Database::fetchAll($notesSql, $notesParams) as $row) {
+            if (preg_match_all('/' . preg_quote($prefix, '/') . '\d{4}(\d+)/i', (string)($row['notes'] ?? ''), $matches)) {
+                foreach ($matches[1] as $sequence) {
+                    $maxSequence = max($maxSequence, (int)$sequence);
+                }
+            }
+        }
+
+        $variantSql = "SELECT qr_code FROM product_variants WHERE qr_code LIKE ?";
+        $variantParams = [$prefix . '%'];
+        if ($excludeVariantId !== null) {
+            $variantSql .= " AND id != ?";
+            $variantParams[] = $excludeVariantId;
+        }
+        foreach (Database::fetchAll($variantSql, $variantParams) as $row) {
+            if (preg_match($pattern, (string)$row['qr_code'], $match)) {
+                $maxSequence = max($maxSequence, (int)$match[1]);
+            }
+        }
+
+        return $maxSequence;
+    }
+}
+
 if (!function_exists('calculateCategorySequenceOffset')) {
     /**
-     * Calculate continuous sequential QR offset across products in the same category hierarchy & month.
+     * Calculate the next QR offset across earlier products and previously issued tags.
      * Prevents QR duplication (e.g. 1st product: 1-10, 2nd product: starts at 11 series: 11-20, etc.)
      */
-    function calculateCategorySequenceOffset($variantId, $baseTagPrefix, $prodPrefix, $catId, $subcatId, $subSubcatId, $prodCreatedAt, $productId) {
-        $monthStart = date('Y-m-01 00:00:00');
-        $monthEnd   = date('Y-m-t 23:59:59');
-
-        // Query earlier third-party variants in the same category hierarchy in current month
+    function calculateCategorySequenceOffset($variantId, $prodPrefix, $catId, $subcatId, $subSubcatId, $prodCreatedAt, $productId) {
+        // Query earlier third-party variants in the same category hierarchy.
         $sql = "
             SELECT pv.id as variant_id, pv.pack_quantity, p.id as product_id, p.name as product_name, p.created_at,
                    p.quantity as prod_qty,
@@ -69,12 +113,11 @@ if (!function_exists('calculateCategorySequenceOffset')) {
                   OR (p.created_at = ? AND p.id < ?)
                   OR (p.id = ? AND pv.id < ?)
               )
-              AND (
+                AND (
                   (? > 0 AND p.warehouse_category_id = ? AND p.warehouse_subcategory_id = ? AND p.warehouse_sub_subcategory_id = ?)
-                  OR (? > 0 AND p.category_id = ? AND p.subcategory_id = ? AND p.sub_subcategory_id = ?)
+                    OR (? > 0 AND p.category_id = ? AND p.subcategory_id = ? AND p.sub_subcategory_id = ?)
                   OR (? != '' AND p.qr_code_prefix = ?)
               )
-              AND p.created_at >= ? AND p.created_at <= ?
             ORDER BY p.created_at ASC, p.id ASC, pv.id ASC
         ";
 
@@ -85,8 +128,7 @@ if (!function_exists('calculateCategorySequenceOffset')) {
             $productId, $variantId,
             $catId ?: 0, $catId ?: 0, $subcatId ?: 0, $subSubcatId ?: 0,
             $catId ?: 0, $catId ?: 0, $subcatId ?: 0, $subSubcatId ?: 0,
-            $prodPrefix ?: '', $prodPrefix ?: '',
-            $monthStart, $monthEnd
+            $prodPrefix ?: '', $prodPrefix ?: ''
         ];
 
         $earlierRows = Database::fetchAll($sql, $params);
@@ -98,24 +140,7 @@ if (!function_exists('calculateCategorySequenceOffset')) {
             $categoryOffset += $qty;
         }
 
-        // Safety check: verify against earlier recorded tags in stock_transactions for other variants with same base prefix
-        $stNotes = Database::fetchAll(
-            "SELECT notes FROM stock_transactions WHERE reference_type = 'THIRD_PARTY_STICKERED' AND variant_id != ? AND notes LIKE ?",
-            [$variantId, '%' . $baseTagPrefix . '%']
-        );
-        $maxRecordedTagSeq = 0;
-        foreach ($stNotes as $stn) {
-            if (preg_match_all('/' . preg_quote($baseTagPrefix, '/') . '(\d+)/', $stn['notes'], $m)) {
-                foreach ($m[1] as $seqVal) {
-                    $num = (int)$seqVal;
-                    if ($num > $maxRecordedTagSeq) {
-                        $maxRecordedTagSeq = $num;
-                    }
-                }
-            }
-        }
-
-        return max($categoryOffset, $maxRecordedTagSeq);
+        return max($categoryOffset, getWarehouseQrSequenceOffset((string)$prodPrefix, (int)$variantId));
     }
 }
 
@@ -492,7 +517,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
             $monthYear = date('my');
             $baseTagPrefix = $prodPrefix . $monthYear; // e.g. NEW1026 or WMF1026
 
-            // Continuous sequential QR offset across products in same category hierarchy & month
+            // Continue the category sequence across products and month changes.
             $catId = (int)($activeVar['warehouse_category_id'] ?? $activeVar['category_id'] ?? 0);
             $subcatId = (int)($activeVar['warehouse_subcategory_id'] ?? $activeVar['subcategory_id'] ?? 0);
             $subSubcatId = (int)($activeVar['warehouse_sub_subcategory_id'] ?? $activeVar['sub_subcategory_id'] ?? 0);
@@ -501,7 +526,6 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
 
             $categoryOffset = calculateCategorySequenceOffset(
                 (int)$activeVar['id'],
-                $baseTagPrefix,
                 $prodPrefix,
                 $catId,
                 $subcatId,
@@ -536,6 +560,8 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                     $generatedItems[] = [
                         'piece_no'             => 1,
                         'total_count'          => 1,
+                        'variant_id'           => (int)$activeVar['id'],
+                        'qr_prefix'            => $prodPrefix,
                         'tag_code'             => $startCode,
                         'product_name'         => $activeVar['product_name'],
                         'sku'                  => $activeVar['sku'],
@@ -570,6 +596,8 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                     $generatedItems[] = [
                         'piece_no'             => $nextSeq,
                         'total_count'          => $nextSeq,
+                        'variant_id'           => (int)$activeVar['id'],
+                        'qr_prefix'            => $prodPrefix,
                         'tag_code'             => $newTagCode,
                         'product_name'         => $activeVar['product_name'],
                         'sku'                  => $activeVar['sku'],
@@ -614,6 +642,8 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                         $generatedItems[] = [
                             'piece_no'             => $i,
                             'total_count'          => $categoryOffset + $totalExpectedQty,
+                            'variant_id'           => (int)$activeVar['id'],
+                            'qr_prefix'            => $prodPrefix,
                             'tag_code'             => $tagCode,
                             'product_name'         => $activeVar['product_name'],
                             'sku'                  => $activeVar['sku'],
@@ -646,12 +676,15 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
         $poItems = PurchaseItem::getByPurchaseOrder($selectedSourceId);
         $poInfo = Database::fetchOne("SELECT po.*, s.name as seller_name, s.company as seller_company, w.name as warehouse_name FROM purchase_orders po LEFT JOIN warehouse_suppliers s ON (po.warehouse_supplier_id = s.id OR po.seller_id = s.id) LEFT JOIN warehouses w ON po.warehouse_id = w.id WHERE po.id = ?", [$selectedSourceId]);
         $sellerLabel = !empty($poInfo['seller_company']) ? $poInfo['seller_company'] : ($poInfo['seller_name'] ?? 'Third-Party Seller');
-        $seq = 1;
+        $sequenceByPrefix = [];
         foreach ($poItems as $pi) {
             $count = max(1, (int)$pi['quantity']);
+            $prodPrefix = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $pi['product_name']), 0, 3)) ?: 'TP';
+            if (!isset($sequenceByPrefix[$prodPrefix])) {
+                $sequenceByPrefix[$prodPrefix] = getWarehouseQrSequenceOffset($prodPrefix) + 1;
+            }
             for ($i = 1; $i <= $count; $i++) {
-                $prodPrefix = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $pi['product_name']), 0, 3)) ?: 'TP';
-                $tagCode = $prodPrefix . $monthStr . $yearStr . sprintf("%03d", $seq++);
+                $tagCode = $prodPrefix . $monthStr . $yearStr . sprintf("%03d", $sequenceByPrefix[$prodPrefix]++);
                 $fmtMrp = ($pi['mrp'] == (int)$pi['mrp']) ? (int)$pi['mrp'] : number_format($pi['mrp'], 2, '.', '');
                 $fmtSell = !empty($pi['selling_price']) ? (($pi['selling_price'] == (int)$pi['selling_price']) ? (int)$pi['selling_price'] : number_format($pi['selling_price'], 2, '.', '')) : $fmtMrp;
                 $catH = implode(' › ', array_filter([$pi['category_name'] ?? '', $pi['subcategory_name'] ?? '', $pi['sub_subcategory_name'] ?? '']));
@@ -670,6 +703,8 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                 $generatedItems[] = [
                     'piece_no'             => $i,
                     'total_count'          => $count,
+                    'variant_id'           => (int)($pi['variant_id'] ?? 0),
+                    'qr_prefix'            => $prodPrefix,
                     'tag_code'             => $tagCode,
                     'product_name'         => $pi['product_name'],
                     'sku'                  => $pi['sku'],
@@ -750,6 +785,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
             // Return QR keeps the complete category hierarchy prefix after R.
             // Example: T + A + M becomes RTAM102601, not RAM102601.
             $retTagPrefix = 'R' . $prodPrefix;
+            $sequenceByPrefix = getWarehouseQrSequenceOffset($retTagPrefix) + 1;
             $badgeClass = $tagType === 'DAMAGED' ? 'bg-danger' : ($tagType === 'DEFECTIVE' ? 'bg-warning text-dark' : ($tagType === 'WRONG_SIZE' ? 'bg-info text-dark' : 'bg-success'));
             $fmtMrp = ($activeVar['mrp'] == (int)$activeVar['mrp']) ? (int)$activeVar['mrp'] : number_format($activeVar['mrp'], 2, '.', '');
             $returnBrand = !empty($selectedCustomBrand) ? $selectedCustomBrand : (!empty($activeVar['brand_name']) && $activeVar['brand_name'] !== 'Third-Party Brand' ? $activeVar['brand_name'] : 'GRM RETURN');
@@ -767,11 +803,13 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
             $fmtCost = ($activeVar['selling_price'] == (int)$activeVar['selling_price']) ? (int)$activeVar['selling_price'] : number_format($activeVar['selling_price'], 2, '.', '');
 
             for ($i = 1; $i <= $copiesCount; $i++) {
-                $tagCode = $retTagPrefix . $monthStr . $yearStr . sprintf("%02d", $i);
+                $tagCode = $retTagPrefix . $monthStr . $yearStr . sprintf("%02d", $sequenceByPrefix++);
                 $catH = implode(' › ', array_filter([$activeVar['category_name'] ?? '', $activeVar['subcategory_name'] ?? '', $activeVar['sub_subcategory_name'] ?? '']));
                 $generatedItems[] = [
                     'piece_no'           => $i,
                     'total_count'        => $copiesCount,
+                    'variant_id'         => (int)$activeVar['id'],
+                    'qr_prefix'          => $retTagPrefix,
                     'tag_code'           => $tagCode,
                     'product_name'       => $activeVar['product_name'],
                     'sku'                => $activeVar['sku'],
@@ -797,7 +835,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
         $retInfo = Database::fetchOne("SELECT wr.*, COALESCE(s.name, wr.source_type) as source_name FROM warehouse_returns wr LEFT JOIN shops s ON wr.source_type = 'SHOP' AND wr.source_id = s.id WHERE wr.id = ?", [$selectedSourceId]);
         $sourceName = !empty($retInfo['source_name']) ? $retInfo['source_name'] : 'Customer Return';
         $returnRef = !empty($retInfo['return_number']) ? $retInfo['return_number'] : ('RET-' . date('ymd'));
-        $seq = 1;
+        $sequenceByPrefix = [];
 
         foreach ($retItems as $ri) {
             $c1 = !empty($ri['category_name']) ? trim($ri['category_name']) : (!empty($ri['category_code']) ? trim($ri['category_code']) : '');
@@ -812,6 +850,9 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
 
             // Return QR keeps the complete category hierarchy prefix after R.
             $retTagPrefix = 'R' . $prodPrefix;
+            if (!isset($sequenceByPrefix[$retTagPrefix])) {
+                $sequenceByPrefix[$retTagPrefix] = getWarehouseQrSequenceOffset($retTagPrefix) + 1;
+            }
             $itemIsComp = !empty($ri['is_complementary']) || strtoupper((string)($ri['warehouse_category_type'] ?? '')) === 'COMPLEMENTARY';
             $itemIsSeries = !$itemIsComp && (strtoupper((string)($ri['warehouse_category_type'] ?? '')) === 'SERIES'
                 || strtoupper((string)($ri['qr_type'] ?? '')) === 'SERIES_BATCH'
@@ -832,7 +873,7 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
             }
 
             for ($i = 1; $i <= $count; $i++) {
-                $tagCode = $retTagPrefix . $monthStr . $yearStr . sprintf("%02d", $seq++);
+                $tagCode = $retTagPrefix . $monthStr . $yearStr . sprintf("%02d", $sequenceByPrefix[$retTagPrefix]++);
                 $fmtMrp = ($ri['mrp'] == (int)$ri['mrp']) ? (int)$ri['mrp'] : number_format($ri['mrp'], 2, '.', '');
                 $fmtCost = ($ri['selling_price'] == (int)$ri['selling_price']) ? (int)$ri['selling_price'] : number_format($ri['selling_price'], 2, '.', '');
                 $badgeClass = $class === 'DAMAGED' ? 'bg-danger' : ($class === 'DEFECTIVE' ? 'bg-warning text-dark' : ($class === 'WRONG_SIZE' ? 'bg-info text-dark' : 'bg-success'));
@@ -840,6 +881,8 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                 $generatedItems[] = [
                     'piece_no'           => $i,
                     'total_count'        => $count,
+                    'variant_id'         => (int)($ri['variant_id'] ?? 0),
+                    'qr_prefix'          => $retTagPrefix,
                     'tag_code'           => $tagCode,
                     'product_name'       => $ri['product_name'],
                     'sku'                => $ri['sku'],
@@ -860,6 +903,72 @@ if ($currentSourceType === 'po' || $currentSourceType === 'tp_purchase') {
                 ];
             }
         }
+    }
+}
+
+if (!empty($generatedItems)) {
+    Database::beginTransaction();
+    try {
+        $nextSequenceByPrefix = [];
+        foreach ($generatedItems as &$generatedItem) {
+            $variantId = (int)($generatedItem['variant_id'] ?? 0);
+            $qrPrefix = (string)($generatedItem['qr_prefix'] ?? '');
+            $tagCode = strtoupper((string)($generatedItem['tag_code'] ?? ''));
+            if ($variantId <= 0 || $qrPrefix === '' || !preg_match('/^' . preg_quote($qrPrefix, '/') . '\d{4}(\d+)$/i', $tagCode, $sequenceMatch)) {
+                throw new RuntimeException('Unable to reserve a generated warehouse QR code because its product or sequence is invalid.');
+            }
+
+            if (!isset($nextSequenceByPrefix[$qrPrefix])) {
+                $nextSequenceByPrefix[$qrPrefix] = getWarehouseQrSequenceOffset($qrPrefix) + 1;
+            }
+            $sequence = max((int)$sequenceMatch[1], $nextSequenceByPrefix[$qrPrefix]);
+            $sequenceWidth = strlen($sequenceMatch[1]);
+            $reserved = false;
+            for ($attempt = 0; $attempt < 1000; $attempt++) {
+                $tagCode = $qrPrefix . $monthStr . $yearStr . sprintf("%0{$sequenceWidth}d", $sequence);
+                $variantQrExists = Database::fetchOne(
+                    "SELECT id FROM product_variants WHERE qr_code = ? LIMIT 1",
+                    [$tagCode]
+                );
+                if ($variantQrExists) {
+                    $sequence++;
+                    continue;
+                }
+
+                try {
+                    Database::execute(
+                        "INSERT INTO warehouse_qr_codes (qr_code, variant_id, warehouse_id) VALUES (?, ?, ?)",
+                        [$tagCode, $variantId, $targetWarehouseId]
+                    );
+                    $reserved = true;
+                    $nextSequenceByPrefix[$qrPrefix] = $sequence + 1;
+                    break;
+                } catch (PDOException $e) {
+                    if ((string)$e->getCode() !== '23000' || !str_contains($e->getMessage(), 'uq_warehouse_qr_code')) {
+                        throw $e;
+                    }
+                    $sequence++;
+                }
+            }
+
+            if (!$reserved) {
+                throw new RuntimeException("Unable to reserve a unique warehouse QR code for {$generatedItem['product_name']}.");
+            }
+
+            $generatedItem['tag_code'] = $tagCode;
+            $generatedItem['qr_payload'] = $tagCode;
+            if (!empty($generatedItem['is_series'])) {
+                $generatedItem['series_start_code'] = $tagCode;
+                $generatedItem['series_end_code'] = $tagCode;
+            }
+        }
+        unset($generatedItem);
+        Database::commit();
+    } catch (Throwable $e) {
+        if (Database::inTransaction()) {
+            Database::rollback();
+        }
+        throw $e;
     }
 }
 
@@ -906,7 +1015,10 @@ if (!empty($thirdPartyVariants)) {
             $catId = (int)($tpv['warehouse_category_id'] ?? $tpv['category_id'] ?? 0);
             $subcatId = (int)($tpv['warehouse_subcategory_id'] ?? $tpv['subcategory_id'] ?? 0);
             $subSubcatId = (int)($tpv['warehouse_sub_subcategory_id'] ?? $tpv['sub_subcategory_id'] ?? 0);
-            $pPrefix = $tpv['qr_code_prefix'] ?? '';
+            $pPrefix = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', trim($tpv['qr_code_prefix'] ?? '')));
+            if (strlen($pPrefix) > 4) {
+                $pPrefix = substr($pPrefix, 0, 4);
+            }
             $prodCreatedAt = $tpv['product_created_at'] ?? $tpv['created_at'] ?? date('Y-m-d H:i:s');
             $pId = (int)($tpv['product_id'] ?? 0);
             $vId = (int)$tpv['id'];
@@ -914,9 +1026,7 @@ if (!empty($thirdPartyVariants)) {
 
             $catOffset = 0;
             if (!$isTpvSeries) {
-                $monthYear = date('my');
-                $bTagPrefix = ($pPrefix ?: 'NEW') . $monthYear;
-                $catOffset = calculateCategorySequenceOffset($vId, $bTagPrefix, $pPrefix, $catId, $subcatId, $subSubcatId, $prodCreatedAt, $pId);
+                $catOffset = calculateCategorySequenceOffset($vId, $pPrefix ?: 'NEW', $catId, $subcatId, $subSubcatId, $prodCreatedAt, $pId);
             }
 
             $distinctCatalogCodes[$cCode] = [

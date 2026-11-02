@@ -1412,9 +1412,9 @@ function renderAttrRow(attr) {
     const div = document.createElement('div'); div.className = 'attr-row';
     const a = attr || { attr_name: '', attr_options: '', is_required: 0 };
     div.innerHTML = '<div class="attr-row-inner">' +
-        '<div class="ar-name"><input type="text" class="form-control form-control-sm attr-name fw-semibold" value="' + esc(a.attr_name || '') + '" placeholder="Attribute Name" required></div>' +
+        '<div class="ar-name"><input type="text" class="form-control form-control-sm attr-name fw-semibold text-uppercase" value="' + esc(a.attr_name || '') + '" placeholder="Attribute Name" oninput="this.value=this.value.toUpperCase()" required></div>' +
         '<div class="ar-opts">' +
-        '<input type="text" class="form-control form-control-sm attr-opts" value="' + esc(a.attr_options || '') + '" placeholder="e.g. S, M, L, XL or Red, Blue" required>' +
+        '<input type="text" class="form-control form-control-sm attr-opts text-uppercase" value="' + esc(a.attr_options || '') + '" placeholder="e.g. S, M, L, XL or Red, Blue" oninput="this.value=this.value.toUpperCase()" required>' +
         '</div>' +
         '<div class="ar-req text-center"><div class="form-check form-switch d-inline-block mb-0"><input class="form-check-input attr-req" type="checkbox" ' + (a.is_required ? 'checked' : '') + '></div></div>' +
         '<div class="ar-del text-center"><button type="button" class="icon-btn danger" onclick="this.closest(\'.attr-row\').remove();updateAttrBadge();" title="Remove"><i class="bi bi-trash"></i></button></div>' +
@@ -1498,8 +1498,8 @@ function addModalAttributeRow(attr = null) {
     const tb = document.getElementById('modalAttributesTableBody');
     const a = attr || { attr_name: '', attr_options: '', is_required: 0 };
     const tr = document.createElement('tr'); tr.className = 'ma-row';
-    tr.innerHTML = '<td><input type="text" class="form-control form-control-sm ma-name fw-semibold" value="' + esc(a.attr_name) + '" placeholder="e.g. Size, Fabric, Sleeve" required></td>' +
-        '<td><input type="text" class="form-control form-control-sm ma-opts" value="' + esc(a.attr_options || '') + '" placeholder="e.g. S, M, L, XL or Red, Blue" required></td>' +
+    tr.innerHTML =     '<td><input type="text" class="form-control form-control-sm ma-name fw-semibold text-uppercase" value="' + esc(a.attr_name) + '" placeholder="e.g. Size, Fabric, Sleeve" oninput="this.value=this.value.toUpperCase()" required></td>' +
+    '<td><input type="text" class="form-control form-control-sm ma-opts text-uppercase" value="' + esc(a.attr_options || '') + '" placeholder="e.g. S, M, L, XL or Red, Blue" oninput="this.value=this.value.toUpperCase()" required></td>' +
         '<td class="text-center"><div class="form-check form-switch d-inline-block"><input class="form-check-input ma-req" type="checkbox" ' + (a.is_required ? 'checked' : '') + '></div></td>' +
         '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="this.closest(\'tr\').remove(); updateModalAttrCount();" title="Remove"><i class="bi bi-trash"></i></button></td>';
     tb.appendChild(tr);
@@ -1915,8 +1915,8 @@ function addUnifiedAttributeRow(attr = null) {
     const a = attr || { attr_name: '', attr_options: '' };
     const tr = document.createElement('tr'); tr.className = 'ua-row';
     tr.innerHTML = `
-        <td><input type="text" class="form-control form-control-sm ua-name fw-semibold" value="${esc(a.attr_name)}" placeholder="e.g. Size, Fabric, Collar" required></td>
-        <td><input type="text" class="form-control form-control-sm ua-opts" value="${esc(a.attr_options || '')}" placeholder="e.g. S, M, L, XL or Red, Blue"></td>
+        <td><input type="text" class="form-control form-control-sm ua-name fw-semibold text-uppercase" value="${esc(a.attr_name)}" placeholder="e.g. Size, Fabric, Collar" oninput="this.value=this.value.toUpperCase()" required></td>
+        <td><input type="text" class="form-control form-control-sm ua-opts text-uppercase" value="${esc(a.attr_options || '')}" placeholder="e.g. S, M, L, XL or Red, Blue" oninput="this.value=this.value.toUpperCase()"></td>
         <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="this.closest('tr').remove()"><i class="bi bi-trash"></i></button></td>
     `;
     tb.appendChild(tr);
@@ -2100,8 +2100,8 @@ function addEditAttributeRow(attr = null) {
     const tr = document.createElement('tr');
     tr.className = 'edit-attr-row';
     tr.innerHTML = `
-        <td><input type="text" class="form-control form-control-sm ea-name fw-semibold" value="${esc(a.attr_name || '')}" placeholder="Attribute Name (e.g. Size, Fabric, Fit)" required></td>
-        <td><input type="text" class="form-control form-control-sm ea-opts" value="${esc(a.attr_options || '')}" placeholder="Options comma-separated (e.g. S, M, L, XL or Red, Blue)"></td>
+        <td><input type="text" class="form-control form-control-sm ea-name fw-semibold text-uppercase" value="${esc(a.attr_name || '')}" placeholder="Attribute Name (e.g. Size, Fabric, Fit)" oninput="this.value=this.value.toUpperCase()" required></td>
+        <td><input type="text" class="form-control form-control-sm ea-opts text-uppercase" value="${esc(a.attr_options || '')}" placeholder="Options comma-separated (e.g. S, M, L, XL or Red, Blue)" oninput="this.value=this.value.toUpperCase()"></td>
         <td class="text-center">
             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="this.closest('tr').remove();updateEditAttrBadge();">
                 <i class="bi bi-trash"></i>

@@ -1074,7 +1074,7 @@ class WhatsappController {
                        SELECT SUM(ai.received_qty) 
                        FROM allocation_items ai 
                        JOIN warehouse_allocations wa ON ai.allocation_id = wa.id 
-                       WHERE ai.variant_id = pv.id AND (wa.channel_id IN ($chanIn) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WHATSAPP')
+                       WHERE ai.variant_id = pv.id AND ((wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WHATSAPP')
                    ), 0) as total_inward_quantity
             FROM product_variants pv
             JOIN products p ON pv.product_id = p.id
@@ -1091,7 +1091,7 @@ class WhatsappController {
                 OR EXISTS (
                     SELECT 1 FROM allocation_items ai 
                     JOIN warehouse_allocations wa ON ai.allocation_id = wa.id 
-                    WHERE ai.variant_id = pv.id AND wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED') AND (wa.channel_id IN ($chanIn) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WHATSAPP')
+                    WHERE ai.variant_id = pv.id AND wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED') AND ((wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WHATSAPP')
                 )
             )
         ";
@@ -1103,9 +1103,9 @@ class WhatsappController {
             // returned has no params
             // exchanged_out has no params
             // net sold has no params
-            $chanIds, $chanIds, $destList, // inward
+            $chanIds, $destList, // inward
             $chanIds, // where exists stock
-            $chanIds, $chanIds, $destList // where exists inward
+            $chanIds, $destList // where exists inward
         );
         $allStockItems = Database::fetchAll($stockSql, $stockParams);
 
@@ -1377,9 +1377,9 @@ class WhatsappController {
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
              LEFT JOIN warehouses w ON wa.warehouse_id = w.id
              LEFT JOIN allocation_outwards ao ON ao.allocation_id = wa.id
-             WHERE ai.variant_id = ? AND wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED') AND (wa.channel_id IN ($chanIn) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WHATSAPP')
+             WHERE ai.variant_id = ? AND wa.status NOT IN ('REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED') AND ((wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($chanIn)) OR wa.destination_type IN ($destIn) OR wa.destination_type = 'WHATSAPP')
              ORDER BY wa.id DESC",
-            array_merge([$variantId], $chanIds, $chanIds, $destList)
+            array_merge([$variantId], $chanIds, $destList)
         );
 
         // 3. WhatsApp Sales Orders History for this variant
@@ -2300,7 +2300,7 @@ class WhatsappController {
              ORDER BY p.name ASC, sz.sort_order ASC"
         );
 
-        Response::view('whatsapp_orders.returns', [
+        Response::view('channel_returns', [
             'pageTitle'           => 'WhatsApp Returns & Exchanges',
             'activeModule'        => 'whatsapp',
             'activeMenu'          => 'wh-whatsapp-returns',
@@ -2314,6 +2314,7 @@ class WhatsappController {
             'totalRefundAmount'   => $totalRefundAmount,
             'totalDamagedQty'     => $totalDamagedQty,
             'catalogVariants'     => $catalogVariants,
+            'isWebsiteReturns'    => false,
             'search'              => $search,
             'status'              => $status,
             'returnType'          => $returnType,
@@ -4232,9 +4233,9 @@ class WhatsappController {
             "SELECT ai.variant_id, ai.selected_qr_codes
              FROM allocation_items ai
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
-             WHERE (wa.channel_id IN ($placeholders) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($placeholders)))
+             WHERE wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($placeholders)
                AND ai.selected_qr_codes IS NOT NULL AND ai.selected_qr_codes != ''",
-            array_merge($chanIds, $chanIds)
+            $chanIds
         );
 
         $variantTagsMap = [];
@@ -4748,9 +4749,9 @@ class WhatsappController {
              FROM allocation_items ai
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
              WHERE ai.variant_id = ? 
-               AND (wa.channel_id IN ($placeholders) OR (wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($placeholders)))
+               AND wa.destination_type = 'CHANNEL' AND wa.destination_id IN ($placeholders)
              ORDER BY wa.id ASC, ai.id ASC",
-            array_merge([$variantId], $chanIds, $chanIds)
+            array_merge([$variantId], $chanIds)
         );
 
         $allAllocatedTags = [];

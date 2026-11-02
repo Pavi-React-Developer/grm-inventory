@@ -549,6 +549,7 @@ input[type=number] {
                                         <i class="bi bi-info-circle me-1"></i>GST rates are editable per product and totals recalculate automatically
                                     </div>
                                 </div>
+                            </div>
                             <!-- 2. Total Discount Applied Summary -->
                             <div class="col-12 col-md-6">
                                 <div class="pos-modifier-card h-100 p-2.5 bg-white rounded-3 border">
@@ -751,6 +752,18 @@ function focusQR() {
     if (qrInput) qrInput.focus();
 }
 
+function isAggregateStockVariant(variant) {
+    const categoryType = String(variant.category_type || '').toUpperCase();
+    return categoryType === 'SERIES'
+        || categoryType === 'COMPLEMENTARY'
+        || variant.is_series == 1
+        || variant.is_complementary == 1
+        || variant.p_is_comp == 1
+        || variant.pv_is_comp == 1
+        || String(variant.qr_type || '').toUpperCase() === 'SERIES_BATCH'
+        || Number(variant.pack_quantity || 1) > 1;
+}
+
 async function processManualScan() {
     const rawCode = (qrInput.value || '').trim();
     if (!rawCode || scanValidationInProgress) return;
@@ -765,10 +778,20 @@ async function processManualScan() {
     let pieceTag = rawCode.includes('|') ? rawCode.split('|')[0].trim() : rawCode.trim();
     pieceTag = pieceTag.toUpperCase();
 
-    const isSeries = (matched.is_series == 1 || matched.category_type === 'SERIES' || matched.qr_type === 'SERIES_BATCH' || (matched.pack_quantity && parseInt(matched.pack_quantity) > 1));
+    const isAggregateStock = isAggregateStockVariant(matched);
+    if (!isAggregateStock) {
+        const isAvailablePieceTag = Array.isArray(matched.piece_tags)
+            && matched.piece_tags.some(tag => String(tag).toUpperCase() === pieceTag);
+        if (!isAvailablePieceTag) {
+            showScanToast(`Normal product <strong>${escapeHtml(matched.sku || matched.product_name)}</strong> can only be billed with its available inwarded piece QR.`, 'danger');
+            qrInput.value = '';
+            focusQR();
+            return;
+        }
+    }
 
-    // Check duplicate piece tag in active cart - skip for series items where remaining quantity is still billable
-    if (pieceTag && scannedPieceTags.has(pieceTag) && !isSeries) {
+    // Aggregate categories can reuse their batch QR while channel quantity remains.
+    if (pieceTag && scannedPieceTags.has(pieceTag) && !isAggregateStock) {
         showScanToast(`Piece Tag <code class="text-danger fw-bold">${escapeHtml(pieceTag)}</code> is already in the order! Each physical garment has a unique serial QR.`, 'warning');
         flashCartItemRow(pieceTag);
         qrInput.value = '';
@@ -821,8 +844,9 @@ async function processManualScan() {
 function addItemToCart(variant, pieceTag) {
     const isSeries = (variant.is_series == 1 || variant.category_type === 'SERIES' || variant.qr_type === 'SERIES_BATCH' || (variant.pack_quantity && parseInt(variant.pack_quantity) > 1));
     const isComp = (variant.is_complementary == 1 || variant.category_type === 'COMPLEMENTARY' || variant.p_is_comp == 1 || variant.pv_is_comp == 1);
+    const isAggregateStock = isAggregateStockVariant(variant);
 
-    if (pieceTag && !isSeries) {
+    if (pieceTag && !isAggregateStock) {
         scannedPieceTags.add(pieceTag);
     }
 

@@ -233,7 +233,7 @@ thead th.sticky-col-select {
 
                             <!-- Selected Item Chips -->
                             <div id="selectedChipsTray" class="d-flex flex-wrap gap-1 mt-2 pt-2 border-top" style="max-height: 100px; overflow-y: auto;">
-                                <small class="text-muted fst-italic" style="font-size: 10px;">Select products from the table to dispatch.</small>
+                                <small class="text-muted fst-italic" style="font-size: 10px;">Scan Website stock to add products to the dispatch.</small>
                             </div>
                         </div>
 
@@ -255,7 +255,7 @@ thead th.sticky-col-select {
                 <div class="alert alert-info border-0 rounded-4 shadow-sm mb-3 py-2 px-3 d-flex align-items-center justify-content-between">
                     <div class="d-flex align-items-center small">
                         <i class="bi bi-info-circle-fill fs-5 text-primary me-2"></i>
-                        <span><strong>How to Return Products:</strong> Click the <strong>Select checkbox</strong> (or click <strong>+</strong>) on any product below to add it to the <strong>Selected Return Items</strong> section. Click <strong>"View"</strong> to inspect piece QR codes.</span>
+                        <span><strong>How to Return Products:</strong> Scan a product from the selected Website stock pool to add it to the <strong>Selected Return Items</strong> section.</span>
                     </div>
                 </div>
 
@@ -300,7 +300,7 @@ thead th.sticky-col-select {
                                 <i class="bi bi-boxes text-muted opacity-50 fs-3"></i>
                             </div>
                             <h6 class="fw-bold text-dark mb-1">No Products Added to Consignment Yet</h6>
-                            <p class="text-muted small mb-0">Select products from the Website Stock Ledger below or open the "View" modal to add pieces to this return consignment.</p>
+                            <p class="text-muted small mb-0">Scan Website inventory above to add items to this return consignment.</p>
                         </div>
 
                         <!-- Table of Selected Products -->
@@ -310,7 +310,6 @@ thead th.sticky-col-select {
                                     <tr>
                                         <th class="ps-3" style="width: 40px;">#</th>
                                         <th>Selected Product</th>
-                                        <th>SKU / Style Code</th>
                                         <th>Size &amp; Color</th>
                                         <th class="text-center" style="width: 140px;">Return Qty</th>
                                         <th style="width: 160px;">Return Condition</th>
@@ -324,7 +323,7 @@ thead th.sticky-col-select {
                                 </tbody>
                                 <tfoot class="table-light">
                                     <tr class="fw-bold text-dark">
-                                        <td colspan="4" class="ps-3 text-uppercase small text-muted">Consignment Total:</td>
+                                        <td colspan="3" class="ps-3 text-uppercase small text-muted">Consignment Total:</td>
                                         <td class="text-center text-danger fs-6" id="selectedTableTotalQty">0 pcs</td>
                                         <td></td>
                                         <td class="text-end small text-muted">Total Value:</td>
@@ -337,7 +336,8 @@ thead th.sticky-col-select {
                     </div>
                 </div>
 
-                <!-- 3. WHATSAPP STOCK LEDGER & AVAILABLE INVENTORY SELECTOR -->
+                <!-- Keep the inventory rows as the scan selector's backing data, without rendering the ledger UI. -->
+                <div class="d-none" aria-hidden="true">
                 <!-- Search & Filter Card -->
                 <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
                     <div class="card-body p-3">
@@ -378,8 +378,8 @@ thead th.sticky-col-select {
                 <!-- Ledger Table Card -->
                 <div class="card border-0 shadow-sm rounded-4 bg-white">
                     <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <h5 class="fw-bold text-dark mb-0"><i class="bi bi-boxes me-2 text-primary"></i>3. Website Stock Ledger &amp; Product Selector</h5>
-                        <span class="badge bg-light text-dark border rounded-pill px-3 py-2"><?= count($inventory) ?> Items in WhatsApp</span>
+                        <h5 class="fw-bold text-dark mb-0"><i class="bi bi-boxes me-2 text-primary"></i>Website Stock Ledger &amp; Product Selector</h5>
+                        <span class="badge bg-light text-dark border rounded-pill px-3 py-2"><?= count($inventory) ?> Website items</span>
                     </div>
 
                     <div class="card-body p-0 table-responsive">
@@ -429,7 +429,9 @@ thead th.sticky-col-select {
                                             data-image="<?= e($imgUrl) ?>"
                                             data-stock-state="<?= e($item['stock_state']) ?>"
                                             data-qr-code="<?= e(strtolower($item['qr_code'] ?? '')) ?>"
+                                            data-qr-code-raw="<?= e($item['qr_code'] ?? '') ?>"
                                             data-piece-tags="<?= e(strtolower(implode('|', array_map('strval', $item['piece_tags'] ?? [])))) ?>"
+                                            data-piece-tags-raw="<?= e(implode('|', array_map('strval', $item['piece_tags'] ?? []))) ?>"
                                             data-category-type="<?= e(strtoupper($item['category_type'] ?? 'NORMAL')) ?>"
                                             data-complementary="<?= !empty($item['is_complementary']) ? '1' : '0' ?>"
                                             data-qr-type="<?= e(strtoupper($item['qr_type'] ?? '')) ?>"
@@ -445,6 +447,7 @@ thead th.sticky-col-select {
                                                 </div>
                                                 <input type="hidden" name="items[<?= $idx ?>][variant_id]" value="<?= $item['variant_id'] ?>" disabled data-idx="<?= $idx ?>">
                                                 <input type="hidden" name="items[<?= $idx ?>][stock_state]" value="<?= $item['stock_state'] ?>" disabled data-idx="<?= $idx ?>">
+                                                <input type="hidden" name="items[<?= $idx ?>][scanned_qr_codes]" value="[]" class="return-scanned-qrs" disabled data-idx="<?= $idx ?>">
                                             </td>
 
                                             <!-- 2. Product Name -->
@@ -545,6 +548,7 @@ thead th.sticky-col-select {
                             </tbody>
                         </table>
                     </div>
+                </div>
                 </div>
             </div>
         </div>
@@ -1584,7 +1588,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function scanReturnProduct() {
         const rawCode = (returnScanInput?.value || '').trim();
         if (!rawCode) return;
-        const code = (rawCode.includes('|') ? rawCode.split('|')[0] : rawCode).trim().toLowerCase();
+        const scannedQr = (rawCode.includes('|') ? rawCode.split('|')[0] : rawCode).trim();
+        const code = scannedQr.toLowerCase();
         const stockPool = document.querySelector('input[name="returnScanPool"]:checked')?.value || 'AVAILABLE';
         const candidates = Array.from(document.querySelectorAll('.inv-row')).filter(row =>
             (row.getAttribute('data-stock-state') || 'AVAILABLE').toUpperCase() === stockPool
@@ -1605,12 +1610,33 @@ document.addEventListener('DOMContentLoaded', function() {
         const checkbox = document.querySelector(`.item-select[data-idx="${idx}"]`);
         const qtyInput = document.querySelector(`.return-qty[data-idx="${idx}"]`);
         if (!checkbox || !qtyInput) return;
+        const qrInput = document.querySelector(`.return-scanned-qrs[data-idx="${idx}"]`);
         const maxQty = parseInt(row.getAttribute('data-max-stock') || '0', 10);
+        const currentQty = parseInt(qtyInput.value, 10) || 0;
+        let scannedQrs = [];
+        try {
+            const parsedQrs = JSON.parse(row.getAttribute('data-selected-return-qrs') || '[]');
+            if (Array.isArray(parsedQrs)) scannedQrs = parsedQrs.filter(qr => typeof qr === 'string');
+        } catch (error) {
+            console.error('Unable to read scanned return QR tags.', error);
+        }
+        const alreadyScanned = scannedQrs.some(qr => qr.toLowerCase() === scannedQr.toLowerCase());
+        const canIncreaseQty = !checkbox.checked || (returnRowAllowsMultiple(row) && currentQty < maxQty);
+        const canAttachQr = checkbox.checked && !alreadyScanned && currentQty > scannedQrs.length;
+        if (!canIncreaseQty && !canAttachQr) {
+            if (returnScanStatus) returnScanStatus.innerHTML = `<span class="text-warning fw-semibold"><i class="bi bi-info-circle me-1"></i>This product is already selected or its return quantity is at the available limit.</span>`;
+            returnScanInput.value = '';
+            returnScanInput.focus();
+            return;
+        }
+        if (!alreadyScanned) scannedQrs.push(scannedQr);
+        row.setAttribute('data-selected-return-qrs', JSON.stringify(scannedQrs));
+        if (qrInput) qrInput.value = JSON.stringify(scannedQrs);
         if (!checkbox.checked) {
             checkbox.checked = true;
             qtyInput.value = '1';
-        } else if (returnRowAllowsMultiple(row) && (parseInt(qtyInput.value, 10) || 0) < maxQty) {
-            qtyInput.value = String((parseInt(qtyInput.value, 10) || 0) + 1);
+        } else if (canIncreaseQty) {
+            qtyInput.value = String(currentQty + 1);
         }
         calculateConsignment();
         if (returnScanStatus) returnScanStatus.innerHTML = `<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>Added ${escapeHtml(row.getAttribute('data-name-raw') || code)} from ${stockPool === 'DAMAGED' ? 'damaged' : 'available'} Website stock.</span>`;
@@ -1642,6 +1668,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const classSelect = document.querySelector(`.return-classification[data-idx="${idx}"]`);
             const hiddenVarId = document.querySelector(`input[name="items[${idx}][variant_id]"]`);
             const hiddenStockState = document.querySelector(`input[name="items[${idx}][stock_state]"]`);
+            const scannedQrInput = document.querySelector(`.return-scanned-qrs[data-idx="${idx}"]`);
             const selectedBadge = row?.querySelector('.selected-row-badge');
             const selectLabel = row?.querySelector('.select-label');
             const minusBtn = row?.querySelector('.row-qty-minus');
@@ -1659,6 +1686,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Enable inputs
                 if (hiddenVarId) hiddenVarId.disabled = false;
                 if (hiddenStockState) hiddenStockState.disabled = false;
+                if (scannedQrInput) scannedQrInput.disabled = false;
                 const allowsMultiple = returnRowAllowsMultiple(row);
                 qtyInput.disabled = false;
                 qtyInput.readOnly = !allowsMultiple;
@@ -1677,9 +1705,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const price = parseFloat(row?.getAttribute('data-price')) || 0;
                 const maxStock = parseInt(row?.getAttribute('data-max-stock')) || 1;
                 const name = row?.getAttribute('data-name-raw') || 'Item';
-                const sku = row?.getAttribute('data-sku-raw') || '';
                 const code = row?.getAttribute('data-code-raw') || '';
                 const img = row?.getAttribute('data-image') || '';
+                const qrTags = (row?.getAttribute('data-piece-tags-raw') || '').split('|').map(tag => tag.trim()).filter(Boolean);
+                const scannedQr = row?.getAttribute('data-selected-return-qr')
+                    || row?.getAttribute('data-qr-code-raw')
+                    || qrTags[0]
+                    || '';
                 const size = row?.getAttribute('data-size') || '-';
                 const color = row?.getAttribute('data-color') || '-';
                 const lineTotal = price * q;
@@ -1706,11 +1738,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div>
                                     <strong class="text-dark d-block text-truncate" style="max-width: 180px;">${escapeHtml(name)}</strong>
                                     ${code ? `<span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace mt-1" style="font-size: 10px;">Code: ${escapeHtml(code)}</span>` : ''}
+                                    ${scannedQr ? `<span class="badge bg-light text-dark border font-monospace mt-1 d-block text-truncate" style="font-size: 10px; max-width: 220px;" title="Scanned QR"><i class="bi bi-qr-code text-warning me-1"></i>${escapeHtml(scannedQr)}</span>` : ''}
                                 </div>
                             </div>
-                        </td>
-                        <td>
-                            <span class="badge bg-light text-dark border font-monospace">${escapeHtml(sku)}</span>
                         </td>
                         <td>
                             <span class="badge bg-secondary-subtle text-secondary">${escapeHtml(size)}</span>
@@ -1746,6 +1776,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Disable inputs
                 if (hiddenVarId) hiddenVarId.disabled = true;
                 if (hiddenStockState) hiddenStockState.disabled = true;
+                if (scannedQrInput) {
+                    scannedQrInput.disabled = true;
+                    scannedQrInput.value = '[]';
+                }
+                row?.removeAttribute('data-selected-return-qrs');
                 qtyInput.disabled = true;
                 qtyInput.value = 0;
                 if (minusBtn) minusBtn.disabled = true;
