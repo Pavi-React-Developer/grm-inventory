@@ -387,32 +387,70 @@
                                 </label>
                                 <select name="cutting_batch_id" id="newCuttingBatchId" class="form-select form-select-md fw-semibold border-success" onchange="onNewCuttingBatchChange(this)" required>
                                     <option value="" data-avail-wastage="0" data-cost-rate="0" data-total-wastage="0">-- Select Cutting Module Wastage / Scrap Batch * --</option>
-                                    <?php foreach ($cuttingBatches as $cb): 
-                                        $costRate = ($cb['wastage_weight'] > 0 && $cb['wastage_cost'] > 0) 
-                                            ? round($cb['wastage_cost'] / $cb['wastage_weight'], 2) 
-                                            : ($cb['roll_weight'] > 0 ? round($cb['roll_price'] / $cb['roll_weight'], 2) : 0);
+                                    <?php 
+                                    $availableBatches = array_filter($cuttingBatches, fn($b) => (float)$b['available_wastage_weight'] > 0);
+                                    $soldBatches = array_filter($cuttingBatches, fn($b) => (float)$b['available_wastage_weight'] <= 0);
                                     ?>
-                                        <option value="<?= $cb['id'] ?>" 
-                                            data-batch-no="<?= e($cb['batch_number']) ?>" 
-                                            data-batch-name="<?= e($cb['name']) ?>" 
-                                            data-program-id="<?= (int)($cb['program_id'] ?? 0) ?>" 
-                                            data-program-no="<?= e($cb['program_number'] ?? '') ?>" 
-                                            data-program-name="<?= e($cb['program_name'] ?? '') ?>" 
-                                            data-total-wastage="<?= (float)$cb['wastage_weight'] ?>" 
-                                            data-sold-wastage="<?= (float)$cb['sold_weight'] ?>" 
-                                            data-avail-wastage="<?= (float)$cb['available_wastage_weight'] ?>" 
-                                            data-cost-rate="<?= $costRate ?>" 
-                                            data-wastage-cost="<?= (float)$cb['wastage_cost'] ?>" 
-                                            data-seller="<?= e($cb['seller_name'] ?? '') ?>" 
-                                            data-color="<?= e($cb['color'] ?? '') ?>" 
-                                            data-design="<?= e($cb['design_name'] ?? '') ?>">
-                                            [<?= e($cb['batch_number']) ?>] <?= e($cb['name']) ?> • Wastage: <?= number_format($cb['wastage_weight'], 2) ?> kg (Avail: <?= number_format($cb['available_wastage_weight'], 2) ?> kg) • Rate: ₹<?= number_format($costRate, 2) ?>/kg
-                                        </option>
-                                    <?php endforeach; ?>
+                                    <?php if (!empty($availableBatches)): ?>
+                                        <optgroup label="✓ Available Cutting Wastage (Ready to Sell)">
+                                            <?php foreach ($availableBatches as $cb): 
+                                                $costRate = ($cb['wastage_weight'] > 0 && $cb['wastage_cost'] > 0) 
+                                                    ? round($cb['wastage_cost'] / $cb['wastage_weight'], 2) 
+                                                    : ($cb['roll_weight'] > 0 ? round($cb['roll_price'] / $cb['roll_weight'], 2) : 0);
+                                            ?>
+                                                <option value="<?= $cb['id'] ?>" 
+                                                    data-batch-no="<?= e($cb['batch_number']) ?>" 
+                                                    data-batch-name="<?= e($cb['name']) ?>" 
+                                                    data-program-id="<?= (int)($cb['program_id'] ?? 0) ?>" 
+                                                    data-program-no="<?= e($cb['program_number'] ?? '') ?>" 
+                                                    data-program-name="<?= e($cb['program_name'] ?? '') ?>" 
+                                                    data-total-wastage="<?= (float)$cb['wastage_weight'] ?>" 
+                                                    data-sold-wastage="<?= (float)$cb['sold_weight'] ?>" 
+                                                    data-avail-wastage="<?= (float)$cb['available_wastage_weight'] ?>" 
+                                                    data-cost-rate="<?= $costRate ?>" 
+                                                    data-wastage-cost="<?= (float)$cb['wastage_cost'] ?>" 
+                                                    data-seller="<?= e($cb['seller_name'] ?? '') ?>" 
+                                                    data-color="<?= e($cb['color'] ?? '') ?>" 
+                                                    data-design="<?= e($cb['design_name'] ?? '') ?>">
+                                                    [<?= e($cb['batch_number']) ?>] <?= e($cb['name']) ?> • Available: <?= number_format($cb['available_wastage_weight'], 2) ?> kg (Total: <?= number_format($cb['wastage_weight'], 2) ?> kg) • Rate: ₹<?= number_format($costRate, 2) ?>/kg
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </optgroup>
+                                    <?php else: ?>
+                                        <option value="" disabled class="text-danger fw-bold">⚠ No cutting batches with unsold wastage currently available</option>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($soldBatches)): ?>
+                                        <optgroup label="✗ Fully Sold Batches (Unavailable)">
+                                            <?php foreach ($soldBatches as $cb): 
+                                                $costRate = ($cb['wastage_weight'] > 0 && $cb['wastage_cost'] > 0) 
+                                                    ? round($cb['wastage_cost'] / $cb['wastage_weight'], 2) 
+                                                    : ($cb['roll_weight'] > 0 ? round($cb['roll_price'] / $cb['roll_weight'], 2) : 0);
+                                            ?>
+                                                <option value="<?= $cb['id'] ?>" disabled class="text-muted bg-light"
+                                                    data-batch-no="<?= e($cb['batch_number']) ?>" 
+                                                    data-batch-name="<?= e($cb['name']) ?>" 
+                                                    data-program-id="<?= (int)($cb['program_id'] ?? 0) ?>" 
+                                                    data-program-no="<?= e($cb['program_number'] ?? '') ?>" 
+                                                    data-program-name="<?= e($cb['program_name'] ?? '') ?>" 
+                                                    data-total-wastage="<?= (float)$cb['wastage_weight'] ?>" 
+                                                    data-sold-wastage="<?= (float)$cb['sold_weight'] ?>" 
+                                                    data-avail-wastage="0.00" 
+                                                    data-cost-rate="<?= $costRate ?>" 
+                                                    data-wastage-cost="<?= (float)$cb['wastage_cost'] ?>" 
+                                                    data-seller="<?= e($cb['seller_name'] ?? '') ?>" 
+                                                    data-color="<?= e($cb['color'] ?? '') ?>" 
+                                                    data-design="<?= e($cb['design_name'] ?? '') ?>">
+                                                    [<?= e($cb['batch_number']) ?>] <?= e($cb['name']) ?> • [ALREADY SOLD] • Total: <?= number_format($cb['wastage_weight'], 2) ?> kg (Sold: <?= number_format($cb['sold_weight'], 2) ?> kg, Avail: 0.00 kg)
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </optgroup>
+                                    <?php endif; ?>
                                 </select>
 
                                 <!-- Live Cutting Wastage Info Badge / Card -->
                                 <div id="newBatchInfoCard" class="mt-2 p-2 bg-white rounded border small d-none">
+                                    <div id="newBatchSoldAlert" class="alert alert-danger py-2 mb-2 small d-none"></div>
                                     <div class="d-flex justify-content-between flex-wrap gap-2">
                                         <div>
                                             <span class="fw-bold text-dark" id="newInfoBatchName"></span>
@@ -481,6 +519,7 @@
                                             <span class="input-group-text bg-white">kg</span>
                                         </div>
                                         <small class="text-muted" id="newWeightHint">Weight being sold to scrap buyer</small>
+                                        <div id="newWeightExceedAlert" class="text-danger small mt-1 fw-bold d-none"></div>
                                     </div>
 
                                     <!-- Rate per KG (Manual Entry) -->
@@ -525,7 +564,7 @@
                 </div>
                 <div class="modal-footer bg-light py-3">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success px-4 fw-semibold shadow-sm">
+                    <button type="submit" class="btn btn-success px-4 fw-semibold shadow-sm" id="btnRecordWastageSubmit">
                         <i class="bi bi-check-circle me-1"></i> Save Wastage Sale
                     </button>
                 </div>
@@ -756,10 +795,17 @@ function onNewCuttingBatchChange(selectEl) {
     const selectedOption = selectEl.options[selectEl.selectedIndex];
     const batchId = selectEl.value;
     const infoCard = document.getElementById('newBatchInfoCard');
+    const soldAlert = document.getElementById('newBatchSoldAlert');
+    const submitBtn = document.getElementById('btnRecordWastageSubmit');
+    const weightInput = document.getElementById('newWeight');
+    const weightAlert = document.getElementById('newWeightExceedAlert');
 
     if (!batchId) {
         infoCard.classList.add('d-none');
         document.getElementById('newProgramId').value = '';
+        if (soldAlert) soldAlert.classList.add('d-none');
+        if (weightAlert) weightAlert.classList.add('d-none');
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.title = ""; }
         return;
     }
 
@@ -783,11 +829,26 @@ function onNewCuttingBatchChange(selectEl) {
     document.getElementById('newInfoRate').textContent = `₹${costRate.toFixed(2)}/kg`;
     infoCard.classList.remove('d-none');
 
-    // Auto-populate weight with available unsold cutting wastage
-    if (availWst > 0) {
-        document.getElementById('newWeight').value = availWst.toFixed(2);
-    } else if (totalWst > 0) {
-        document.getElementById('newWeight').value = totalWst.toFixed(2);
+    // Validation guard: If batch wastage is fully sold out
+    if (availWst <= 0) {
+        if (soldAlert) {
+            soldAlert.innerHTML = `<i class="bi bi-x-octagon-fill me-2"></i><strong>Cannot Sell:</strong> Cutting batch <strong>${batchNo}</strong> wastage (${totalWst.toFixed(2)} kg) is <strong>ALREADY FULLY SOLD</strong> (0.00 kg available). Please choose an available batch.`;
+            soldAlert.classList.remove('d-none');
+        }
+        weightInput.value = '0.00';
+        weightInput.setAttribute('max', '0');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.title = "Cannot save: selected batch wastage is already fully sold.";
+        }
+    } else {
+        if (soldAlert) soldAlert.classList.add('d-none');
+        weightInput.value = availWst.toFixed(2);
+        weightInput.setAttribute('max', availWst.toFixed(2));
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.title = "";
+        }
     }
 
     // Auto select Cutting End-Bits
@@ -796,7 +857,6 @@ function onNewCuttingBatchChange(selectEl) {
         typeSelect.value = 'CUTTING_END_BITS';
     }
 
-    // Recalculate if user already typed rate or total
     onNewWeightChange();
 }
 
@@ -806,11 +866,41 @@ function onEditCuttingBatchChange(selectEl) {
     document.getElementById('editProgramId').value = progId;
 }
 
-// Two-way manual selling price calculation for Record Modal
+// Two-way manual selling price calculation for Record Modal with balance validation
 function onNewWeightChange() {
     const w = parseFloat(document.getElementById('newWeight').value) || 0;
     const r = parseFloat(document.getElementById('newRatePerKg').value) || 0;
     const t = parseFloat(document.getElementById('newTotalAmount').value) || 0;
+    const selectEl = document.getElementById('newCuttingBatchId');
+    const selectedOption = selectEl ? selectEl.options[selectEl.selectedIndex] : null;
+    const availWst = parseFloat(selectedOption?.getAttribute('data-avail-wastage')) || 0;
+    const weightAlert = document.getElementById('newWeightExceedAlert');
+    const submitBtn = document.getElementById('btnRecordWastageSubmit');
+
+    // Validate weight against available balance
+    if (selectEl && selectEl.value) {
+        if (availWst <= 0) {
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = "Cannot save: selected batch wastage is already fully sold.";
+            }
+        } else if (w > availWst) {
+            if (weightAlert) {
+                weightAlert.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>Weight (${w.toFixed(2)} kg) exceeds available balance (${availWst.toFixed(2)} kg)!`;
+                weightAlert.classList.remove('d-none');
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = `Weight cannot exceed available wastage (${availWst.toFixed(2)} kg)`;
+            }
+        } else {
+            if (weightAlert) weightAlert.classList.add('d-none');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.title = "";
+            }
+        }
+    }
 
     if (r > 0) {
         const total = w * r;

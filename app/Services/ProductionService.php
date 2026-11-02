@@ -319,16 +319,16 @@ class ProductionService {
             // Prevent duplicate stitching
             if (!empty($batchData['cutting_batch_id'])) {
                 $existingStitching = Database::fetchOne(
-                    "SELECT id, batch_number FROM stitching_batches WHERE cutting_batch_id = ?",
+                    "SELECT id, batch_number FROM stitching_batches WHERE cutting_batch_id = ? AND (is_active = 1 OR is_active IS NULL) AND status != 'CANCELLED'",
                     [(int)$batchData['cutting_batch_id']]
                 );
                 if ($existingStitching) {
                     throw new Exception("Validation Error: This Cutting Batch has already been assigned to Stitching Batch {$existingStitching['batch_number']}. Duplicate stitching is not allowed.");
                 }
             }
-            if (!empty($batchData['program_id'])) {
+            if (empty($batchData['cutting_batch_id']) && !empty($batchData['program_id'])) {
                 $existingStitchingProg = Database::fetchOne(
-                    "SELECT id, batch_number FROM stitching_batches WHERE program_id = ?",
+                    "SELECT id, batch_number FROM stitching_batches WHERE program_id = ? AND cutting_batch_id IS NULL AND (is_active = 1 OR is_active IS NULL) AND status != 'CANCELLED'",
                     [(int)$batchData['program_id']]
                 );
                 if ($existingStitchingProg) {

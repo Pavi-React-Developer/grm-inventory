@@ -392,23 +392,56 @@
                                     </span>
                                     <span class="badge bg-warning-subtle text-dark border">Stitching Program Dropdown</span>
                                 </label>
+                                <?php 
+                                    $availableBatches = array_filter($stitchingBatches, fn($sb) => (float)($sb['sold_quantity'] ?? 0) <= 0 && (int)($sb['sales_count'] ?? 0) <= 0);
+                                    $soldBatches = array_filter($stitchingBatches, fn($sb) => (float)($sb['sold_quantity'] ?? 0) > 0 || (int)($sb['sales_count'] ?? 0) > 0);
+                                ?>
                                 <select name="stitching_batch_id" id="newStwStitchingBatchId" class="form-select form-select-md fw-semibold border-warning" onchange="onNewStitchingBatchChange(this)" required>
-                                    <option value="" data-program-id="0" data-batch-no="" data-program-no="" data-recd-qty="0" data-stitched-qty="0" data-total-weight="0" data-sold-qty="0">-- Select Stitching Module Batch / Program * --</option>
-                                    <?php foreach ($stitchingBatches as $sb): ?>
-                                        <option value="<?= $sb['id'] ?>"
-                                            data-batch-no="<?= e($sb['batch_number']) ?>"
-                                            data-batch-name="<?= e($sb['name'] ?? '') ?>"
-                                            data-program-id="<?= (int)($sb['program_id'] ?? 0) ?>"
-                                            data-program-no="<?= e($sb['program_number'] ?? '') ?>"
-                                            data-program-name="<?= e($sb['program_name'] ?? '') ?>"
-                                            data-cutting-batch="<?= e($sb['cutting_batch_number'] ?? '') ?>"
-                                            data-recd-qty="<?= (int)($sb['received_qty'] ?? 0) ?>"
-                                            data-stitched-qty="<?= (int)($sb['stitched_qty'] ?? 0) ?>"
-                                            data-total-weight="<?= (float)($sb['total_weight'] ?? 0) ?>"
-                                            data-sold-qty="<?= (float)($sb['sold_quantity'] ?? 0) ?>">
-                                            [<?= e($sb['batch_number']) ?>] <?= e($sb['name'] ?: 'Stitching Batch') ?><?= !empty($sb['program_number']) ? ' • Prog: ' . e($sb['program_number']) . ' (' . e($sb['program_name']) . ')' : '' ?> • Stitched: <?= number_format($sb['stitched_qty'] ?? 0) ?> pcs
-                                        </option>
-                                    <?php endforeach; ?>
+                                    <option value="" data-program-id="0" data-batch-no="" data-program-no="" data-recd-qty="0" data-stitched-qty="0" data-total-weight="0" data-sold-qty="0" data-is-sold="0">-- Select Stitching Module Batch / Program * --</option>
+                                    
+                                    <?php if (!empty($availableBatches)): ?>
+                                        <optgroup label="✓ Available Stitching Batches (Ready to Sell Scrap)">
+                                            <?php foreach ($availableBatches as $sb): ?>
+                                                <option value="<?= $sb['id'] ?>"
+                                                    data-batch-no="<?= e($sb['batch_number']) ?>"
+                                                    data-batch-name="<?= e($sb['name'] ?? '') ?>"
+                                                    data-program-id="<?= (int)($sb['program_id'] ?? 0) ?>"
+                                                    data-program-no="<?= e($sb['program_number'] ?? '') ?>"
+                                                    data-program-name="<?= e($sb['program_name'] ?? '') ?>"
+                                                    data-cutting-batch="<?= e($sb['cutting_batch_number'] ?? '') ?>"
+                                                    data-recd-qty="<?= (int)($sb['received_qty'] ?? 0) ?>"
+                                                    data-stitched-qty="<?= (int)($sb['stitched_qty'] ?? 0) ?>"
+                                                    data-total-weight="<?= (float)($sb['total_weight'] ?? 0) ?>"
+                                                    data-sold-qty="0.00"
+                                                    data-is-sold="0">
+                                                    [<?= e($sb['batch_number']) ?>] <?= e($sb['name'] ?: 'Stitching Batch') ?><?= !empty($sb['program_number']) ? ' • Prog: ' . e($sb['program_number']) . ' (' . e($sb['program_name']) . ')' : '' ?> • Stitched: <?= number_format($sb['stitched_qty'] ?? 0) ?> pcs • Ready to Sell
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </optgroup>
+                                    <?php else: ?>
+                                        <option value="" disabled class="text-danger fw-bold">✗ No stitching batches with unsold wastage currently available</option>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($soldBatches)): ?>
+                                        <optgroup label="✗ Fully Sold Batches (Unavailable)">
+                                            <?php foreach ($soldBatches as $sb): ?>
+                                                <option value="<?= $sb['id'] ?>" disabled class="text-muted bg-light"
+                                                    data-batch-no="<?= e($sb['batch_number']) ?>"
+                                                    data-batch-name="<?= e($sb['name'] ?? '') ?>"
+                                                    data-program-id="<?= (int)($sb['program_id'] ?? 0) ?>"
+                                                    data-program-no="<?= e($sb['program_number'] ?? '') ?>"
+                                                    data-program-name="<?= e($sb['program_name'] ?? '') ?>"
+                                                    data-cutting-batch="<?= e($sb['cutting_batch_number'] ?? '') ?>"
+                                                    data-recd-qty="<?= (int)($sb['received_qty'] ?? 0) ?>"
+                                                    data-stitched-qty="<?= (int)($sb['stitched_qty'] ?? 0) ?>"
+                                                    data-total-weight="<?= (float)($sb['total_weight'] ?? 0) ?>"
+                                                    data-sold-qty="<?= (float)($sb['sold_quantity'] ?? 0) ?>"
+                                                    data-is-sold="1">
+                                                    [<?= e($sb['batch_number']) ?>] <?= e($sb['name'] ?: 'Stitching Batch') ?><?= !empty($sb['program_number']) ? ' • Prog: ' . e($sb['program_number']) . ' (' . e($sb['program_name']) . ')' : '' ?> • Stitched: <?= number_format($sb['stitched_qty'] ?? 0) ?> pcs [ALREADY SOLD - <?= number_format($sb['sold_quantity'], 2) ?> <?= e($sb['latest_unit_type'] ?? 'kg') ?>]
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </optgroup>
+                                    <?php endif; ?>
                                 </select>
 
                                 <!-- Live Stitching Batch & Program Info Card -->
@@ -426,7 +459,10 @@
                                         <span>Received: <strong class="text-dark" id="newStwInfoRecd">0 pcs</strong></span>
                                         <span>Stitched: <strong class="text-success" id="newStwInfoStitched">0 pcs</strong></span>
                                         <span>Batch Weight: <strong class="text-dark" id="newStwInfoWeight">0.00 kg</strong></span>
-                                        <span>Past Wastage Sold: <strong class="text-warning text-dark fw-bold" id="newStwInfoSold">0.00</strong></span>
+                                        <span>Past Wastage Sold: <strong id="newStwInfoSold">0.00</strong></span>
+                                    </div>
+                                    <div id="newStwSoldAlert" class="alert alert-danger py-1 px-2 mt-2 mb-0 fw-bold small d-none">
+                                        <i class="bi bi-x-circle me-1"></i> [ALREADY SOLD] This Stitching Batch scrap has already been sold. Duplicate selling is not allowed.
                                     </div>
                                 </div>
                             </div>
@@ -570,7 +606,9 @@
                                 </label>
                                 <select name="stitching_batch_id" id="editStwStitchingBatchId" class="form-select form-select-md fw-semibold" onchange="onEditStitchingBatchChange(this)" required>
                                     <option value="" data-program-id="0" data-batch-no="" data-program-no="" data-recd-qty="0" data-stitched-qty="0" data-total-weight="0" data-sold-qty="0">-- Select Stitching Module Batch / Program * --</option>
-                                    <?php foreach ($stitchingBatches as $sb): ?>
+                                    <?php foreach ($stitchingBatches as $sb): 
+                                        $isSold = (float)($sb['sold_quantity'] ?? 0) > 0 || (int)($sb['sales_count'] ?? 0) > 0;
+                                    ?>
                                         <option value="<?= $sb['id'] ?>"
                                             data-batch-no="<?= e($sb['batch_number']) ?>"
                                             data-batch-name="<?= e($sb['name'] ?? '') ?>"
@@ -581,8 +619,10 @@
                                             data-recd-qty="<?= (int)($sb['received_qty'] ?? 0) ?>"
                                             data-stitched-qty="<?= (int)($sb['stitched_qty'] ?? 0) ?>"
                                             data-total-weight="<?= (float)($sb['total_weight'] ?? 0) ?>"
-                                            data-sold-qty="<?= (float)($sb['sold_quantity'] ?? 0) ?>">
-                                            [<?= e($sb['batch_number']) ?>] <?= e($sb['name'] ?: 'Stitching Batch') ?><?= !empty($sb['program_number']) ? ' • Prog: ' . e($sb['program_number']) . ' (' . e($sb['program_name']) . ')' : '' ?> • Stitched: <?= number_format($sb['stitched_qty'] ?? 0) ?> pcs
+                                            data-sold-qty="<?= (float)($sb['sold_quantity'] ?? 0) ?>"
+                                            data-is-sold="<?= $isSold ? '1' : '0' ?>"
+                                            class="<?= $isSold ? 'text-muted' : '' ?>">
+                                            [<?= e($sb['batch_number']) ?>] <?= e($sb['name'] ?: 'Stitching Batch') ?><?= !empty($sb['program_number']) ? ' • Prog: ' . e($sb['program_number']) . ' (' . e($sb['program_name']) . ')' : '' ?> • Stitched: <?= number_format($sb['stitched_qty'] ?? 0) ?> pcs <?= $isSold ? '[ALREADY SOLD - ' . number_format($sb['sold_quantity'], 2) . ' ' . e($sb['latest_unit_type'] ?? 'kg') . ']' : '• Ready to Sell' ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -804,6 +844,7 @@ function onNewStitchingBatchChange(selectEl) {
     const stitchedQty = opt.getAttribute('data-stitched-qty') || '0';
     const totalWeight = parseFloat(opt.getAttribute('data-total-weight') || 0).toFixed(2);
     const soldQty = parseFloat(opt.getAttribute('data-sold-qty') || 0).toFixed(2);
+    const isSold = opt.getAttribute('data-is-sold') === '1' || parseFloat(soldQty) > 0;
 
     programIdInput.value = progId;
 
@@ -813,7 +854,22 @@ function onNewStitchingBatchChange(selectEl) {
     document.getElementById('newStwInfoRecd').textContent = `${recdQty} pcs`;
     document.getElementById('newStwInfoStitched').textContent = `${stitchedQty} pcs`;
     document.getElementById('newStwInfoWeight').textContent = `${totalWeight} kg`;
-    document.getElementById('newStwInfoSold').textContent = `${soldQty} units/kg`;
+
+    const soldEl = document.getElementById('newStwInfoSold');
+    const soldAlert = document.getElementById('newStwSoldAlert');
+    if (isSold) {
+        if (soldEl) {
+            soldEl.className = 'text-danger fw-bold';
+            soldEl.textContent = `${soldQty} units/kg [ALREADY SOLD]`;
+        }
+        if (soldAlert) soldAlert.classList.remove('d-none');
+    } else {
+        if (soldEl) {
+            soldEl.className = 'text-success fw-bold';
+            soldEl.textContent = `0.00 (Ready to Sell Scrap)`;
+        }
+        if (soldAlert) soldAlert.classList.add('d-none');
+    }
 
     infoCard.classList.remove('d-none');
 }
@@ -979,7 +1035,17 @@ function openEditStitchingWastageModal(data) {
     document.getElementById('editStwSaleDate').value = data.sale_date || '';
     
     const batchSelect = document.getElementById('editStwStitchingBatchId');
-    batchSelect.value = data.stitching_batch_id || '';
+    const currentBatchId = data.stitching_batch_id || '';
+    Array.from(batchSelect.options).forEach(opt => {
+        if (!opt.value) return;
+        const optIsSold = opt.getAttribute('data-is-sold') === '1';
+        if (opt.value == currentBatchId) {
+            opt.disabled = false;
+        } else if (optIsSold) {
+            opt.disabled = true;
+        }
+    });
+    batchSelect.value = currentBatchId;
     onEditStitchingBatchChange(batchSelect);
 
     updateEditStwUnitLabels();
@@ -1077,6 +1143,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('newStwStitchingBatchId').focus();
                 return false;
             }
+            const cutSelect = document.getElementById('newStwStitchingBatchId');
+            const selectedOpt = cutSelect.options[cutSelect.selectedIndex];
+            if (selectedOpt && (selectedOpt.disabled || selectedOpt.getAttribute('data-is-sold') === '1')) {
+                e.preventDefault();
+                alert('Validation Error: Stitching Wastage for this batch has already been sold. Please choose an available stitching batch.');
+                cutSelect.focus();
+                return false;
+            }
             if (!buyerName) {
                 e.preventDefault();
                 alert('Scrap Buyer / Vendor Name is required.');
@@ -1146,6 +1220,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 alert('Select Stitching Module Batch / Program is required. Please choose a Stitching Batch.');
                 document.getElementById('editStwStitchingBatchId').focus();
+                return false;
+            }
+            const editBatchSel = document.getElementById('editStwStitchingBatchId');
+            const editSelectedOpt = editBatchSel.options[editBatchSel.selectedIndex];
+            if (editSelectedOpt && editSelectedOpt.disabled) {
+                e.preventDefault();
+                alert('Validation Error: The selected Stitching Batch scrap has already been sold under another sale.');
+                editBatchSel.focus();
                 return false;
             }
             if (!buyerName) {

@@ -275,7 +275,7 @@
                             $initialStatus = $pc['status'];
                             $isReinspected = !empty($pc['is_reinspected']);
                             $lockInfo = $lockedPieces[$pc['tag_code']] ?? ($lockedPieces[$pc['index']] ?? null);
-                            $isLocked = $lockInfo !== null;
+                            $isLocked = !empty($lockInfo['outwarded']);
                             $isOutwarded = !empty($lockInfo['outwarded']);
                             if ($isLocked) {
                                 $initialStatus = $lockInfo['status'];
@@ -741,9 +741,7 @@ function setPieceStatus(pieceIdx, status) {
     }
 
     updateRowActionButtons(pieceIdx, status);
-    if (status === 'APPROVED') {
-        lockQCPieceRow(row, pieceIdx);
-    }
+    // Allowed to change status freely unless batch has outwarded pieces
     recalcQC();
     triggerAutoSave();
 }

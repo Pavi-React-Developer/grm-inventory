@@ -1409,6 +1409,281 @@ class ProductionController {
     /**
      * AJAX endpoint for live next sequence codes preview.
      */
+    /**
+     * Generate extra continuation label(s) for a seller roll.
+     * Continues from the previous sequence code and updates quantity/end_code.
+     */
+    public function addExtraRollLabel(string $id): void {
+        if (!CSRF::validateRequest()) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['ajax'])) {
+                Response::json(['success' => false, 'message' => 'Invalid security token or session expired.'], 403);
+                return;
+            }
+            Session::flash('error', 'Invalid security token or session expired.');
+            Response::back();
+            return;
+        }
+
+        $rollId = (int)$id;
+        $roll = Database::fetchOne("SELECT * FROM seller_rolls WHERE id = ?", [$rollId]);
+        if (!$roll) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['ajax'])) {
+                Response::json(['success' => false, 'message' => 'Fabric roll not found.'], 404);
+                return;
+            }
+            Session::flash('error', 'Fabric roll not found.');
+            Response::back();
+            return;
+        }
+
+        $seller = Database::fetchOne("SELECT * FROM sellers WHERE id = ?", [(int)$roll['seller_id']]);
+        if (!$seller) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['ajax'])) {
+                Response::json(['success' => false, 'message' => 'Material supplier not found.'], 404);
+                return;
+            }
+            Session::flash('error', 'Material supplier not found.');
+            Response::back();
+            return;
+        }
+
+        $count = max(1, min(50, (int)($_POST['count'] ?? 1)));
+        $currentQty = max(1, (int)($roll['quantity'] ?? 1));
+        $currentEndSeq = (int)($roll['end_seq'] ?? 0);
+        $prefix = !empty($roll['start_code']) ? substr($roll['start_code'], 0, 6) : ('FB' . date('my'));
+
+        if ($currentEndSeq <= 0) {
+            $seqInfo = ProductionService::getNextFabricRollSequence($currentQty, $roll['created_at'] ?? null);
+            $currentEndSeq = (int)$seqInfo['end_seq'];
+            $prefix = $seqInfo['prefix'];
+        }
+
+        $targetStartSeq = $currentEndSeq + 1;
+        $conflict = Database::fetchOne(
+            "SELECT id, roll_number FROM seller_rolls WHERE id != ? AND (
+                (? BETWEEN start_seq AND end_seq) OR 
+                start_code = ? OR end_code = ?
+            ) LIMIT 1",
+            [$rollId, $targetStartSeq, sprintf('%s%02d', $prefix, $targetStartSeq), sprintf('%s%02d', $prefix, $targetStartSeq)]
+        );
+
+        if ($conflict) {
+            $globalSeq = ProductionService::getNextFabricRollSequence($count);
+            $newStartSeq = (int)$globalSeq['start_seq'];
+            $newEndSeq = (int)$globalSeq['end_seq'];
+        } else {
+            $newStartSeq = $targetStartSeq;
+            $newEndSeq = $targetStartSeq + $count - 1;
+        }
+
+        $newQty = $currentQty + $count;
+        $startCode = !empty($roll['start_code']) ? $roll['start_code'] : sprintf('%s%02d', $prefix, (int)($roll['start_seq'] ?? 1));
+        $newEndCode = sprintf('%s%02d', $prefix, $newEndSeq);
+        $newQrCode = ($newQty > 1) ? "{$startCode}-{$newEndCode}" : $startCode;
+
+        Database::execute(
+            "UPDATE seller_rolls SET 
+                quantity = ?, 
+                end_seq = ?, 
+                end_code = ?, 
+                qr_code = ? 
+             WHERE id = ?",
+            [$newQty, $newEndSeq, $newEndCode, $newQrCode, $rollId]
+        );
+
+        // Recalculate seller summary totals
+        $allRolls = Database::fetchAll("SELECT * FROM seller_rolls WHERE seller_id = ?", [$seller['id']]);
+        $computedRollCount = count($allRolls);
+        $computedTotalWeight = array_sum(array_column($allRolls, 'weight'));
+        $computedTotalPrice = array_sum(array_column($allRolls, 'price'));
+
+        Database::execute(
+            "UPDATE sellers SET 
+                roll_count = ?, 
+                roll_weight = ?, 
+                roll_price = ? 
+             WHERE id = ?",
+            [$computedRollCount, $computedTotalWeight, $computedTotalPrice, $seller['id']]
+        );
+
+        $supplierName = mb_strtoupper(trim($seller['company'] ?: ($seller['name'] ?? 'GRM FABRIC')));
+        $materialType = mb_strtoupper(trim($seller['material_type'] ?? 'STANDARD FABRIC'));
+        $rollNum = $roll['roll_number'] ?: 'ROLL';
+        $color = mb_strtoupper(trim($roll['color'] ?? ''));
+        $design = mb_strtoupper(trim($roll['design_name'] ?? ''));
+        $weight = (float)($roll['weight'] ?? 0);
+        $price = (float)($roll['price'] ?? 0);
+        $photo = !empty($roll['photo_url']) ? $roll['photo_url'] : ($seller['roll_photo'] ?? null);
+
+        $newStickers = [];
+        for ($i = 0; $i < $count; $i++) {
+            $seq = $newStartSeq + $i;
+            $code = sprintf('%s%02d', $prefix, $seq);
+            $payload = "{$code}|{$supplierName}|{$rollNum}|{$color}|{$design}|{$weight}KG";
+            $pieceIndex = $currentQty + $i + 1;
+
+            $newStickers[] = [
+                'code'          => $code,
+                'seq'           => $seq,
+                'piece_index'   => $pieceIndex,
+                'total_qty'     => $newQty,
+                'roll_id'       => $rollId,
+                'roll_number'   => $rollNum,
+                'color'         => $color,
+                'design_name'   => $design,
+                'weight'        => $weight,
+                'price'         => $price,
+                'photo_url'     => $photo,
+                'supplier_name' => $supplierName,
+                'material_type' => $materialType,
+                'qr_payload'    => $payload,
+                'date'          => date('d M Y'),
+            ];
+        }
+
+        AuditService::log('production', 'UPDATE', 'seller_rolls', $rollId, [
+            'action'        => 'add_extra_labels',
+            'roll_number'   => $rollNum,
+            'added_count'   => $count,
+            'new_quantity'  => $newQty,
+            'new_end_code'  => $newEndCode
+        ]);
+
+        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['ajax'])) {
+            Response::json([
+                'success'      => true,
+                'message'      => "Generated {$count} extra label(s) for {$rollNum} (Code: {$newEndCode}).",
+                'new_stickers' => $newStickers,
+                'roll'         => [
+                    'id'        => $rollId,
+                    'quantity'  => $newQty,
+                    'end_seq'   => $newEndSeq,
+                    'end_code'  => $newEndCode,
+                    'qr_code'   => $newQrCode,
+                ]
+            ]);
+            return;
+        }
+
+        Session::flash('success', "Generated {$count} extra continuation label(s) for Roll {$rollNum} (ending at {$newEndCode}).");
+        Response::back();
+    }
+
+    /**
+     * Delete / remove extra label(s) from a seller roll.
+     * Decreases quantity and adjusts end_seq/end_code accordingly.
+     */
+    public function deleteExtraRollLabel(string $id): void {
+        if (!CSRF::validateRequest()) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['ajax'])) {
+                Response::json(['success' => false, 'message' => 'Invalid security token or session expired.'], 403);
+                return;
+            }
+            Session::flash('error', 'Invalid security token or session expired.');
+            Response::back();
+            return;
+        }
+
+        $rollId = (int)$id;
+        $roll = Database::fetchOne("SELECT * FROM seller_rolls WHERE id = ?", [$rollId]);
+        if (!$roll) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['ajax'])) {
+                Response::json(['success' => false, 'message' => 'Fabric roll not found.'], 404);
+                return;
+            }
+            Session::flash('error', 'Fabric roll not found.');
+            Response::back();
+            return;
+        }
+
+        $seller = Database::fetchOne("SELECT * FROM sellers WHERE id = ?", [(int)$roll['seller_id']]);
+        if (!$seller) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['ajax'])) {
+                Response::json(['success' => false, 'message' => 'Material supplier not found.'], 404);
+                return;
+            }
+            Session::flash('error', 'Material supplier not found.');
+            Response::back();
+            return;
+        }
+
+        $currentQty = max(1, (int)($roll['quantity'] ?? 1));
+        if ($currentQty <= 1) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['ajax'])) {
+                Response::json(['success' => false, 'message' => 'Cannot delete the only label for this roll. Minimum 1 label is required.'], 400);
+                return;
+            }
+            Session::flash('error', 'Cannot delete the only label for this roll. Minimum 1 label is required.');
+            Response::back();
+            return;
+        }
+
+        $deleteCount = max(1, min($currentQty - 1, (int)($_POST['count'] ?? 1)));
+        $newQty = $currentQty - $deleteCount;
+
+        $startSeq = (int)($roll['start_seq'] ?? 1);
+        $prefix = !empty($roll['start_code']) ? substr($roll['start_code'], 0, 6) : ('FB' . date('my'));
+        $startCode = !empty($roll['start_code']) ? $roll['start_code'] : sprintf('%s%02d', $prefix, $startSeq);
+
+        $newEndSeq = $startSeq + $newQty - 1;
+        $newEndCode = sprintf('%s%02d', $prefix, $newEndSeq);
+        $newQrCode = ($newQty > 1) ? "{$startCode}-{$newEndCode}" : $startCode;
+
+        Database::execute(
+            "UPDATE seller_rolls SET 
+                quantity = ?, 
+                end_seq = ?, 
+                end_code = ?, 
+                qr_code = ? 
+             WHERE id = ?",
+            [$newQty, $newEndSeq, $newEndCode, $newQrCode, $rollId]
+        );
+
+        // Recalculate seller summary totals
+        $allRolls = Database::fetchAll("SELECT * FROM seller_rolls WHERE seller_id = ?", [$seller['id']]);
+        $computedRollCount = count($allRolls);
+        $computedTotalWeight = array_sum(array_column($allRolls, 'weight'));
+        $computedTotalPrice = array_sum(array_column($allRolls, 'price'));
+
+        Database::execute(
+            "UPDATE sellers SET 
+                roll_count = ?, 
+                roll_weight = ?, 
+                roll_price = ? 
+             WHERE id = ?",
+            [$computedRollCount, $computedTotalWeight, $computedTotalPrice, $seller['id']]
+        );
+
+        AuditService::log('production', 'UPDATE', 'seller_rolls', $rollId, [
+            'action'        => 'delete_extra_labels',
+            'roll_number'   => $roll['roll_number'],
+            'removed_count' => $deleteCount,
+            'new_quantity'  => $newQty,
+            'new_end_code'  => $newEndCode
+        ]);
+
+        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_POST['ajax'])) {
+            Response::json([
+                'success'      => true,
+                'message'      => "Removed {$deleteCount} label(s). Roll now has {$newQty} label(s) ending at {$newEndCode}.",
+                'removed_count'=> $deleteCount,
+                'new_quantity' => $newQty,
+                'new_end_code' => $newEndCode,
+                'roll'         => [
+                    'id'        => $rollId,
+                    'quantity'  => $newQty,
+                    'end_seq'   => $newEndSeq,
+                    'end_code'  => $newEndCode,
+                    'qr_code'   => $newQrCode,
+                ]
+            ]);
+            return;
+        }
+
+        Session::flash('success', "Removed {$deleteCount} label(s). Roll now has {$newQty} piece(s).");
+        Response::back();
+    }
+
     public function ajaxNextFabricRollCodes(): void {
         $qty = max(1, (int)($_GET['qty'] ?? 1));
         $seqData = ProductionService::getNextFabricRollSequence($qty);
@@ -5009,7 +5284,7 @@ class ProductionController {
              LEFT JOIN products p ON pp.product_id = p.id
              LEFT JOIN production_units pu ON pp.production_unit_id = pu.id
              WHERE pp.is_active = 1$progUnitClause
-               AND pp.id NOT IN (SELECT program_id FROM stitching_batches WHERE program_id IS NOT NULL)
+               AND pp.id NOT IN (SELECT program_id FROM stitching_batches WHERE program_id IS NOT NULL AND (is_active = 1 OR is_active IS NULL) AND status != 'CANCELLED')
              ORDER BY pp.id DESC"
         );
 
@@ -5019,8 +5294,7 @@ class ProductionController {
              LEFT JOIN production_programs pp ON cb.program_id = pp.id
              LEFT JOIN products p ON pp.product_id = p.id
              WHERE (cb.is_active = 1 OR cb.is_active IS NULL)$progUnitClause
-               AND cb.id NOT IN (SELECT cutting_batch_id FROM stitching_batches WHERE cutting_batch_id IS NOT NULL)
-               AND (cb.program_id IS NULL OR cb.program_id NOT IN (SELECT program_id FROM stitching_batches WHERE program_id IS NOT NULL))
+               AND cb.id NOT IN (SELECT cutting_batch_id FROM stitching_batches WHERE cutting_batch_id IS NOT NULL AND (is_active = 1 OR is_active IS NULL) AND status != 'CANCELLED')
              ORDER BY cb.id DESC"
         );
 
@@ -5033,7 +5307,7 @@ class ProductionController {
 
         if ($cuttingBatchId) {
             $alreadyStitched = Database::fetchOne(
-                "SELECT id, batch_number FROM stitching_batches WHERE cutting_batch_id = ?",
+                "SELECT id, batch_number FROM stitching_batches WHERE cutting_batch_id = ? AND (is_active = 1 OR is_active IS NULL) AND status != 'CANCELLED'",
                 [(int)$cuttingBatchId]
             );
             if ($alreadyStitched) {
@@ -5048,9 +5322,9 @@ class ProductionController {
             }
         }
 
-        if ($programId) {
+        if ($programId && !$cuttingBatchId) {
             $alreadyStitchedProg = Database::fetchOne(
-                "SELECT id, batch_number FROM stitching_batches WHERE program_id = ?",
+                "SELECT id, batch_number FROM stitching_batches WHERE program_id = ? AND cutting_batch_id IS NULL AND (is_active = 1 OR is_active IS NULL) AND status != 'CANCELLED'",
                 [(int)$programId]
             );
             if ($alreadyStitchedProg) {
@@ -5058,6 +5332,8 @@ class ProductionController {
                 Response::redirect(url('production/stitching'));
                 return;
             }
+            $selectedProgram = ProductionProgram::find((int)$programId);
+        } elseif ($programId) {
             $selectedProgram = ProductionProgram::find((int)$programId);
         }
 
@@ -5128,10 +5404,10 @@ class ProductionController {
             return;
         }
 
-        // Prevent duplicate stitching of the same cutting batch or program
+        // Prevent duplicate stitching of the same cutting batch
         if (!empty($cuttingBatchId)) {
             $existingStitching = Database::fetchOne(
-                "SELECT id, batch_number, name FROM stitching_batches WHERE cutting_batch_id = ?",
+                "SELECT id, batch_number, name FROM stitching_batches WHERE cutting_batch_id = ? AND (is_active = 1 OR is_active IS NULL) AND status != 'CANCELLED'",
                 [$cuttingBatchId]
             );
             if ($existingStitching) {
@@ -5143,9 +5419,9 @@ class ProductionController {
             }
         }
 
-        if (!empty($programId)) {
+        if (empty($cuttingBatchId) && !empty($programId)) {
             $existingStitchingProg = Database::fetchOne(
-                "SELECT id, batch_number, name FROM stitching_batches WHERE program_id = ?",
+                "SELECT id, batch_number, name FROM stitching_batches WHERE program_id = ? AND cutting_batch_id IS NULL AND (is_active = 1 OR is_active IS NULL) AND status != 'CANCELLED'",
                 [$programId]
             );
             if ($existingStitchingProg) {
@@ -7183,6 +7459,9 @@ class ProductionController {
             [(int)$batch['id'], (int)($batch['program_id'] ?? 0)]
         );
         $outwardQty = (int)($outwardRow['total_outward'] ?? 0);
+        if ($outwardQty <= 0) {
+            return [];
+        }
 
         $savedPiecesMap = [];
         $decodedPieces = json_decode((string)($batch['pieces_data'] ?? ''), true);
@@ -7228,6 +7507,9 @@ class ProductionController {
                 }
 
                 $approvedIndex++;
+                if ($approvedIndex > $outwardQty) {
+                    continue;
+                }
                 $tagCode = trim((string)($savedPiece['tag_code'] ?? ''));
                 $lockKey = $tagCode !== '' ? $tagCode : $pieceIndex;
                 $lockedPieces[$lockKey] = [
@@ -7247,6 +7529,10 @@ class ProductionController {
     }
 
     private function protectLockedQCPieces(array $piecesData, array $lockedPieces): array {
+        if (empty($lockedPieces)) {
+            return $piecesData;
+        }
+
         $piecesByIndex = [];
         foreach ($piecesData as $piece) {
             if (is_array($piece) && isset($piece['index'])) {
@@ -7255,6 +7541,9 @@ class ProductionController {
         }
 
         foreach ($lockedPieces as $key => $lockedPiece) {
+            if (empty($lockedPiece['outwarded'])) {
+                continue;
+            }
             $index = null;
             if ($lockedPiece['tag_code'] !== '') {
                 foreach ($piecesByIndex as $pieceIndex => $candidate) {
@@ -7315,7 +7604,7 @@ class ProductionController {
             $itemTotals = &$totals[$itemId];
             $itemTotals['inspected_qty']++;
             $status = strtoupper((string)($piece['status'] ?? 'PENDING'));
-            if ($status === 'APPROVED') {
+            if ($status === 'APPROVED' || $status === 'PASSED') {
                 $itemTotals['passed_qty']++;
             } elseif ($status === 'REJECTED') {
                 $itemTotals['rejected_qty']++;
@@ -7377,11 +7666,32 @@ class ProductionController {
                 }
             }
 
-            QCBatch::update($batchId, [
+            // Also check $_POST['items'] fallback if provided by aggregatePieceCounts
+            $postedItems = $_POST['items'] ?? [];
+            if (!empty($postedItems) && is_array($postedItems)) {
+                $validItemIds = array_column($items, 'id');
+                foreach ($postedItems as $pItemId => $pItemVals) {
+                    if (in_array((int)$pItemId, $validItemIds)) {
+                        QCItem::update((int)$pItemId, [
+                            'inspected_qty' => (int)($pItemVals['inspected_qty'] ?? 0),
+                            'passed_qty'    => (int)($pItemVals['passed_qty'] ?? 0),
+                            'rejected_qty'  => (int)($pItemVals['rejected_qty'] ?? 0),
+                            'rework_qty'    => (int)($pItemVals['rework_qty'] ?? 0),
+                            'defect_reason' => !empty($pItemVals['defect_reason']) ? trim($pItemVals['defect_reason']) : null,
+                            'defect_notes'  => !empty($pItemVals['defect_notes']) ? trim($pItemVals['defect_notes']) : null,
+                        ]);
+                    }
+                }
+            }
+
+            $updateData = [
                 'inspector_id' => $inspectorId,
                 'notes'        => $notes,
-                'pieces_data'  => $piecesData,
-            ]);
+            ];
+            if ($piecesData !== null) {
+                $updateData['pieces_data'] = $piecesData;
+            }
+            QCBatch::update($batchId, $updateData);
 
             if ($decodedPieces !== null) {
                 $this->saveQCItemTotalsFromPieces($items, $decodedPieces);
@@ -8181,6 +8491,62 @@ class ProductionController {
             return;
         }
 
+        // Validate cutting batch available wastage balance (excluding current sale)
+        $cb = Database::fetchOne("SELECT id, batch_number, name, program_id, wastage_weight FROM cutting_batches WHERE id = ?", [$cuttingBatchId]);
+        if (!$cb) {
+            Session::flash('error', 'Selected cutting batch not found.');
+            Response::back();
+            return;
+        }
+
+        $soldRow = Database::fetchOne(
+            "SELECT COALESCE(SUM(weight), 0.0) as sold_weight FROM wastage_sales WHERE cutting_batch_id = ? AND id != ?",
+            [$cuttingBatchId, $saleId]
+        );
+        $alreadySold = (float)($soldRow['sold_weight'] ?? 0.0);
+        $totalWastage = (float)($cb['wastage_weight'] ?? 0.0);
+        $availableWastage = max(0.0, $totalWastage - $alreadySold);
+
+        if ($availableWastage <= 0.001) {
+            Session::flash('error', "Cutting Batch [{$cb['batch_number']}] wastage is ALREADY FULLY SOLD by other transactions. Cannot update sale.");
+            Response::back();
+            return;
+        }
+
+        if ($weight > $availableWastage + 0.001) {
+            Session::flash('error', "Entered weight ({$weight} kg) exceeds available wastage balance ({$availableWastage} kg) for Batch [{$cb['batch_number']}].");
+            Response::back();
+            return;
+        }
+
+        // Validate cutting batch available wastage balance
+        $cb = Database::fetchOne("SELECT id, batch_number, name, program_id, wastage_weight FROM cutting_batches WHERE id = ?", [$cuttingBatchId]);
+        if (!$cb) {
+            Session::flash('error', 'Selected cutting batch not found.');
+            Response::back();
+            return;
+        }
+
+        $soldRow = Database::fetchOne(
+            "SELECT COALESCE(SUM(weight), 0.0) as sold_weight FROM wastage_sales WHERE cutting_batch_id = ?",
+            [$cuttingBatchId]
+        );
+        $alreadySold = (float)($soldRow['sold_weight'] ?? 0.0);
+        $totalWastage = (float)($cb['wastage_weight'] ?? 0.0);
+        $availableWastage = max(0.0, $totalWastage - $alreadySold);
+
+        if ($availableWastage <= 0.001) {
+            Session::flash('error', "Cutting Batch [{$cb['batch_number']}] wastage is ALREADY FULLY SOLD ({$alreadySold} kg sold of {$totalWastage} kg total). Cannot record another sale.");
+            Response::back();
+            return;
+        }
+
+        if ($weight > $availableWastage + 0.001) {
+            Session::flash('error', "Entered weight ({$weight} kg) exceeds available wastage balance ({$availableWastage} kg) for Batch [{$cb['batch_number']}].");
+            Response::back();
+            return;
+        }
+
         if ($ratePerKg <= 0 && $totalAmountInput <= 0) {
             Session::flash('error', 'Selling Price & Quantity (Manual Entry) is required. Please enter a valid Selling Rate (₹/kg) or Total Sale Price.');
             Response::back();
@@ -8361,6 +8727,62 @@ class ProductionController {
 
         if ($weight <= 0) {
             Session::flash('error', 'Wastage Weight must be greater than 0.');
+            Response::back();
+            return;
+        }
+
+        // Validate cutting batch available wastage balance (excluding current sale)
+        $cb = Database::fetchOne("SELECT id, batch_number, name, program_id, wastage_weight FROM cutting_batches WHERE id = ?", [$cuttingBatchId]);
+        if (!$cb) {
+            Session::flash('error', 'Selected cutting batch not found.');
+            Response::back();
+            return;
+        }
+
+        $soldRow = Database::fetchOne(
+            "SELECT COALESCE(SUM(weight), 0.0) as sold_weight FROM wastage_sales WHERE cutting_batch_id = ? AND id != ?",
+            [$cuttingBatchId, $saleId]
+        );
+        $alreadySold = (float)($soldRow['sold_weight'] ?? 0.0);
+        $totalWastage = (float)($cb['wastage_weight'] ?? 0.0);
+        $availableWastage = max(0.0, $totalWastage - $alreadySold);
+
+        if ($availableWastage <= 0.001) {
+            Session::flash('error', "Cutting Batch [{$cb['batch_number']}] wastage is ALREADY FULLY SOLD by other transactions. Cannot update sale.");
+            Response::back();
+            return;
+        }
+
+        if ($weight > $availableWastage + 0.001) {
+            Session::flash('error', "Entered weight ({$weight} kg) exceeds available wastage balance ({$availableWastage} kg) for Batch [{$cb['batch_number']}].");
+            Response::back();
+            return;
+        }
+
+        // Validate cutting batch available wastage balance
+        $cb = Database::fetchOne("SELECT id, batch_number, name, program_id, wastage_weight FROM cutting_batches WHERE id = ?", [$cuttingBatchId]);
+        if (!$cb) {
+            Session::flash('error', 'Selected cutting batch not found.');
+            Response::back();
+            return;
+        }
+
+        $soldRow = Database::fetchOne(
+            "SELECT COALESCE(SUM(weight), 0.0) as sold_weight FROM wastage_sales WHERE cutting_batch_id = ?",
+            [$cuttingBatchId]
+        );
+        $alreadySold = (float)($soldRow['sold_weight'] ?? 0.0);
+        $totalWastage = (float)($cb['wastage_weight'] ?? 0.0);
+        $availableWastage = max(0.0, $totalWastage - $alreadySold);
+
+        if ($availableWastage <= 0.001) {
+            Session::flash('error', "Cutting Batch [{$cb['batch_number']}] wastage is ALREADY FULLY SOLD ({$alreadySold} kg sold of {$totalWastage} kg total). Cannot record another sale.");
+            Response::back();
+            return;
+        }
+
+        if ($weight > $availableWastage + 0.001) {
+            Session::flash('error', "Entered weight ({$weight} kg) exceeds available wastage balance ({$availableWastage} kg) for Batch [{$cb['batch_number']}].");
             Response::back();
             return;
         }
@@ -8643,12 +9065,19 @@ class ProductionController {
                    sb.received_qty, sb.stitched_qty, sb.rejected_qty, sb.rework_qty, sb.total_weight, sb.status,
                    pp.program_number, pp.name as program_name,
                    cb.batch_number as cutting_batch_number,
-                   COALESCE(sold.sold_quantity, 0.0) as sold_quantity
+                   COALESCE(sold.sold_quantity, 0.0) as sold_quantity,
+                   COALESCE(sold.sales_count, 0) as sales_count,
+                   sold.latest_sale_number,
+                   sold.latest_unit_type
             FROM stitching_batches sb
             LEFT JOIN production_programs pp ON sb.program_id = pp.id
             LEFT JOIN cutting_batches cb ON sb.cutting_batch_id = cb.id
             LEFT JOIN (
-                SELECT stitching_batch_id, SUM(quantity) as sold_quantity
+                SELECT stitching_batch_id, 
+                       SUM(quantity) as sold_quantity, 
+                       COUNT(*) as sales_count,
+                       MAX(sale_number) as latest_sale_number,
+                       MAX(unit_type) as latest_unit_type
                 FROM stitching_wastage_sales
                 WHERE stitching_batch_id IS NOT NULL
                 GROUP BY stitching_batch_id
@@ -8705,6 +9134,21 @@ class ProductionController {
         // 1. Select Stitching Module Batch / Program is required
         if (empty($stitchingBatchId)) {
             Session::flash('error', 'Select Stitching Module Batch / Program is required. Please choose a Stitching Batch.');
+            Response::back();
+            return;
+        }
+
+        // Validation: Prevent duplicate selling of already sold stitching batch scrap
+        $alreadySold = Database::fetchOne(
+            "SELECT id, sale_number, quantity, unit_type, sale_date 
+             FROM stitching_wastage_sales 
+             WHERE stitching_batch_id = ?",
+            [$stitchingBatchId]
+        );
+        if ($alreadySold) {
+            $sb = Database::fetchOne("SELECT batch_number, name FROM stitching_batches WHERE id = ?", [$stitchingBatchId]);
+            $sbNum = $sb['batch_number'] ?? ('#' . $stitchingBatchId);
+            Session::flash('error', "Validation Error: Stitching Batch [{$sbNum}] wastage has already been sold under Sale #{$alreadySold['sale_number']} ({$alreadySold['quantity']} {$alreadySold['unit_type']} on {$alreadySold['sale_date']}). Duplicate sale of the same stitching batch wastage is not allowed.");
             Response::back();
             return;
         }
@@ -8876,6 +9320,21 @@ class ProductionController {
         // 1. Select Stitching Module Batch / Program is required
         if (empty($stitchingBatchId)) {
             Session::flash('error', 'Select Stitching Module Batch / Program is required. Please choose a Stitching Batch.');
+            Response::back();
+            return;
+        }
+
+        // Validation: Prevent updating to another stitching batch whose scrap has already been sold
+        $alreadySold = Database::fetchOne(
+            "SELECT id, sale_number, quantity, unit_type, sale_date 
+             FROM stitching_wastage_sales 
+             WHERE stitching_batch_id = ? AND id != ?",
+            [$stitchingBatchId, $saleId]
+        );
+        if ($alreadySold) {
+            $sb = Database::fetchOne("SELECT batch_number, name FROM stitching_batches WHERE id = ?", [$stitchingBatchId]);
+            $sbNum = $sb['batch_number'] ?? ('#' . $stitchingBatchId);
+            Session::flash('error', "Validation Error: Stitching Batch [{$sbNum}] wastage has already been sold under Sale #{$alreadySold['sale_number']} ({$alreadySold['quantity']} {$alreadySold['unit_type']} on {$alreadySold['sale_date']}). Duplicate sale of the same stitching batch wastage is not allowed.");
             Response::back();
             return;
         }
@@ -9171,6 +9630,7 @@ class ProductionController {
             'operations_cost'        => $operationsCost,
             'count_paid'             => count(array_filter($allExpenses, fn($e) => $e['payment_status'] === 'PAID')),
             'count_pending'          => count(array_filter($allExpenses, fn($e) => $e['payment_status'] === 'PENDING')),
+            'count_partial'          => count(array_filter($allExpenses, fn($e) => $e['payment_status'] === 'PARTIAL')),
         ];
 
         $programs = Database::fetchAll("SELECT id, program_number, name FROM production_programs ORDER BY id DESC LIMIT 50");
@@ -9247,13 +9707,35 @@ class ProductionController {
 
         $userId = (int)(Session::get('user_id') ?? 1);
 
+        // Handle photo / receipt / bill image upload
+        $photoUrl = null;
+        if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
+            $allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
+            $ext = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, $allowedExts, true)) {
+                if (class_exists('CloudinaryService')) {
+                    $photoUrl = CloudinaryService::upload($_FILES['photo'], 'grm_inventory/production/expenses', 'auto');
+                }
+                if (!$photoUrl) {
+                    $uploadDir = BASE_PATH . '/public/uploads/production_expenses/';
+                    if (!is_dir($uploadDir)) {
+                        @mkdir($uploadDir, 0777, true);
+                    }
+                    $filename = 'exp_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                    if (move_uploaded_file($_FILES['photo']['tmp_name'], $uploadDir . $filename)) {
+                        $photoUrl = 'uploads/production_expenses/' . $filename;
+                    }
+                }
+            }
+        }
+
         try {
             Database::execute(
                 "INSERT INTO production_expenses
                     (expense_number, production_unit, category, item_name,
                      quantity, unit_type, unit_cost, total_cost, paid_amount, payment_status,
-                     payment_method, vendor_name, expense_date, created_by, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+                     payment_method, vendor_name, expense_date, photo_url, created_by, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
                 [
                     $expenseNumber,
                     $productionUnit,
@@ -9268,6 +9750,7 @@ class ProductionController {
                     $paymentMethod,
                     $vendorName,
                     $expenseDate,
+                    $photoUrl,
                     $userId
                 ]
             );
@@ -9311,6 +9794,32 @@ class ProductionController {
             return;
         }
 
+        // Handle photo / receipt / bill image upload
+        $photoUrl = $existing['photo_url'] ?? null;
+        if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
+            $allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
+            $ext = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, $allowedExts, true)) {
+                $newPhoto = null;
+                if (class_exists('CloudinaryService')) {
+                    $newPhoto = CloudinaryService::upload($_FILES['photo'], 'grm_inventory/production/expenses', 'auto');
+                }
+                if (!$newPhoto) {
+                    $uploadDir = BASE_PATH . '/public/uploads/production_expenses/';
+                    if (!is_dir($uploadDir)) {
+                        @mkdir($uploadDir, 0777, true);
+                    }
+                    $filename = 'exp_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                    if (move_uploaded_file($_FILES['photo']['tmp_name'], $uploadDir . $filename)) {
+                        $newPhoto = 'uploads/production_expenses/' . $filename;
+                    }
+                }
+                if ($newPhoto) {
+                    $photoUrl = $newPhoto;
+                }
+            }
+        }
+
         try {
             Database::execute(
                 "UPDATE production_expenses SET
@@ -9319,6 +9828,7 @@ class ProductionController {
                     unit_cost = ?,
                     total_cost = ?,
                     paid_amount = ?,
+                    photo_url = ?,
                     updated_at = NOW()
                  WHERE id = ?",
                 [
@@ -9327,6 +9837,7 @@ class ProductionController {
                     $unitCost,
                     $totalCost,
                     $totalCost,
+                    $photoUrl,
                     $expenseId
                 ]
             );

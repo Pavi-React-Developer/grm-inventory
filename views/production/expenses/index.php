@@ -153,7 +153,7 @@
                         </div>
                     </div>
                     <div class="small text-muted d-flex justify-content-between align-items-center mt-2 pt-1 border-top">
-                        <span><?= number_format($stats['count_pending'] + $stats['count_partial']) ?> Unsettled Bills</span>
+                        <span><?= number_format(($stats['count_pending'] ?? 0) + ($stats['count_partial'] ?? 0)) ?> Unsettled Bills</span>
                         <span class="badge bg-danger-subtle text-danger border">Payables</span>
                     </div>
                 </div>
@@ -457,7 +457,7 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form method="POST" action="<?= url('production/expenses/store') ?>" id="recordExpenseForm">
+            <form method="POST" action="<?= url('production/expenses/store') ?>" id="recordExpenseForm" enctype="multipart/form-data">
                 <?= CSRF::field() ?>
                 <div class="modal-body p-4">
                     <!-- 1. Expense Type Input with Side (+) Button -->
@@ -543,12 +543,29 @@
                     </div>
 
                     <!-- Total Amount Live Display -->
-                    <div class="p-3 bg-light rounded-3 border d-flex justify-content-between align-items-center">
+                    <div class="p-3 bg-light rounded-3 border d-flex justify-content-between align-items-center mb-3">
                         <span class="fw-bold text-muted small text-uppercase">Total Cost:</span>
                         <div class="d-flex align-items-center">
                             <span class="fs-5 fw-bold text-primary me-1">₹</span>
                             <span class="fs-3 fw-bolder text-primary font-monospace" id="newDisplayTotal">0.00</span>
                             <input type="hidden" name="total_cost" id="newTotalCost" value="0.00">
+                        </div>
+                    </div>
+
+                    <!-- 4. Image Upload Input with Live Preview -->
+                    <div class="mb-2">
+                        <label class="form-label fw-bold text-dark mb-1">
+                            <i class="bi bi-image text-primary me-1"></i>Image Upload (Receipt / Bill / Item Photo)
+                        </label>
+                        <input type="file" 
+                               name="photo" 
+                               id="newPhoto" 
+                               class="form-control" 
+                               accept="image/*,.pdf" 
+                               onchange="previewExpenseImage(this, 'newPhotoPreview')">
+                        <div id="newPhotoPreview" class="mt-2 text-center d-none p-2 bg-light rounded border">
+                            <img src="" class="img-thumbnail rounded shadow-sm border" style="max-height: 120px;" alt="Selected receipt / photo">
+                            <div class="small text-muted mt-1" id="newPhotoFilename"></div>
                         </div>
                     </div>
                 </div>
@@ -576,7 +593,7 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form method="POST" id="editExpenseForm">
+            <form method="POST" id="editExpenseForm" enctype="multipart/form-data">
                 <?= CSRF::field() ?>
                 <div class="modal-body p-4">
                     <!-- Expense Type -->
@@ -622,12 +639,29 @@
                     </div>
 
                     <!-- Total Amount Live Display -->
-                    <div class="p-3 bg-light rounded-3 border d-flex justify-content-between align-items-center">
+                    <div class="p-3 bg-light rounded-3 border d-flex justify-content-between align-items-center mb-3">
                         <span class="fw-bold text-muted small text-uppercase">Total Cost:</span>
                         <div class="d-flex align-items-center">
                             <span class="fs-5 fw-bold text-primary me-1">₹</span>
                             <span class="fs-3 fw-bolder text-primary font-monospace" id="editDisplayTotal">0.00</span>
                             <input type="hidden" name="total_cost" id="editTotalCost" value="0.00">
+                        </div>
+                    </div>
+
+                    <!-- 4. Image Upload Input with Live Preview -->
+                    <div class="mb-2">
+                        <label class="form-label fw-bold text-dark mb-1">
+                            <i class="bi bi-image text-primary me-1"></i>Image Upload (Receipt / Bill / Item Photo)
+                        </label>
+                        <input type="file" 
+                               name="photo" 
+                               id="editPhoto" 
+                               class="form-control" 
+                               accept="image/*,.pdf" 
+                               onchange="previewExpenseImage(this, 'editPhotoPreview')">
+                        <div id="editPhotoPreview" class="mt-2 text-center d-none p-2 bg-light rounded border">
+                            <img src="" class="img-thumbnail rounded shadow-sm border" style="max-height: 120px;" alt="Selected receipt / photo">
+                            <div class="small text-muted mt-1" id="editPhotoStatus">Current Image</div>
                         </div>
                     </div>
                 </div>
@@ -843,12 +877,55 @@ function calculateEditExpenseTotal() {
     document.getElementById('editDisplayTotal').textContent = total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function previewExpenseImage(input, previewContainerId) {
+    const container = document.getElementById(previewContainerId);
+    if (!container) return;
+    const img = container.querySelector('img');
+    const status = container.querySelector('.small');
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (img) img.src = e.target.result;
+                if (status) status.textContent = file.name;
+                container.classList.remove('d-none');
+            };
+            reader.readAsDataURL(file);
+        } else {
+            if (img) img.src = '';
+            if (status) status.textContent = 'Document selected: ' + file.name;
+            container.classList.remove('d-none');
+        }
+    }
+}
+
 function openEditExpenseModal(data) {
     document.getElementById('editExpenseForm').action = '<?= url('production/expenses/update') ?>/' + data.id;
     document.getElementById('editItemName').value = data.item_name || '';
     document.getElementById('editQuantity').value = parseFloat(data.quantity || 1).toString();
     document.getElementById('editUnitCost').value = parseFloat(data.unit_cost || 0).toFixed(2);
     calculateEditExpenseTotal();
+
+    const preview = document.getElementById('editPhotoPreview');
+    const img = preview ? preview.querySelector('img') : null;
+    const status = preview ? preview.querySelector('.small') : null;
+    const fileInput = document.getElementById('editPhoto');
+    if (fileInput) fileInput.value = '';
+
+    if (preview && data.photo_url) {
+        let photoUrl = data.photo_url;
+        if (!photoUrl.startsWith('http://') && !photoUrl.startsWith('https://')) {
+            photoUrl = '<?= url('') ?>/' + photoUrl.replace(/^\/+/, '');
+        }
+        if (img) img.src = photoUrl;
+        if (status) status.textContent = 'Current Image (choose new file to replace)';
+        preview.classList.remove('d-none');
+    } else if (preview) {
+        preview.classList.add('d-none');
+        if (img) img.src = '';
+    }
+
     const modal = new bootstrap.Modal(document.getElementById('editExpenseModal'));
     modal.show();
 }

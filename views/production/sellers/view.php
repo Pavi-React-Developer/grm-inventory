@@ -294,8 +294,11 @@
                                         <!-- Action (Print Label / Report Damage / Delete Roll) -->
                                         <td class="text-center">
                                             <div class="btn-group btn-group-sm">
-                                                <button type="button" class="btn btn-outline-dark py-0 px-2" title="Preview & Print Labels for Roll <?= e($r['roll_number']) ?>" onclick="openSingleRollLabelModal(<?= (int)$r['id'] ?>, '<?= e(addslashes($r['roll_number'])) ?>')">
+                                                <button type="button" class="btn btn-outline-dark py-0 px-2" title="Preview & Print Labels for Roll <?= e($r['roll_number']) ?>" onclick="openSingleRollLabelModal(<?= (int)$r['id'] ?>, '<?= e(addslashes($r['roll_number'])) ?>')">`n                                                    <i class="bi bi-qr-code"></i>`n                                                </button>`n                                                <button type="button" class="btn btn-outline-success py-0 px-2" title="Generate extra continuation label for Roll <?= e($r['roll_number']) ?>" onclick="promptAddExtraRollLabel(<?= (int)$r['id'] ?>, '<?= e(addslashes($r['roll_number'])) ?>', '<?= e(addslashes($r['end_code'] ?? '')) ?>', <?= (int)$r['quantity'] ?>)">`n                                                    <i class="bi bi-plus-circle"></i>
                                                     <i class="bi bi-qr-code"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-outline-success py-0 px-2" title="Generate extra continuation label for Roll <?= e($r['roll_number']) ?>" onclick="promptAddExtraRollLabel(<?= (int)$r['id'] ?>, '<?= e(addslashes($r['roll_number'])) ?>', '<?= e(addslashes($r['end_code'] ?? '')) ?>', <?= (int)$r['quantity'] ?>)">
+                                                    <i class="bi bi-plus-circle"></i>
                                                 </button>
                                                 <button type="button" class="btn btn-outline-warning py-0 px-2" title="Report Damage / Return to Supplier" onclick='openSupplierRollDamageModal(<?= json_encode($r) ?>)'>
                                                     <i class="bi bi-exclamation-triangle"></i>
@@ -773,9 +776,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         <small class="text-white-50" id="labelModalSubtitle">Standard 250px × 130px thermal sticker format</small>
                     </div>
                 </div>
-                <div class="d-flex align-items-center gap-2">
-                    <button type="button" class="btn btn-sm btn-warning fw-bold shadow-sm" onclick="printModalStickers()">
-                        <i class="bi bi-printer me-1"></i> Print Labels
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <button type="button" class="btn btn-sm btn-success fw-bold shadow-sm" id="btnModalAddExtra" onclick="modalAddExtraLabel()" title="Generate next sequential label">
+                        <i class="bi bi-plus-circle me-1"></i> + Extra Label
+                    </button>
+                    <button type="button" class="btn btn-sm btn-warning fw-bold shadow-sm" id="btnModalPrintSelected" onclick="printModalSelectedStickers()" style="display: none;">
+                        <i class="bi bi-printer me-1"></i> Print Selected (<span id="modalSelectedCount">0</span>)
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary fw-bold shadow-sm" onclick="printModalStickers()">
+                        <i class="bi bi-printer me-1"></i> Print All
                     </button>
                     <a href="#" target="_blank" class="btn btn-sm btn-outline-light" id="labelModalFullPageLink" title="Open dedicated print page in new tab">
                         <i class="bi bi-box-arrow-up-right me-1"></i> Open Print Page
@@ -957,6 +966,7 @@ function openFabricLotLabelsModal() {
 }
 
 function openSingleRollLabelModal(rollId, rollNumber) {
+    currentActiveRollId = rollId;
     const sellerId = <?= (int)$seller['id'] ?>;
     document.getElementById('labelModalTitle').textContent = 'Fabric Roll Label — ' + rollNumber;
     document.getElementById('labelModalSubtitle').textContent = 'Thermal QR sticker sequence for ' + rollNumber;
@@ -1050,5 +1060,175 @@ function loadAndRenderStickers(ajaxUrl) {
             contentEl.classList.remove('d-none');
             container.innerHTML = '<div class="alert alert-danger text-center w-100">Failed to load stickers: ' + err.message + '</div>';
         });
+}
+</script>
+
+
+<!-- Modal: Add Extra Roll Label Prompt -->
+<div class="modal fade" id="viewAddExtraLabelModal" tabindex="-1" aria-labelledby="viewAddExtraLabelTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold" id="viewAddExtraLabelTitle">
+                    <i class="bi bi-plus-circle text-success me-2"></i>Generate Extra Continuation Label
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="viewExtraRollId" value="">
+                <p class="text-muted small mb-3">
+                    Generate sequential extra sticker(s) for Roll <strong class="text-dark" id="viewExtraRollNumber"></strong> continuing after the last piece code.
+                </p>
+
+                <div class="p-3 rounded bg-light border mb-3">
+                    <div class="d-flex justify-content-between small text-muted mb-1">
+                        <span>Current Total Pieces:</span>
+                        <strong class="text-dark" id="viewExtraCurrentQty">10 pcs</strong>
+                    </div>
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>Last Sequence Code:</span>
+                        <span class="badge bg-secondary font-monospace" id="viewExtraLastCode">FB112660</span>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Number of Extra Labels to Generate</label>
+                    <div class="input-group">
+                        <button class="btn btn-outline-secondary" type="button" onclick="adjustViewExtraCount(-1)">-</button>
+                        <input type="number" class="form-control text-center fw-bold" id="viewExtraCountInput" value="1" min="1" max="50">
+                        <button class="btn btn-outline-secondary" type="button" onclick="adjustViewExtraCount(1)">+</button>
+                    </div>
+                    <small class="text-muted">Typically 1 extra label to replace damaged sticker or extend roll.</small>
+                </div>
+
+                <div class="alert alert-info py-2 small mb-0">
+                    <i class="bi bi-info-circle me-1"></i>The system will assign the exact continuation sequence code and update database piece counts.
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success fw-bold" id="btnConfirmViewExtra" onclick="submitViewAddExtraLabel()">
+                    <span id="btnConfirmViewExtraSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
+                    <i class="bi bi-check-circle me-1" id="btnConfirmViewExtraIcon"></i> Generate & Save Label
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+let currentActiveRollId = 0;
+let modalStickersData = [];
+
+function promptAddExtraRollLabel(rollId, rollNumber, endCode, qty) {
+    currentActiveRollId = rollId;
+    document.getElementById('viewExtraRollId').value = rollId;
+    document.getElementById('viewExtraRollNumber').textContent = rollNumber;
+    document.getElementById('viewExtraCurrentQty').textContent = qty + ' pcs';
+    document.getElementById('viewExtraLastCode').textContent = endCode || 'N/A';
+    document.getElementById('viewExtraCountInput').value = 1;
+
+    const modalEl = document.getElementById('viewAddExtraLabelModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+}
+
+function adjustViewExtraCount(delta) {
+    const input = document.getElementById('viewExtraCountInput');
+    let val = parseInt(input.value, 10) || 1;
+    val = Math.max(1, Math.min(50, val + delta));
+    input.value = val;
+}
+
+function submitViewAddExtraLabel() {
+    const rollId = document.getElementById('viewExtraRollId').value;
+    const count = parseInt(document.getElementById('viewExtraCountInput').value, 10) || 1;
+
+    const btn = document.getElementById('btnConfirmViewExtra');
+    const spinner = document.getElementById('btnConfirmViewExtraSpinner');
+    const icon = document.getElementById('btnConfirmViewExtraIcon');
+
+    btn.disabled = true;
+    spinner.classList.remove('d-none');
+    icon.classList.add('d-none');
+
+    const formData = new FormData();
+    formData.append('_csrf_token', '<?= CSRF::token() ?>');
+    formData.append('count', count);
+    formData.append('ajax', '1');
+
+    fetch('<?= url("production/sellers/add-extra-label/") ?>' + rollId, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '<?= CSRF::token() ?>',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+        icon.classList.remove('d-none');
+
+        if (!data.success) {
+            alert('Error: ' + (data.message || 'Failed to generate extra label.'));
+            return;
+        }
+
+        const modalEl = document.getElementById('viewAddExtraLabelModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+
+        alert(data.message || 'Extra continuation label generated successfully!');
+        window.location.reload();
+    })
+    .catch(err => {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+        icon.classList.remove('d-none');
+        alert('Request failed: ' + err.message);
+    });
+}
+
+function modalAddExtraLabel() {
+    if (currentActiveRollId > 0) {
+        promptAddExtraRollLabel(currentActiveRollId, 'Roll', '', 0);
+    } else {
+        // Lot mode: default to first roll or prompt
+        const firstRollBtn = document.querySelector('button[onclick*="promptAddExtraRollLabel"]');
+        if (firstRollBtn) {
+            firstRollBtn.click();
+        } else {
+            alert('Please select a specific roll to generate an extra label.');
+        }
+    }
+}
+
+function updateModalSelectedCount() {
+    const checked = document.querySelectorAll('.modal-stk-chk:checked');
+    const count = checked.length;
+    const btn = document.getElementById('btnModalPrintSelected');
+    const countSpan = document.getElementById('modalSelectedCount');
+
+    if (countSpan) countSpan.textContent = count;
+    if (btn) {
+        btn.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+}
+
+function printModalSingleSticker(code) {
+    if (currentLabelModalUrl) {
+        const url = currentLabelModalUrl + (currentLabelModalUrl.includes('?') ? '&' : '?') + 'search=' + encodeURIComponent(code);
+        const win = window.open(url, '_blank');
+        if (win) {
+            win.focus();
+        }
+    }
+}
+
+function printModalSelectedStickers() {
+    if (currentLabelModalUrl) {
+        window.open(currentLabelModalUrl, '_blank');
+    }
 }
 </script>
