@@ -4259,6 +4259,7 @@ class WhatsappController {
             $vid = (int)$item['variant_id'];
             $pieceRes = $this->resolveChannelPieceTags($chanId, $vid, $chanIds, 'WHATSAPP');
             $item['piece_tags'] = ($item['stock_state'] === 'DAMAGED') ? $pieceRes['damaged'] : $pieceRes['available'];
+            $item['piece_tags_all'] = $pieceRes['all'];
 
             $catName = $item['category_name'] ?? 'General';
             if (!in_array($catName, $categories)) {
@@ -4546,8 +4547,19 @@ class WhatsappController {
                 'dispatch_date' => $dispatchDate,
                 'remarks'       => $remarks,
                 'scanned_tags'  => array_values(array_filter(array_map(static function ($it) {
-                    return ['variant_id' => (int)($it['variant_id'] ?? 0), 'tag_code' => trim((string)($it['tag_code'] ?? ''))];
-                }, $items), static fn($it) => $it['variant_id'] > 0 && $it['tag_code'] !== '')),
+                    $rawTags = $it['scanned_qr_codes'] ?? '[]';
+                    $tags = is_array($rawTags) ? $rawTags : json_decode((string)$rawTags, true);
+                    if (!is_array($tags)) $tags = [];
+                    if (!$tags && !empty($it['tag_code'])) $tags[] = $it['tag_code'];
+                    return [
+                        'variant_id' => (int)($it['variant_id'] ?? 0),
+                        'tag_code' => trim((string)($it['tag_code'] ?? ($tags[0] ?? ''))),
+                        'tag_codes' => array_values(array_unique(array_filter(array_map(
+                            static fn($tag): string => trim((string)$tag),
+                            $tags
+                        ), static fn(string $tag): bool => $tag !== ''))),
+                    ];
+                }, $items), static fn($it) => $it['variant_id'] > 0 && !empty($it['tag_codes']))),
             ];
             $serializedNotes = json_encode($notesData);
 
@@ -4611,14 +4623,30 @@ class WhatsappController {
                     throw new RuntimeException("Insufficient {$stockState} stock for SKU '{$sku}'. Requested: {$qty}, Available: {$currentStock}");
                 }
 
+                $rawQrCodes = $it['scanned_qr_codes'] ?? '[]';
+                $scannedQrCodes = is_array($rawQrCodes) ? $rawQrCodes : json_decode((string)$rawQrCodes, true);
+                if (!is_array($scannedQrCodes)) {
+                    throw new InvalidArgumentException('Scanned product QR data is invalid.');
+                }
+                if (!$scannedQrCodes && !empty($it['tag_code'])) {
+                    $scannedQrCodes[] = trim((string)$it['tag_code']);
+                }
+                $scannedQrCodes = array_values(array_unique(array_filter(array_map(
+                    static fn($qr): string => trim((string)$qr),
+                    $scannedQrCodes
+                ), static fn(string $qr): bool => $qr !== '')));
+                if (count($scannedQrCodes) > $qty || array_filter($scannedQrCodes, static fn(string $qr): bool => strlen($qr) > 255)) {
+                    throw new InvalidArgumentException('Scanned product QR tags do not match the selected return quantity.');
+                }
+
                 $goodQty = ($classification === 'GOOD') ? $qty : 0;
                 $damQty  = ($classification === 'DAMAGED') ? $qty : 0;
                 $defQty  = ($classification === 'DEFECTIVE') ? $qty : 0;
 
                 Database::execute(
-                    "INSERT INTO warehouse_return_items (warehouse_return_id, variant_id, returned_qty, good_qty, damaged_qty, defective_qty, classification)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    [$returnId, $variantId, $qty, $goodQty, $damQty, $defQty, $classification]
+                    "INSERT INTO warehouse_return_items (warehouse_return_id, variant_id, returned_qty, good_qty, damaged_qty, defective_qty, classification, scanned_qr_codes)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [$returnId, $variantId, $qty, $goodQty, $damQty, $defQty, $classification, json_encode($scannedQrCodes)]
                 );
 
                 StockService::decrease(
@@ -4693,11 +4721,23 @@ class WhatsappController {
             'dispatch_date' => $ret['created_at'],
             'remarks'       => ''
         ];
+        $notesData = [];
         if (!empty($ret['notes'])) {
             $decoded = json_decode($ret['notes'], true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $notesData = $decoded;
                 $outward = array_merge($outward, $decoded);
                 $ret['notes'] = $outward['remarks'] ?? '';
+            }
+        }
+        $notesTagsByVariant = [];
+        foreach (($notesData['scanned_tags'] ?? []) as $scan) {
+            $variantId = (int)($scan['variant_id'] ?? 0);
+            $tags = $scan['tag_codes'] ?? (!empty($scan['tag_code']) ? [$scan['tag_code']] : []);
+            if ($variantId <= 0 || !is_array($tags)) continue;
+            foreach ($tags as $tag) {
+                $tag = trim((string)$tag);
+                if ($tag !== '') $notesTagsByVariant[$variantId][$tag] = $tag;
             }
         }
         $ret['outward_logistics'] = $outward;
@@ -4723,6 +4763,23 @@ class WhatsappController {
 
         foreach ($items as &$it) {
             $totalReturnedQty += (int)$it['returned_qty'];
+            $savedQrCodes = json_decode((string)($it['scanned_qr_codes'] ?? ''), true);
+            if (!is_array($savedQrCodes)) {
+                $savedQrCodes = array_values($notesTagsByVariant[(int)$it['variant_id']] ?? []);
+            }
+            if (!$savedQrCodes && (int)$it['returned_qty'] === 1) {
+                $channelIds = $this->getWhatsappChannelIds();
+                $channelId = (int)($ret['source_id'] ?? 0);
+                if ($channelId > 0 && in_array($channelId, $channelIds, true)) {
+                    $pieceTags = $this->resolveChannelPieceTags($channelId, (int)$it['variant_id'], $channelIds, 'WHATSAPP')['all'];
+                    if (count($pieceTags) === 1) $savedQrCodes = $pieceTags;
+                }
+            }
+            $it['scanned_qr_codes'] = array_values(array_filter(
+                array_map('strval', $savedQrCodes),
+                static fn(string $qr): bool => trim($qr) !== ''
+            ));
+            $it['returned_tag_code'] = $it['scanned_qr_codes'][0] ?? '';
             $it['image'] = !empty($it['variant_image']) ? $it['variant_image'] : ($it['product_image'] ?? null);
             $it['unit_price'] = (float)($it['selling_price'] ?? ($it['mrp'] ?? 0));
             $it['line_total'] = $it['unit_price'] * (int)$it['returned_qty'];
@@ -4925,10 +4982,13 @@ class WhatsappController {
             $hasQr = false;
             $notesJson = json_decode((string)($rr['notes'] ?? ''), true);
             foreach (($notesJson['scanned_tags'] ?? []) as $scan) {
-                if ((int)($scan['variant_id'] ?? 0) === $variantId && !empty($scan['tag_code'])) {
-                    $tag = trim($scan['tag_code']);
-                    if (!in_array($tag, $returnedTags, true)) $returnedTags[] = $tag;
-                    $hasQr = true;
+                if ((int)($scan['variant_id'] ?? 0) === $variantId) {
+                    $scannedTags = $scan['tag_codes'] ?? (!empty($scan['tag_code']) ? [$scan['tag_code']] : []);
+                    foreach ($scannedTags as $scannedTag) {
+                        $tag = trim((string)$scannedTag);
+                        if ($tag !== '' && !in_array($tag, $returnedTags, true)) $returnedTags[] = $tag;
+                        if ($tag !== '') $hasQr = true;
+                    }
                 }
             }
             if (!empty($rr['notes']) && !is_array($notesJson)) {

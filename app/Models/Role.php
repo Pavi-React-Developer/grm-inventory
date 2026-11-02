@@ -22,7 +22,7 @@ class Role {
         'PRODUCTION' => [
             'production', 'sellers', 'damages', 'catalog', 'programs', 'cutting', 'wastage',
             'stitching', 'stitching_wastage', 'production_expenses', 'labels', 'qc', 'inventory',
-            'batches', 'outward', 'reports_production'
+            'batches', 'outward', 'warehouse_rework', 'reports_production'
         ],
         'WAREHOUSE'  => [
             'warehouse', 'inward', 'stock', 'wh_sellers', 'wh_catalog', 'wh_labels', 'purchases', 'purchases_returns', 'allocation',
@@ -31,11 +31,11 @@ class Role {
             'reports_warehouse', 'reports_purchase', 'reports_inventory'
         ],
         'WHATSAPP'   => [
-            'whatsapp_dashboard', 'whatsapp_orders', 'whatsapp_inward', 'whatsapp_inventory', 'whatsapp_damage', 'whatsapp_returns', 'whatsapp_return_to_wh', 'whatsapp_expenses',
+            'whatsapp_dashboard', 'whatsapp_orders', 'whatsapp_inward', 'whatsapp_inventory', 'whatsapp_damage', 'whatsapp_returns', 'whatsapp_return_to_wh', 'whatsapp_customers', 'whatsapp_expenses',
             'reports_whatsapp', 'reports_online'
         ],
         'WEBSITE'    => [
-            'website_dashboard', 'website_orders', 'website_inward', 'website_inventory', 'website_damage', 'website_returns', 'website_return_to_wh', 'website_expenses',
+            'website_dashboard', 'website_orders', 'website_inward', 'website_inventory', 'website_damage', 'website_returns', 'website_return_to_wh', 'website_customers', 'website_expenses',
             'reports_website', 'reports_online'
         ],
         'SHOP'       => [
@@ -139,14 +139,12 @@ class Role {
             return array_values(array_filter(array_map('intval', $permissionIds)));
         }
 
-        // Determine all modules that belong EXCLUSIVELY to other departments
-        $otherDeptsModules = [];
+        $moduleDepartments = [];
         foreach ($allDeptMap as $dept => $mods) {
-            if ($dept !== $department) {
-                $otherDeptsModules = array_merge($otherDeptsModules, $mods);
+            foreach ($mods as $mod) {
+                $moduleDepartments[$mod][] = $dept;
             }
         }
-        $otherDeptsModules = array_unique($otherDeptsModules);
 
         // Fetch modules for the given permission IDs
         $cleanIds = array_values(array_filter(array_map('intval', $permissionIds)));
@@ -160,9 +158,8 @@ class Role {
 
         $allowedIds = [];
         foreach ($rows as $row) {
-            $mod = $row['module'];
-            // If the module belongs to another department's exclusive list, reject it
-            if (in_array($mod, $otherDeptsModules, true)) {
+            $moduleDepts = $moduleDepartments[$row['module']] ?? [];
+            if ($moduleDepts && !in_array($department, $moduleDepts, true)) {
                 continue;
             }
             $allowedIds[] = (int)$row['id'];
@@ -284,6 +281,7 @@ class Role {
                     'inventory'           => ['name' => 'Inventory', 'icon' => 'bi-boxes', 'desc' => 'Unassigned lot staging bays and finished goods floor storage', 'department' => 'PRODUCTION'],
                     'batches'             => ['name' => 'Batches', 'icon' => 'bi-box-seam', 'desc' => 'Carton packing, SKU bundles, and master box packaging', 'department' => 'PRODUCTION'],
                     'outward'             => ['name' => 'Outward', 'icon' => 'bi-truck', 'desc' => 'Delivery challans and outward dispatch to Central Warehouses', 'department' => 'PRODUCTION'],
+                    'warehouse_rework'    => ['name' => 'Warehouse Rework', 'icon' => 'bi-tools', 'desc' => 'Repair and dispatch damaged warehouse goods', 'department' => 'PRODUCTION'],
                 ]
             ],
             'warehouse' => [
@@ -307,6 +305,7 @@ class Role {
                     'returns'            => ['name' => 'Returns', 'icon' => 'bi-arrow-return-left', 'desc' => 'Shop return packages, restocking evaluation, and RTO parcels', 'department' => 'WAREHOUSE'],
                     'shop_requests'      => ['name' => 'Shop Requests', 'icon' => 'bi-inbox', 'desc' => 'Store urgent replenishment indents and picking authorizations', 'department' => 'WAREHOUSE'],
                     'warehouse_expenses' => ['name' => 'Warehouse Expenses', 'icon' => 'bi-cash-stack', 'desc' => 'Freight charges, utility bills, warehouse maintenance, and vouchers', 'department' => 'WAREHOUSE'],
+                    'sales_channels'     => ['name' => 'Sales Channels', 'icon' => 'bi-broadcast', 'desc' => 'Manage warehouse sales-channel connections', 'department' => 'WAREHOUSE'],
                 ]
             ],
             'whatsapp' => [
@@ -321,6 +320,8 @@ class Role {
                     'whatsapp_orders'    => ['name' => 'Orders History', 'icon' => 'bi-clock-history', 'desc' => 'WhatsApp B2B customer orders, order processing, and packing queues', 'department' => 'WHATSAPP'],
                     'whatsapp_damage'    => ['name' => 'Damage Management', 'icon' => 'bi-exclamation-octagon', 'desc' => 'Defective parcels, transit damages, salvage logs, and gate passes', 'department' => 'WHATSAPP'],
                     'whatsapp_returns'   => ['name' => 'Returns & Exchanges', 'icon' => 'bi-arrow-left-right', 'desc' => 'Customer returns, exchanges, restocking inspections, and credit notes', 'department' => 'WHATSAPP'],
+                    'whatsapp_return_to_wh' => ['name' => 'Return to Warehouse', 'icon' => 'bi-box-arrow-up-right', 'desc' => 'Return WhatsApp channel products to the warehouse', 'department' => 'WHATSAPP'],
+                    'whatsapp_customers' => ['name' => 'Customers', 'icon' => 'bi-people', 'desc' => 'WhatsApp channel customer directory and order history', 'department' => 'WHATSAPP'],
                     'whatsapp_expenses'  => ['name' => 'Channel Expenses', 'icon' => 'bi-cash-stack', 'desc' => 'Channel packaging costs, courier freight, petty cash, and payment vouchers', 'department' => 'WHATSAPP'],
                 ]
             ],
@@ -336,6 +337,8 @@ class Role {
                     'website_orders'    => ['name' => 'Orders History', 'icon' => 'bi-clock-history', 'desc' => 'Direct web store orders, payment verifications, and shipping manifests', 'department' => 'WEBSITE'],
                     'website_damage'    => ['name' => 'Damage Management', 'icon' => 'bi-exclamation-octagon', 'desc' => 'Customer trial defects, warehouse damages, write-offs, and outward salvage', 'department' => 'WEBSITE'],
                     'website_returns'   => ['name' => 'Returns & Exchanges', 'icon' => 'bi-arrow-left-right', 'desc' => 'Courier RTO packages, customer return requests, and refund verifications', 'department' => 'WEBSITE'],
+                    'website_return_to_wh' => ['name' => 'Return to Warehouse', 'icon' => 'bi-box-arrow-up-right', 'desc' => 'Return Website channel products to the warehouse', 'department' => 'WEBSITE'],
+                    'website_customers' => ['name' => 'Customers', 'icon' => 'bi-people', 'desc' => 'Website customer directory and order history', 'department' => 'WEBSITE'],
                     'website_expenses'  => ['name' => 'Channel Expenses', 'icon' => 'bi-cash-stack', 'desc' => 'Hosting, domain fees, courier charges, gateway commissions, and vouchers', 'department' => 'WEBSITE'],
                 ]
             ],
@@ -379,14 +382,15 @@ class Role {
                     'reports_overview'      => ['name' => 'Overview & P&L', 'icon' => 'bi-pie-chart', 'desc' => 'Executive summary, revenue, gross profit, expenditure, and net profitability', 'department' => 'ALL'],
                     'reports_profitability' => ['name' => 'Revenue & Loss', 'icon' => 'bi-cash-coin', 'desc' => 'Cost of goods sold (COGS), margins, revenue breakdown, and financial health', 'department' => 'ALL'],
                     'reports_sales'         => ['name' => 'Multi-Channel Sales', 'icon' => 'bi-cart-check', 'desc' => 'Combined sales analytics across POS Counter, WhatsApp, and Website', 'department' => 'ALL'],
-                    'reports_online'       => ['name' => 'Online & Digital Reports', 'icon' => 'bi-broadcast', 'desc' => 'Consolidated Website and WhatsApp channel sales, orders, payments, and performance', 'department' => 'ALL'],
+                    'reports_online'       => ['name' => 'Online & Digital Reports', 'icon' => 'bi-broadcast', 'desc' => 'Consolidated Website and WhatsApp channel sales, orders, payments, and performance', 'department' => 'WHATSAPP,WEBSITE'],
                     'reports_website'       => ['name' => 'Website Reports', 'icon' => 'bi-globe2', 'desc' => 'Online visitor conversion, sales volume, courier delivery rate, and returns', 'department' => 'WEBSITE'],
                     'reports_whatsapp'      => ['name' => 'WhatsApp Reports', 'icon' => 'bi-whatsapp', 'desc' => 'WhatsApp B2B sales throughput, top buyers, channel revenue, and growth', 'department' => 'WHATSAPP'],
                     'reports_production'    => ['name' => 'Production Reports', 'icon' => 'bi-gear', 'desc' => 'Floor cutting yields, tailor piece-rates, sewing output, and scrap wastage', 'department' => 'PRODUCTION'],
                     'reports_warehouse'     => ['name' => 'Warehouse Reports', 'icon' => 'bi-buildings', 'desc' => 'Storage utilization, inbound receipts, dispatch turnaround, and stock turnover', 'department' => 'WAREHOUSE'],
                     'reports_purchase'      => ['name' => 'Purchase Reports', 'icon' => 'bi-truck', 'desc' => 'Supplier procurement volume, vendor purchase bills, returns, and payment dues', 'department' => 'WAREHOUSE'],
                     'reports_shop'          => ['name' => 'Shop Reports', 'icon' => 'bi-shop', 'desc' => 'Store sales receipts, cashier performance, daily cash register, and customer CRM', 'department' => 'SHOP'],
-                    'reports_inventory'     => ['name' => 'Inventory Reports', 'icon' => 'bi-boxes', 'desc' => 'Real-time stock valuation across all units, slow-moving items, and dead stock', 'department' => 'ALL'],
+                    'reports_inventory'     => ['name' => 'Inventory Reports', 'icon' => 'bi-boxes', 'desc' => 'Real-time stock valuation across all units, slow-moving items, and dead stock', 'department' => 'WAREHOUSE'],
+                    'reports'               => ['name' => 'General Reports', 'icon' => 'bi-file-earmark-bar-graph', 'desc' => 'Access the general production reports page', 'department' => 'ALL'],
                 ]
             ],
             'staff' => [
@@ -408,6 +412,8 @@ class Role {
                     'audit'    => ['name' => 'Audit Logs', 'icon' => 'bi-journal-text', 'desc' => 'System activity log, user IP address, and change timestamps', 'department' => 'ALL'],
                     'settings' => ['name' => 'Settings', 'icon' => 'bi-sliders', 'desc' => 'Company profile, invoice prefixes, tax rates, and configurations', 'department' => 'ALL'],
                     'backup'   => ['name' => 'Backup', 'icon' => 'bi-database-down', 'desc' => 'Create SQL snapshots, download backups, and restore data', 'department' => 'ALL'],
+                    'master'   => ['name' => 'Master Data', 'icon' => 'bi-database', 'desc' => 'Manage shared master records', 'department' => 'ALL'],
+                    'notifications' => ['name' => 'Notifications', 'icon' => 'bi-bell', 'desc' => 'View, read, and clear system notifications', 'department' => 'ALL'],
                 ]
             ]
         ];

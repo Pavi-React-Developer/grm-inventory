@@ -310,6 +310,7 @@ thead th.sticky-col-select {
                                     <tr>
                                         <th class="ps-3" style="width: 40px;">#</th>
                                         <th>Selected Product</th>
+                                        <th>Scanned Product QR</th>
                                         <th>Size &amp; Color</th>
                                         <th class="text-center" style="width: 140px;">Return Qty</th>
                                         <th style="width: 160px;">Return Condition</th>
@@ -323,7 +324,7 @@ thead th.sticky-col-select {
                                 </tbody>
                                 <tfoot class="table-light">
                                     <tr class="fw-bold text-dark">
-                                        <td colspan="3" class="ps-3 text-uppercase small text-muted">Consignment Total:</td>
+                                        <td colspan="4" class="ps-3 text-uppercase small text-muted">Consignment Total:</td>
                                         <td class="text-center text-danger fs-6" id="selectedTableTotalQty">0 pcs</td>
                                         <td></td>
                                         <td class="text-end small text-muted">Total Value:</td>
@@ -432,6 +433,7 @@ thead th.sticky-col-select {
                                             data-qr-code-raw="<?= e($item['qr_code'] ?? '') ?>"
                                             data-piece-tags="<?= e(strtolower(implode('|', array_map('strval', $item['piece_tags'] ?? [])))) ?>"
                                             data-piece-tags-raw="<?= e(implode('|', array_map('strval', $item['piece_tags'] ?? []))) ?>"
+                                            data-all-piece-tags="<?= e(strtolower(implode('|', array_map('strval', $item['piece_tags_all'] ?? [])))) ?>"
                                             data-category-type="<?= e(strtoupper($item['category_type'] ?? 'NORMAL')) ?>"
                                             data-complementary="<?= !empty($item['is_complementary']) ? '1' : '0' ?>"
                                             data-qr-type="<?= e(strtoupper($item['qr_type'] ?? '')) ?>"
@@ -1597,7 +1599,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const row = candidates.find(candidate => {
             const exactValues = [candidate.getAttribute('data-qr-code'), candidate.getAttribute('data-sku'), candidate.getAttribute('data-code')]
                 .filter(Boolean).map(value => value.trim().toLowerCase());
-            const pieceTags = (candidate.getAttribute('data-piece-tags') || '').split('|').map(value => value.trim().toLowerCase()).filter(Boolean);
+            const tagAttribute = returnRowAllowsMultiple(candidate) ? 'data-all-piece-tags' : 'data-piece-tags';
+            const pieceTags = (candidate.getAttribute(tagAttribute) || '').split('|').map(value => value.trim().toLowerCase()).filter(Boolean);
             return exactValues.includes(code) || pieceTags.includes(code);
         });
         if (!row) {
@@ -1707,11 +1710,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const name = row?.getAttribute('data-name-raw') || 'Item';
                 const code = row?.getAttribute('data-code-raw') || '';
                 const img = row?.getAttribute('data-image') || '';
-                const qrTags = (row?.getAttribute('data-piece-tags-raw') || '').split('|').map(tag => tag.trim()).filter(Boolean);
-                const scannedQr = row?.getAttribute('data-selected-return-qr')
-                    || row?.getAttribute('data-qr-code-raw')
-                    || qrTags[0]
-                    || '';
+                let scannedQrs = [];
+                try {
+                    const parsedQrs = JSON.parse(row?.getAttribute('data-selected-return-qrs') || '[]');
+                    if (Array.isArray(parsedQrs)) scannedQrs = parsedQrs.filter(qr => typeof qr === 'string' && qr.trim() !== '');
+                } catch (error) {
+                    console.error('Unable to render scanned return QR tags.', error);
+                }
                 const size = row?.getAttribute('data-size') || '-';
                 const color = row?.getAttribute('data-color') || '-';
                 const lineTotal = price * q;
@@ -1738,9 +1743,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div>
                                     <strong class="text-dark d-block text-truncate" style="max-width: 180px;">${escapeHtml(name)}</strong>
                                     ${code ? `<span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace mt-1" style="font-size: 10px;">Code: ${escapeHtml(code)}</span>` : ''}
-                                    ${scannedQr ? `<span class="badge bg-light text-dark border font-monospace mt-1 d-block text-truncate" style="font-size: 10px; max-width: 220px;" title="Scanned QR"><i class="bi bi-qr-code text-warning me-1"></i>${escapeHtml(scannedQr)}</span>` : ''}
                                 </div>
                             </div>
+                        </td>
+                        <td>
+                            ${scannedQrs.length
+                                ? scannedQrs.map(qr => `<span class="badge bg-warning-subtle text-dark border border-warning-subtle font-monospace d-block mb-1">${escapeHtml(qr)}</span>`).join('')
+                                : '<span class="text-muted">-</span>'}
                         </td>
                         <td>
                             <span class="badge bg-secondary-subtle text-secondary">${escapeHtml(size)}</span>

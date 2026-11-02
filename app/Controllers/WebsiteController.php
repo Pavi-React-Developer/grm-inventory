@@ -2475,7 +2475,7 @@ class WebsiteController {
      * List Outward Return Batches
      */
     public function websiteDamageOutwardList(): void {
-        if (!hasPermission('website_damage', 'outward')) {
+        if (!hasPermission('website_damage', 'view') && !hasPermission('website_damage', 'outward')) {
             Session::flash('error', 'Access denied. You do not have permission to view Website damage outward batches.');
             Response::redirect(url('warehouse/website-orders/damage'));
             return;
@@ -4396,6 +4396,7 @@ class WebsiteController {
             $vid = (int)$item['variant_id'];
             $pieceRes = $this->resolveChannelPieceTags($chanId, $vid, $chanIds, 'WEBSITE');
             $item['piece_tags'] = ($item['stock_state'] === 'DAMAGED') ? $pieceRes['damaged'] : $pieceRes['available'];
+            $item['piece_tags_all'] = $pieceRes['all'];
 
             $catName = $item['category_name'] ?? 'General';
             if (!in_array($catName, $categories)) {
@@ -4808,16 +4809,6 @@ class WebsiteController {
                     throw new RuntimeException("Insufficient {$stockState} stock for SKU '{$sku}'. Requested: {$qty}, Available: {$totalStockAvailable}");
                 }
 
-                $goodQty = ($classification === 'GOOD') ? $qty : 0;
-                $damQty  = ($classification === 'DAMAGED') ? $qty : 0;
-                $defQty  = ($classification === 'DEFECTIVE') ? $qty : 0;
-
-                Database::execute(
-                    "INSERT INTO warehouse_return_items (warehouse_return_id, variant_id, returned_qty, good_qty, damaged_qty, defective_qty, classification)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    [$returnId, $variantId, $qty, $goodQty, $damQty, $defQty, $classification]
-                );
-                $returnItemId = (int)Database::lastInsertId();
                 $rawQrCodes = $it['scanned_qr_codes'] ?? '[]';
                 $scannedQrCodes = is_array($rawQrCodes) ? $rawQrCodes : json_decode((string)$rawQrCodes, true);
                 if (!is_array($scannedQrCodes)) {
@@ -4830,6 +4821,17 @@ class WebsiteController {
                 if (count($scannedQrCodes) > $qty || array_filter($scannedQrCodes, static fn(string $qr): bool => strlen($qr) > 255)) {
                     throw new InvalidArgumentException('Scanned product QR tags do not match the selected return quantity.');
                 }
+
+                $goodQty = ($classification === 'GOOD') ? $qty : 0;
+                $damQty  = ($classification === 'DAMAGED') ? $qty : 0;
+                $defQty  = ($classification === 'DEFECTIVE') ? $qty : 0;
+
+                Database::execute(
+                    "INSERT INTO warehouse_return_items (warehouse_return_id, variant_id, returned_qty, good_qty, damaged_qty, defective_qty, classification, scanned_qr_codes)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [$returnId, $variantId, $qty, $goodQty, $damQty, $defQty, $classification, json_encode($scannedQrCodes)]
+                );
+                $returnItemId = (int)Database::lastInsertId();
                 if ($scannedQrCodes) {
                     $itemQrCodes[$returnItemId] = $scannedQrCodes;
                 }
@@ -4954,10 +4956,24 @@ class WebsiteController {
 
         foreach ($items as &$it) {
             $totalReturnedQty += (int)$it['returned_qty'];
+            $qrCodes = json_decode((string)($it['scanned_qr_codes'] ?? ''), true);
+            if (!is_array($qrCodes)) {
+                $qrCodes = $itemQrCodes[(string)$it['id']] ?? [];
+            }
             $it['scanned_qr_codes'] = array_values(array_filter(
-                array_map('strval', $itemQrCodes[(string)$it['id']] ?? []),
+                array_map('strval', $qrCodes),
                 static fn(string $qr): bool => trim($qr) !== ''
             ));
+            if (!$it['scanned_qr_codes'] && (int)$it['returned_qty'] === 1) {
+                $channelIds = $this->getWebsiteChannelIds();
+                $channelId = (int)($ret['source_id'] ?? 0);
+                if ($channelId > 0 && in_array($channelId, $channelIds, true)) {
+                    $pieceTags = $this->resolveChannelPieceTags($channelId, (int)$it['variant_id'], $channelIds, 'WEBSITE')['all'];
+                    if (count($pieceTags) === 1) {
+                        $it['scanned_qr_codes'] = $pieceTags;
+                    }
+                }
+            }
             $it['image'] = !empty($it['variant_image']) ? $it['variant_image'] : ($it['product_image'] ?? null);
             $it['unit_price'] = (float)($it['selling_price'] ?? ($it['mrp'] ?? 0));
             $it['line_total'] = $it['unit_price'] * (int)$it['returned_qty'];
@@ -4980,7 +4996,7 @@ class WebsiteController {
 
         // 1. Inward Allocation Tags (in allocation order)
         $allocItems = Database::fetchAll(
-            "SELECT ai.selected_qr_codes, wa.allocation_number
+            "SELECT ai.selected_qr_codes, ai.received_qr_codes, ai.received_qty, wa.allocation_number
              FROM allocation_items ai
              JOIN warehouse_allocations wa ON ai.allocation_id = wa.id
              WHERE ai.variant_id = ? 
@@ -4990,29 +5006,37 @@ class WebsiteController {
         );
 
         $allAllocatedTags = [];
+        $allAllocatedTagKeys = [];
         $allocRef = '';
+        $parseTags = static function ($rawTags): array {
+            $decoded = json_decode((string)$rawTags, true);
+            $tags = is_array($decoded) ? $decoded : explode(',', (string)$rawTags);
+            $parsedTags = [];
+            foreach ($tags as $tag) {
+                $tag = is_array($tag)
+                    ? ($tag['tag_code'] ?? ($tag['qr_code'] ?? ''))
+                    : (string)$tag;
+                $tag = trim($tag);
+                if ($tag !== '') {
+                    $parsedTags[strtoupper($tag)] = $tag;
+                }
+            }
+            return array_values($parsedTags);
+        };
         foreach ($allocItems as $ai) {
             if (empty($allocRef) && !empty($ai['allocation_number'])) {
                 $allocRef = $ai['allocation_number'];
             }
-            if (!empty($ai['selected_qr_codes'])) {
-                $decoded = json_decode($ai['selected_qr_codes'], true);
-                if (is_array($decoded)) {
-                    foreach ($decoded as $t) {
-                        $tStr = is_array($t) ? ($t['tag_code'] ?? ($t['qr_code'] ?? '')) : (string)$t;
-                        $tStr = trim($tStr);
-                        if ($tStr && !in_array($tStr, $allAllocatedTags)) {
-                            $allAllocatedTags[] = $tStr;
-                        }
-                    }
-                } else {
-                    $tags = explode(',', $ai['selected_qr_codes']);
-                    foreach ($tags as $t) {
-                        $t = trim($t);
-                        if ($t && !in_array($t, $allAllocatedTags)) {
-                            $allAllocatedTags[] = $t;
-                        }
-                    }
+            $receivedTags = $parseTags($ai['received_qr_codes'] ?? '');
+            $allocationTags = $receivedTags ?: $parseTags($ai['selected_qr_codes'] ?? '');
+            if ($receivedTags && (int)($ai['received_qty'] ?? 0) > 0) {
+                $allocationTags = array_slice($receivedTags, 0, (int)$ai['received_qty']);
+            }
+            foreach ($allocationTags as $tag) {
+                $tagKey = strtoupper($tag);
+                if (!isset($allAllocatedTagKeys[$tagKey])) {
+                    $allAllocatedTagKeys[$tagKey] = true;
+                    $allAllocatedTags[] = $tag;
                 }
             }
         }
@@ -5202,7 +5226,7 @@ class WebsiteController {
 
         // 6. Returned to Warehouse piece tags
         $returnedRows = Database::fetchAll(
-            "SELECT wr.notes, wri.returned_qty, wri.classification
+            "SELECT wr.notes, wri.id as return_item_id, wri.scanned_qr_codes, wri.returned_qty, wri.classification
              FROM warehouse_return_items wri
              JOIN warehouse_returns wr ON wri.warehouse_return_id = wr.id
              WHERE wri.variant_id = ?
@@ -5216,9 +5240,28 @@ class WebsiteController {
 
         foreach ($returnedRows as $rr) {
             $hasQr = false;
+            $savedTags = json_decode((string)($rr['scanned_qr_codes'] ?? ''), true);
+            if (!is_array($savedTags)) {
+                $returnNotes = json_decode((string)($rr['notes'] ?? ''), true);
+                $savedTags = is_array($returnNotes)
+                    ? ($returnNotes['item_qr_codes'][(string)$rr['return_item_id']] ?? [])
+                    : [];
+            }
+            if (is_array($savedTags)) {
+                foreach ($savedTags as $savedTag) {
+                    $savedTag = trim((string)$savedTag);
+                    if ($savedTag !== '' && !in_array($savedTag, $returnedTags, true)) {
+                        $returnedTags[] = $savedTag;
+                        $hasQr = true;
+                    }
+                }
+            }
             if (!empty($rr['notes'])) {
                 $notesStr = $rr['notes'];
-                if (str_starts_with($notesStr, 'QR: ')) {
+                $decodedNotes = json_decode($notesStr, true);
+                if (is_array($decodedNotes)) {
+                    $notesStr = '';
+                } elseif (str_starts_with($notesStr, 'QR: ')) {
                     $notesStr = substr($notesStr, 4);
                 }
                 $tags = array_map('trim', explode(',', $notesStr));

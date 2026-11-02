@@ -1,6 +1,6 @@
 <?php
 /**
- * Enterprise Asset Management — Register Asset & All Assets List Hub
+ * Asset register
  */
 $summary = $metrics['summary'] ?? [];
 $totalAssets = (int)($summary['total_assets'] ?? 0);
@@ -106,14 +106,14 @@ $utilizationRate = $totalAssets > 0 ? round(($inUseCount / $totalAssets) * 100, 
 <div class="page-header d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
     <div>
         <h2 class="mb-1 d-flex align-items-center gap-2 fw-bold text-dark">
-            <i class="bi bi-table text-primary"></i> Asset Register &amp; Inventory Hub
+            <i class="bi bi-table text-primary"></i> Asset Register
         </h2>
-        <span class="text-secondary small">Comprehensive equipment inventory, live valuation, condition tracking, and instant dynamic filtering.</span>
+        <span class="text-secondary small">Search and manage assets across all locations.</span>
     </div>
     <div>
         <a href="<?= url('asset/create') ?>" class="btn btn-primary btn-lg shadow-sm d-inline-flex align-items-center gap-2 px-4 fw-semibold">
             <i class="bi bi-plus-circle-fill fs-5"></i>
-            <span>Register Asset</span>
+            <span>New Asset</span>
         </a>
     </div>
 </div>

@@ -335,7 +335,7 @@ $endDate = $endDate ?? date('Y-m-d');
 <!-- 5. RECORD WAREHOUSE EXPENSE MODAL -->
 <!-- ========================================================================= -->
 <div class="modal fade" id="recordExpenseModal" tabindex="-1" aria-labelledby="recordExpenseModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
             <div class="modal-header bg-primary text-white py-3">
                 <h5 class="modal-title fw-bold" id="recordExpenseModalLabel">
@@ -393,12 +393,6 @@ $endDate = $endDate ?? date('Y-m-d');
                             <input type="text" name="paid_to" class="form-control" placeholder="e.g. Sri Balaji Packaging / Tea Stall / Vendor" required>
                         </div>
 
-                        <!-- Vendor Contact / Phone -->
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold text-dark">Vendor Phone</label>
-                            <input type="text" name="vendor_phone" class="form-control" placeholder="e.g. 9840123456">
-                        </div>
-
                         <!-- Payment Method -->
                         <div class="col-md-4">
                             <label class="form-label small fw-bold text-dark">Payment Mode <span class="text-danger">*</span></label>
@@ -427,46 +421,52 @@ $endDate = $endDate ?? date('Y-m-d');
                             <input type="date" name="expense_date" class="form-control" value="<?= date('Y-m-d') ?>">
                         </div>
 
-                        <!-- Logistics Metadata (Optional) -->
                         <div class="col-12">
-                            <div class="p-3 bg-light rounded-3 border">
-                                <div class="d-flex align-items-center justify-content-between mb-2">
-                                    <h6 class="fw-bold text-primary mb-0 small text-uppercase">
-                                        <i class="bi bi-truck me-1"></i>Logistics &amp; Transport Details <span class="badge bg-secondary-subtle text-secondary fw-normal ms-1" style="font-size: 10px;">Optional</span>
-                                    </h6>
-                                    <span class="text-muted" style="font-size: 11px;">(Skip if recording Tea, Snacks, Utilities, or General Bills)</span>
+                            <details>
+                                <summary class="small fw-semibold text-primary cursor-pointer">Additional details (optional)</summary>
+                                <div class="row g-3 mt-1">
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-dark">Vendor Phone</label>
+                                        <input type="text" name="vendor_phone" class="form-control" placeholder="e.g. 9840123456">
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="p-3 bg-light rounded-3 border">
+                                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                                <h6 class="fw-bold text-primary mb-0 small text-uppercase">
+                                                    <i class="bi bi-truck me-1"></i>Logistics &amp; Transport Details
+                                                </h6>
+                                                <span class="text-muted" style="font-size: 11px;">Skip for general expenses</span>
+                                            </div>
+                                            <div class="row g-2">
+                                                <div class="col-md-4">
+                                                    <label class="form-label small text-muted mb-1">Transporter Name</label>
+                                                    <input type="text" name="transporter_name" class="form-control form-control-sm" placeholder="e.g. VRL Logistics">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label small text-muted mb-1">Vehicle #</label>
+                                                    <input type="text" name="vehicle_number" class="form-control form-control-sm" placeholder="e.g. TN-01-AB-1234">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label small text-muted mb-1">Bill / LR #</label>
+                                                    <input type="text" name="invoice_number" class="form-control form-control-sm" placeholder="e.g. INV-9876">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small fw-bold text-dark d-flex align-items-center justify-content-between">
+                                            <span><i class="bi bi-paperclip me-1"></i>Attach Bill / Receipt / Invoice Copy</span>
+                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size: 0.7rem;"><i class="bi bi-cloud-arrow-up me-1"></i>Cloudinary CDN</span>
+                                        </label>
+                                        <input type="file" name="receipt_file" class="form-control" accept="image/*,.pdf">
+                                        <div class="form-text small text-muted" style="font-size: 11px;"><i class="bi bi-cloud-check text-success me-1"></i>JPG, PNG, WEBP or PDF.</div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small text-muted">Internal Remarks / Notes</label>
+                                        <textarea name="notes" class="form-control" rows="2" placeholder="Additional details, approval remarks, or bill descriptions..."></textarea>
+                                    </div>
                                 </div>
-                                <div class="row g-2">
-                                    <div class="col-md-4">
-                                        <label class="form-label small text-muted mb-1">Transporter Name (Optional)</label>
-                                        <input type="text" name="transporter_name" class="form-control form-control-sm" placeholder="e.g. VRL Logistics">
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label class="form-label small text-muted mb-1">Vehicle # (Optional)</label>
-                                        <input type="text" name="vehicle_number" class="form-control form-control-sm" placeholder="e.g. TN-01-AB-1234">
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label class="form-label small text-muted mb-1">Bill / LR # (Optional)</label>
-                                        <input type="text" name="invoice_number" class="form-control form-control-sm" placeholder="e.g. INV-9876">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Bill / Receipt Upload (Optional) -->
-                        <div class="col-12">
-                            <label class="form-label small fw-bold text-dark d-flex align-items-center justify-content-between">
-                                <span><i class="bi bi-paperclip me-1"></i>Attach Bill / Receipt / Invoice Copy (Optional)</span>
-                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size: 0.7rem;"><i class="bi bi-cloud-arrow-up me-1"></i>Cloudinary CDN</span>
-                            </label>
-                            <input type="file" name="receipt_file" class="form-control" accept="image/*,.pdf">
-                            <div class="form-text small text-muted" style="font-size: 11px;"><i class="bi bi-cloud-check text-success me-1"></i>Uploaded securely to Cloudinary cloud storage (JPG, PNG, WEBP, PDF)</div>
-                        </div>
-
-                        <!-- Notes / Remarks -->
-                        <div class="col-12">
-                            <label class="form-label small text-muted">Internal Remarks / Notes</label>
-                            <textarea name="notes" class="form-control" rows="2" placeholder="Additional details, approval remarks, or bill descriptions..."></textarea>
+                            </details>
                         </div>
                     </div>
                 </div>

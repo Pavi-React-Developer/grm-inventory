@@ -2336,6 +2336,7 @@ CREATE TABLE `warehouse_return_items` (
   `damaged_qty` int DEFAULT '0',
   `defective_qty` int DEFAULT '0',
   `classification` enum('GOOD','DAMAGED','DEFECTIVE','WRONG_PRODUCT','WRONG_SIZE','MISSING') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'GOOD',
+  `scanned_qr_codes` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   PRIMARY KEY (`id`),
   KEY `warehouse_return_id` (`warehouse_return_id`),
   KEY `variant_id` (`variant_id`),

@@ -410,20 +410,20 @@ if (!empty($authUser['shop_name'])) {
                         </a>
                         <ul class="submenu <?= ($activeModule ?? '') === 'assets' ? 'show' : '' ?>">
                             <?php if (hasPermission('assets', 'view')): ?>
-                            <li><a href="<?= url('asset/dashboard') ?>" class="<?= ($activeMenu ?? '') === 'asset-dashboard' ? 'active' : '' ?>"><i class="bi bi-bar-chart-fill me-1 text-primary"></i> Overview &amp; Dashboard</a></li>
-                            <li><a href="<?= url('asset/list') ?>" class="<?= in_array(($activeMenu ?? ''), ['asset-list', 'asset-create']) ? 'active' : '' ?>"><i class="bi bi-table me-1 text-success"></i> Register Asset</a></li>
+                            <li><a href="<?= url('asset/list') ?>" class="<?= in_array(($activeMenu ?? ''), ['asset-list', 'asset-create']) ? 'active' : '' ?>"><i class="bi bi-table me-1 text-success"></i> Asset Register</a></li>
+                            <li><a href="<?= url('asset/dashboard') ?>" class="<?= ($activeMenu ?? '') === 'asset-dashboard' ? 'active' : '' ?>"><i class="bi bi-bar-chart-fill me-1 text-primary"></i> Overview</a></li>
                             <?php endif; ?>
                             <?php if (hasPermission('asset_scanner', 'view')): ?>
-                            <li><a href="<?= url('asset/scanner') ?>" class="<?= ($activeMenu ?? '') === 'asset-scanner' ? 'active' : '' ?>"><i class="bi bi-qr-code-scan me-1 text-info"></i> QR &amp; Tag Scanner</a></li>
+                            <li><a href="<?= url('asset/scanner') ?>" class="<?= ($activeMenu ?? '') === 'asset-scanner' ? 'active' : '' ?>"><i class="bi bi-qr-code-scan me-1 text-info"></i> Scan Assets</a></li>
                             <?php endif; ?>
                             <?php if (hasPermission('asset_transfers', 'view')): ?>
-                            <li><a href="<?= url('asset/transfers') ?>" class="<?= ($activeMenu ?? '') === 'asset-transfers' ? 'active' : '' ?>"><i class="bi bi-arrow-left-right me-1 text-warning"></i> Inter-Unit Transfers</a></li>
+                            <li><a href="<?= url('asset/transfers') ?>" class="<?= ($activeMenu ?? '') === 'asset-transfers' ? 'active' : '' ?>"><i class="bi bi-arrow-left-right me-1 text-warning"></i> Transfers</a></li>
                             <?php endif; ?>
                             <?php if (hasPermission('asset_maintenance', 'view')): ?>
-                            <li><a href="<?= url('asset/maintenance') ?>" class="<?= ($activeMenu ?? '') === 'asset-maintenance' ? 'active' : '' ?>"><i class="bi bi-wrench-adjustable me-1 text-danger"></i> Maintenance &amp; AMC</a></li>
+                            <li><a href="<?= url('asset/maintenance') ?>" class="<?= ($activeMenu ?? '') === 'asset-maintenance' ? 'active' : '' ?>"><i class="bi bi-wrench-adjustable me-1 text-danger"></i> Maintenance</a></li>
                             <?php endif; ?>
                             <?php if (hasPermission('asset_bulk_labels', 'view')): ?>
-                            <li><a href="<?= url('asset/bulk-labels') ?>" target="_blank"><i class="bi bi-qr-code me-1 text-secondary"></i> Bulk QR Labels</a></li>
+                            <li><a href="<?= url('asset/bulk-labels') ?>" target="_blank"><i class="bi bi-qr-code me-1 text-secondary"></i> Print QR Labels</a></li>
                             <?php endif; ?>
                         </ul>
                     </li>

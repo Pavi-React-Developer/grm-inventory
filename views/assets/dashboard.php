@@ -1,6 +1,6 @@
 <?php
 /**
- * Asset Analytics & Visual Graphs Dashboard
+ * Asset overview
  */
 $summary = $metrics['summary'] ?? [];
 $totalAssets = (int)($summary['total_assets'] ?? 0);
@@ -46,19 +46,19 @@ $serviceDue = $metrics['serviceDue'] ?? [];
 <div class="page-header d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
     <div>
         <h2 class="mb-1 d-flex align-items-center gap-2">
-            <i class="bi bi-speedometer2 text-primary"></i> Asset Analytics &amp; Operations Dashboard
+            <i class="bi bi-speedometer2 text-primary"></i> Asset Overview
         </h2>
-        <span class="text-secondary small">Comprehensive real-time portfolio valuation, facility breakdowns, utilization, and maintenance analytics.</span>
+        <span class="text-secondary small">Asset value, current status, and maintenance at a glance.</span>
     </div>
     <div class="d-flex align-items-center flex-wrap gap-2">
         <a href="<?= url('asset/create') ?>" class="btn btn-primary d-inline-flex align-items-center gap-1 shadow-sm">
-            <i class="bi bi-plus-circle me-1"></i> Register New Asset
+            <i class="bi bi-plus-circle me-1"></i> New Asset
         </a>
         <a href="<?= url('asset/scanner') ?>" class="btn btn-outline-dark d-inline-flex align-items-center gap-1">
             <i class="bi bi-qr-code-scan me-1 text-primary"></i> QR Scanner
         </a>
         <a href="<?= url('asset/list') ?>" class="btn btn-outline-secondary d-inline-flex align-items-center gap-1">
-            <i class="bi bi-table me-1"></i> Asset Inventory List
+            <i class="bi bi-table me-1"></i> Asset Register
         </a>
     </div>
 </div>

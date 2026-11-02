@@ -239,11 +239,11 @@ $endDate = $endDate ?? date('Y-m-d');
 
 <!-- Quick Record Website Operating Expense Modal -->
 <div class="modal fade" id="recordWebExpenseModal" tabindex="-1" aria-labelledby="recordWebExpenseModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content rounded-4 border-0 shadow">
             <div class="modal-header bg-primary text-white px-4 py-3">
                 <h5 class="modal-title fw-bold" id="recordWebExpenseModalLabel">
-                    <i class="bi bi-globe me-2"></i>Record Website &amp; Online Commerce Expense
+                    <i class="bi bi-globe me-2"></i>Record Website Expense
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -285,23 +285,10 @@ $endDate = $endDate ?? date('Y-m-d');
                         </div>
 
                         <!-- Payee Name -->
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6">
                             <label class="form-label small fw-semibold text-muted">Paid To / Payee Vendor <span class="text-danger">*</span></label>
                             <input type="text" name="paid_to" id="webPaidTo" class="form-control rounded-3" placeholder="e.g., Tea Stall / Razorpay / Hostinger / Vendor" required minlength="2" maxlength="100">
                             <div class="invalid-feedback" style="font-size: 11px;">Please enter the recipient or vendor name.</div>
-                        </div>
-
-                        <!-- Payee Phone -->
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-semibold text-muted">Vendor / Payee Contact # (Optional)</label>
-                            <input type="tel" name="vendor_phone" id="webVendorPhone" class="form-control rounded-3" placeholder="e.g., 9876543210" pattern="^[6-9][0-9]{9}$" maxlength="10">
-                            <div class="invalid-feedback" style="font-size: 11px;">Must be a valid 10-digit mobile number starting with 6, 7, 8, or 9.</div>
-                        </div>
-
-                        <!-- Invoice / Settlement Ref -->
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-semibold text-muted">Bill / Cash Memo / Inv # (Optional)</label>
-                            <input type="text" name="invoice_number" id="webInvoiceNumber" class="form-control rounded-3" placeholder="e.g., BILL-1029 / INV-9182" maxlength="50">
                         </div>
 
                         <!-- Payment Method -->
@@ -317,27 +304,38 @@ $endDate = $endDate ?? date('Y-m-d');
                             <div class="invalid-feedback" style="font-size: 11px;">Please select a payment mode.</div>
                         </div>
 
-                        <!-- Payment Reference / UTR -->
-                        <div class="col-12 col-md-6">
-                            <label class="form-label small fw-semibold text-muted">Payment Ref / Transaction UTR # (Optional)</label>
-                            <input type="text" name="payment_reference" id="webPaymentRef" class="form-control rounded-3 font-monospace" placeholder="e.g., TXN_91823719827" maxlength="60">
-                        </div>
-
-                        <!-- Bill / Receipt Upload (Optional) -->
                         <div class="col-12">
-                            <label class="form-label small fw-semibold text-muted d-flex align-items-center justify-content-between">
-                                <span><i class="bi bi-paperclip me-1"></i>Attach Bill / Receipt / Invoice Copy (Optional)</span>
-                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size: 0.7rem;"><i class="bi bi-cloud-arrow-up me-1"></i>Cloudinary CDN</span>
-                            </label>
-                            <input type="file" name="receipt_file" id="webReceiptFile" class="form-control rounded-3" accept=".jpg,.jpeg,.png,.webp,.pdf">
-                            <div class="form-text small text-muted" style="font-size: 11px;"><i class="bi bi-cloud-check text-success me-1"></i>Uploaded securely to Cloudinary cloud storage (JPG, PNG, WEBP, PDF - max 10MB)</div>
-                            <div class="invalid-feedback" style="font-size: 11px;">Allowed file types: JPG, PNG, WEBP, PDF (max 10MB).</div>
-                        </div>
-
-                        <!-- Notes / Purpose -->
-                        <div class="col-12">
-                            <label class="form-label small fw-semibold text-muted">Additional Remarks / Cost Allocation Notes</label>
-                            <textarea name="notes" class="form-control rounded-3" rows="2" placeholder="Brief reason for expense..." maxlength="500"></textarea>
+                            <details>
+                                <summary class="small fw-semibold text-primary cursor-pointer">Additional details (optional)</summary>
+                                <div class="row g-3 mt-1">
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label small fw-semibold text-muted">Vendor / Payee Contact #</label>
+                                        <input type="tel" name="vendor_phone" id="webVendorPhone" class="form-control rounded-3" placeholder="10-digit mobile number" pattern="^[6-9][0-9]{9}$" maxlength="10">
+                                        <div class="invalid-feedback" style="font-size: 11px;">Must be a valid 10-digit mobile number starting with 6, 7, 8, or 9.</div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label small fw-semibold text-muted">Bill / Cash Memo / Invoice #</label>
+                                        <input type="text" name="invoice_number" id="webInvoiceNumber" class="form-control rounded-3" placeholder="e.g., BILL-1029 / INV-9182" maxlength="50">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small fw-semibold text-muted">Payment Reference / UTR #</label>
+                                        <input type="text" name="payment_reference" id="webPaymentRef" class="form-control rounded-3 font-monospace" placeholder="Transaction reference (optional)" maxlength="60">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small fw-semibold text-muted d-flex align-items-center justify-content-between">
+                                            <span><i class="bi bi-paperclip me-1"></i>Attach Bill / Receipt / Invoice Copy</span>
+                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size: 0.7rem;"><i class="bi bi-cloud-arrow-up me-1"></i>Cloudinary CDN</span>
+                                        </label>
+                                        <input type="file" name="receipt_file" id="webReceiptFile" class="form-control rounded-3" accept=".jpg,.jpeg,.png,.webp,.pdf">
+                                        <div class="form-text small text-muted" style="font-size: 11px;"><i class="bi bi-cloud-check text-success me-1"></i>JPG, PNG, WEBP or PDF; max 10MB.</div>
+                                        <div class="invalid-feedback" style="font-size: 11px;">Allowed file types: JPG, PNG, WEBP, PDF (max 10MB).</div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small fw-semibold text-muted">Additional Remarks</label>
+                                        <textarea name="notes" class="form-control rounded-3" rows="2" placeholder="Brief reason for expense..." maxlength="500"></textarea>
+                                    </div>
+                                </div>
+                            </details>
                         </div>
                     </div>
                 </div>

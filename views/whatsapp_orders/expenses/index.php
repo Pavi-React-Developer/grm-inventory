@@ -236,7 +236,7 @@ $staffUsers = $staffUsers ?? [];
 
 <!-- Quick Record WhatsApp Operating Expense Modal -->
 <div class="modal fade" id="recordWaExpenseModal" tabindex="-1" aria-labelledby="recordWaExpenseModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content rounded-4 border-0 shadow">
             <div class="modal-header text-white px-4 py-3" style="background-color: #128C7E;">
                 <h5 class="modal-title fw-bold" id="recordWaExpenseModalLabel">
@@ -291,22 +291,6 @@ $staffUsers = $staffUsers ?? [];
                             <div class="invalid-feedback" style="font-size: 11px;">Payee / Vendor name is required (min 2 characters).</div>
                         </div>
 
-                        <!-- Payee Phone -->
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-semibold text-muted">Vendor / Payee Contact # (Optional)</label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-light text-muted"><i class="bi bi-telephone"></i></span>
-                                <input type="tel" name="vendor_phone" id="waVendorPhone" class="form-control rounded-end-3" placeholder="10-digit Phone (e.g. 9876543210)" maxlength="10" inputmode="numeric" pattern="[6-9][0-9]{9}">
-                                <div class="invalid-feedback" style="font-size: 11px;">Must be a valid 10-digit mobile number starting with 6, 7, 8, or 9.</div>
-                            </div>
-                        </div>
-
-                        <!-- Bill / Memo # -->
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-semibold text-muted">Bill / Cash Memo # (Optional)</label>
-                            <input type="text" name="invoice_number" id="waInvoiceNumber" class="form-control rounded-3 font-monospace" placeholder="e.g., BILL-901 / Memo #" maxlength="50">
-                        </div>
-
                         <!-- Payment Method -->
                         <div class="col-12 col-md-6">
                             <label class="form-label small fw-semibold text-muted">Payment Mode <span class="text-danger">*</span></label>
@@ -320,27 +304,41 @@ $staffUsers = $staffUsers ?? [];
                             <div class="invalid-feedback" style="font-size: 11px;">Please select a payment mode.</div>
                         </div>
 
-                        <!-- Payment Reference / UTR -->
-                        <div class="col-12 col-md-6">
-                            <label class="form-label small fw-semibold text-muted">Payment Ref / Transaction UTR # (Optional)</label>
-                            <input type="text" name="payment_reference" id="waPaymentRef" class="form-control rounded-3 font-monospace" placeholder="e.g., UPI Ref 382910482910" maxlength="60">
-                        </div>
-
-                        <!-- Bill / Receipt Upload (Optional) -->
                         <div class="col-12">
-                            <label class="form-label small fw-semibold text-muted d-flex align-items-center justify-content-between">
-                                <span><i class="bi bi-paperclip me-1"></i>Attach Bill / Receipt / Invoice Copy (Optional)</span>
-                                <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 0.7rem;"><i class="bi bi-cloud-arrow-up me-1"></i>Cloudinary CDN</span>
-                            </label>
-                            <input type="file" name="receipt_file" id="waReceiptFile" class="form-control rounded-3" accept=".jpg,.jpeg,.png,.webp,.pdf">
-                            <div class="form-text small text-muted" style="font-size: 11px;"><i class="bi bi-cloud-check text-success me-1"></i>Uploaded securely to Cloudinary cloud storage (JPG, PNG, WEBP, PDF - max 10MB)</div>
-                            <div class="invalid-feedback" style="font-size: 11px;">Allowed file types: JPG, PNG, WEBP, PDF (max 10MB).</div>
-                        </div>
-
-                        <!-- Notes / Purpose -->
-                        <div class="col-12">
-                            <label class="form-label small fw-semibold text-muted">Additional Remarks / Justification</label>
-                            <textarea name="notes" class="form-control rounded-3" rows="2" placeholder="Brief reason for expense..." maxlength="500"></textarea>
+                            <details>
+                                <summary class="small fw-semibold text-primary cursor-pointer">Additional details (optional)</summary>
+                                <div class="row g-3 mt-1">
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label small fw-semibold text-muted">Vendor / Payee Contact #</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light text-muted"><i class="bi bi-telephone"></i></span>
+                                            <input type="tel" name="vendor_phone" id="waVendorPhone" class="form-control rounded-end-3" placeholder="10-digit mobile number" maxlength="10" inputmode="numeric" pattern="[6-9][0-9]{9}">
+                                            <div class="invalid-feedback" style="font-size: 11px;">Must be a valid 10-digit mobile number starting with 6, 7, 8, or 9.</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label small fw-semibold text-muted">Bill / Cash Memo #</label>
+                                        <input type="text" name="invoice_number" id="waInvoiceNumber" class="form-control rounded-3 font-monospace" placeholder="e.g., BILL-901 / Memo #" maxlength="50">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small fw-semibold text-muted">Payment Reference / UTR #</label>
+                                        <input type="text" name="payment_reference" id="waPaymentRef" class="form-control rounded-3 font-monospace" placeholder="Transaction reference (optional)" maxlength="60">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small fw-semibold text-muted d-flex align-items-center justify-content-between">
+                                            <span><i class="bi bi-paperclip me-1"></i>Attach Bill / Receipt / Invoice Copy</span>
+                                            <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 0.7rem;"><i class="bi bi-cloud-arrow-up me-1"></i>Cloudinary CDN</span>
+                                        </label>
+                                        <input type="file" name="receipt_file" id="waReceiptFile" class="form-control rounded-3" accept=".jpg,.jpeg,.png,.webp,.pdf">
+                                        <div class="form-text small text-muted" style="font-size: 11px;"><i class="bi bi-cloud-check text-success me-1"></i>JPG, PNG, WEBP or PDF; max 10MB.</div>
+                                        <div class="invalid-feedback" style="font-size: 11px;">Allowed file types: JPG, PNG, WEBP, PDF (max 10MB).</div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small fw-semibold text-muted">Additional Remarks / Justification</label>
+                                        <textarea name="notes" class="form-control rounded-3" rows="2" placeholder="Brief reason for expense..." maxlength="500"></textarea>
+                                    </div>
+                                </div>
+                            </details>
                         </div>
                     </div>
                 </div>

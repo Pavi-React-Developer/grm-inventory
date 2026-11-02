@@ -181,17 +181,18 @@
                                         </div>
                                     </td>
                                     <td class="text-center">
-                                        <?php
-                                            // Never manufacture an XXX/placeholder tag here. Use the exact
-                                            // scanned allocation tag first, then the stored product QR/SKU.
-                                            $returnTag = trim((string)($it['returned_tag_code'] ?? ''))
-                                                ?: trim((string)($it['barcode'] ?? ''))
-                                                ?: trim((string)($it['sku'] ?? ''));
-                                        ?>
-                                        <div class="d-inline-flex flex-column align-items-center">
-                                            <div class="manifest-item-qr d-flex align-items-center justify-content-center bg-white border rounded p-1" style="width:76px;height:76px;min-width:76px;min-height:76px;" data-qr-payload="<?= e($returnTag) ?>" aria-label="Returned product QR <?= e($returnTag) ?>"></div>
-                                            <small class="font-monospace fw-bold text-primary mt-1">QR: <?= e($returnTag) ?></small>
-                                        </div>
+                                        <?php if (!empty($it['scanned_qr_codes'])): ?>
+                                            <div class="d-flex flex-wrap justify-content-center gap-2">
+                                                <?php foreach ($it['scanned_qr_codes'] as $returnTag): ?>
+                                                    <div class="d-inline-flex flex-column align-items-center">
+                                                        <div class="manifest-item-qr d-flex align-items-center justify-content-center bg-white border rounded p-1" style="width:76px;height:76px;min-width:76px;min-height:76px;" data-qr-payload="<?= e($returnTag) ?>" aria-label="Returned product QR <?= e($returnTag) ?>"></div>
+                                                        <small class="font-monospace fw-bold text-primary mt-1">QR: <?= e($returnTag) ?></small>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <span class="text-muted small">QR not captured</span>
+                                        <?php endif; ?>
                                     </td>
                                     <td>
                                         <?php

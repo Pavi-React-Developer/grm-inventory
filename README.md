@@ -54,6 +54,10 @@ An enterprise-grade, end-to-end apparel manufacturing, central warehousing, mult
 3. Database Initialization:
    - Create database `grm_inventory` in phpMyAdmin / MySQL CLI.
    - Import [`database/schema.sql`](file:///c:/xampp/htdocs/grm-inventory/database/schema.sql) and [`database/seed.sql`](file:///c:/xampp/htdocs/grm-inventory/database/seed.sql).
+   - Seed any missing permission records (safe to rerun):
+     ```bash
+     php database/seed_permissions.php
+     ```
    - Run incremental migrations to verify all tables:
      ```bash
      php database/migrations/create_expenses_and_categories_tables.php

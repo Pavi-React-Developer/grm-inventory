@@ -8,7 +8,35 @@ define('BASE_PATH', dirname(__DIR__));
 require_once BASE_PATH . '/config/app.php';
 require_once BASE_PATH . '/app/Helpers/Database.php';
 
-$definitions = [
+$seedSqlPath = BASE_PATH . '/database/seed.sql';
+$seedSql = file_get_contents($seedSqlPath);
+if ($seedSql === false) {
+    throw new RuntimeException("Unable to read the permission seed source: {$seedSqlPath}");
+}
+
+preg_match_all("/INSERT INTO `permissions`[^;]*?VALUES\\s*(.*?);/is", $seedSql, $permissionBlocks);
+if (empty($permissionBlocks[1])) {
+    throw new RuntimeException('No permission records were found in database/seed.sql.');
+}
+
+$definitions = [];
+foreach ($permissionBlocks[1] as $permissionBlock) {
+    preg_match_all(
+        "/\\(\\s*'\\d+'\\s*,\\s*'((?:\\\\\\\\.|[^'])*)'\\s*,\\s*'((?:\\\\\\\\.|[^'])*)'\\s*,\\s*'((?:\\\\\\\\.|[^'])*)'\\s*,/s",
+        $permissionBlock,
+        $permissionRows,
+        PREG_SET_ORDER
+    );
+    foreach ($permissionRows as $permissionRow) {
+        $definitions[] = [
+            'module' => stripslashes($permissionRow[1]),
+            'action' => stripslashes($permissionRow[2]),
+            'desc' => stripslashes($permissionRow[3]),
+        ];
+    }
+}
+
+$definitions = array_merge($definitions, [
     // WhatsApp Channel Hub
     ['module' => 'whatsapp_orders', 'action' => 'view', 'desc' => 'View WhatsApp B2B Orders and history'],
     ['module' => 'whatsapp_orders', 'action' => 'create', 'desc' => 'Create new WhatsApp B2B order'],
@@ -157,7 +185,26 @@ $definitions = [
     ['module' => 'warehouse_rework', 'action' => 'edit', 'desc' => 'Update rework status, tailor assignment, and repair outcomes'],
     ['module' => 'warehouse_rework', 'action' => 'delete', 'desc' => 'Delete rework entries'],
     ['module' => 'warehouse_rework', 'action' => 'dispatch', 'desc' => 'Re-dispatch repaired goods back to warehouse'],
-];
+
+    // Permission actions currently required by route middleware.
+    ['module' => 'wh_sellers', 'action' => 'delete', 'desc' => 'Delete warehouse supplier'],
+    ['module' => 'whatsapp_customers', 'action' => 'view', 'desc' => 'View WhatsApp channel customers'],
+    ['module' => 'whatsapp_return_to_wh', 'action' => 'view', 'desc' => 'View WhatsApp returns to warehouse'],
+    ['module' => 'whatsapp_return_to_wh', 'action' => 'create', 'desc' => 'Create WhatsApp return to warehouse'],
+    ['module' => 'whatsapp_return_to_wh', 'action' => 'gatepass', 'desc' => 'Print WhatsApp return-to-warehouse gate pass'],
+    ['module' => 'whatsapp_return_to_wh', 'action' => 'print', 'desc' => 'Print WhatsApp return-to-warehouse labels'],
+    ['module' => 'website_customers', 'action' => 'view', 'desc' => 'View Website channel customers'],
+    ['module' => 'website_return_to_wh', 'action' => 'view', 'desc' => 'View Website returns to warehouse'],
+    ['module' => 'website_return_to_wh', 'action' => 'create', 'desc' => 'Create Website return to warehouse'],
+    ['module' => 'website_return_to_wh', 'action' => 'gatepass', 'desc' => 'Print Website return-to-warehouse gate pass'],
+    ['module' => 'website_return_to_wh', 'action' => 'print', 'desc' => 'Print Website return-to-warehouse labels'],
+    ['module' => 'warehouse', 'action' => 'create', 'desc' => 'Create warehouse transfer'],
+    ['module' => 'warehouse', 'action' => 'approve', 'desc' => 'Approve warehouse transfer'],
+    ['module' => 'warehouse', 'action' => 'receive', 'desc' => 'Receive warehouse transfer'],
+    ['module' => 'website_orders', 'action' => 'edit', 'desc' => 'Update website order processing details'],
+    ['module' => 'whatsapp_orders', 'action' => 'edit', 'desc' => 'Update WhatsApp order processing details'],
+    ['module' => 'assets', 'action' => 'print', 'desc' => 'Print asset labels'],
+]);
 
 $inserted = 0;
 foreach ($definitions as $def) {

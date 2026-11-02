@@ -5,15 +5,24 @@
 ?>
 
 <div class="w-100" style="max-width: 100%; overflow-x: hidden;">
+    <style>
+        .asset-form-details > summary {
+            cursor: pointer;
+            list-style: none;
+        }
+        .asset-form-details > summary::-webkit-details-marker {
+            display: none;
+        }
+    </style>
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h3 class="fw-bold mb-1 d-flex align-items-center gap-2">
                 <a href="<?= url('asset/view/' . $asset['id']) ?>" class="btn btn-outline-secondary btn-sm rounded-circle p-2 d-inline-flex align-items-center justify-content-center" style="width: 34px; height: 34px;">
                     <i class="bi bi-arrow-left"></i>
                 </a>
-                Edit Asset: <span class="text-primary font-monospace"><?= e($asset['asset_code']) ?></span>
+                Edit Asset <span class="text-primary font-monospace"><?= e($asset['asset_code']) ?></span>
             </h3>
-            <p class="text-muted small mb-0">Modify specifications, assigned operational unit, commercial values or custodian.</p>
+            <p class="text-muted small mb-0">Update the asset details. Optional information is grouped below.</p>
         </div>
         <div>
             <a href="<?= url('asset/view/' . $asset['id']) ?>" class="btn btn-outline-secondary btn-sm">
@@ -41,11 +50,11 @@
         <div class="row g-4">
             <!-- Left Column: Core Details & Technical Specs -->
             <div class="col-lg-8">
-                <!-- Section 1: Classification & Location -->
+                <!-- Asset details -->
                 <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
                     <div class="card-header bg-white py-3 border-0">
                         <h5 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
-                            <i class="bi bi-tag text-primary"></i> 1. Asset Classification &amp; Operational Unit
+                            <i class="bi bi-tag text-primary"></i> Asset details
                         </h5>
                     </div>
                     <div class="card-body p-4 pt-0">
@@ -101,13 +110,13 @@
                     </div>
                 </div>
 
-                <!-- Section 2: Technical Specifications & Identifiers -->
-                <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
-                    <div class="card-header bg-white py-3 border-0">
+                <details class="card border-0 shadow-sm rounded-4 mb-4 bg-white asset-form-details">
+                    <summary class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
                         <h5 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
-                            <i class="bi bi-cpu text-primary"></i> 2. Technical Specs &amp; Serial Identifiers
+                            <i class="bi bi-cpu text-primary"></i> Technical details
                         </h5>
-                    </div>
+                        <span class="small text-muted">Optional <i class="bi bi-chevron-down ms-1"></i></span>
+                    </summary>
                     <div class="card-body p-4 pt-0">
                         <div class="row g-3">
                             <div class="col-md-4">
@@ -129,13 +138,13 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </details>
 
-                <!-- Section 3: Commercials, Purchase & Depreciation -->
+                <!-- Purchase details -->
                 <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
                     <div class="card-header bg-white py-3 border-0">
                         <h5 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
-                            <i class="bi bi-cash-stack text-primary"></i> 3. Commercials, Vendor &amp; Warranty
+                            <i class="bi bi-cash-stack text-primary"></i> Purchase details
                         </h5>
                     </div>
                     <div class="card-body p-4 pt-0">
@@ -156,30 +165,34 @@
                                 <input type="date" name="warranty_expiry" class="form-control form-control-lg" value="<?= e($asset['warranty_expiry']) ?>">
                             </div>
 
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold small">Vendor / Supplier Name</label>
-                                <input type="text" name="vendor_name" class="form-control" value="<?= e($asset['vendor_name']) ?>">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold small">Vendor Phone / Contact</label>
-                                <input type="text" name="vendor_contact" class="form-control" value="<?= e($asset['vendor_contact']) ?>">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold small">Purchase Invoice Number</label>
-                                <input type="text" name="invoice_number" class="form-control" value="<?= e($asset['invoice_number']) ?>">
-                            </div>
-
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold small">Estimated Useful Life (Years)</label>
-                                <input type="number" name="useful_life_years" class="form-control" value="<?= (int)$asset['useful_life_years'] ?>" min="1" max="50">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold small">Estimated Salvage / Scrap Value (₹)</label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light">₹</span>
-                                    <input type="number" step="0.01" name="salvage_value" class="form-control" value="<?= (float)$asset['salvage_value'] ?>">
+                            <details class="col-12 asset-form-details">
+                                <summary class="small text-primary">Vendor and depreciation details <i class="bi bi-chevron-down ms-1"></i></summary>
+                                <div class="row g-3 mt-1">
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold small">Vendor / Supplier Name</label>
+                                        <input type="text" name="vendor_name" class="form-control" value="<?= e($asset['vendor_name']) ?>">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold small">Vendor Phone / Contact</label>
+                                        <input type="text" name="vendor_contact" class="form-control" value="<?= e($asset['vendor_contact']) ?>">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold small">Purchase Invoice Number</label>
+                                        <input type="text" name="invoice_number" class="form-control" value="<?= e($asset['invoice_number']) ?>">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold small">Estimated Useful Life (Years)</label>
+                                        <input type="number" name="useful_life_years" class="form-control" value="<?= (int)$asset['useful_life_years'] ?>" min="1" max="50">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold small">Estimated Salvage / Scrap Value (₹)</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light">₹</span>
+                                            <input type="number" step="0.01" name="salvage_value" class="form-control" value="<?= (float)$asset['salvage_value'] ?>">
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            </details>
                         </div>
                     </div>
                 </div>
@@ -190,7 +203,7 @@
                 <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
                     <div class="card-header bg-white py-3 border-0">
                         <h5 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
-                            <i class="bi bi-activity text-primary"></i> Status &amp; Condition
+                            <i class="bi bi-activity text-primary"></i> Status
                         </h5>
                     </div>
                     <div class="card-body p-4 pt-0">
@@ -217,30 +230,31 @@
                             </select>
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">Assigned Custodian / Operator</label>
-                            <input type="text" name="custodian_name" class="form-control" value="<?= e($asset['custodian_name']) ?>">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">Update Photo</label>
-                            <input type="file" name="photo" class="form-control" accept="image/*">
-                            <?php if (!empty($asset['photo_url'])): ?>
-                                <div class="mt-2 small text-muted">Current photo on file. Uploading new file will replace it.</div>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="mb-0">
-                            <label class="form-label fw-semibold small">Internal Remarks / Notes</label>
-                            <textarea name="notes" class="form-control" rows="3"><?= e($asset['notes']) ?></textarea>
-                        </div>
+                        <details class="asset-form-details">
+                            <summary class="small text-primary mb-3">Custodian, photo, and notes <i class="bi bi-chevron-down ms-1"></i></summary>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold small">Assigned Custodian / Operator</label>
+                                <input type="text" name="custodian_name" class="form-control" value="<?= e($asset['custodian_name']) ?>">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold small">Update Photo</label>
+                                <input type="file" name="photo" class="form-control" accept="image/*">
+                                <?php if (!empty($asset['photo_url'])): ?>
+                                    <div class="mt-2 small text-muted">Current photo on file. Uploading new file will replace it.</div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label fw-semibold small">Internal Remarks / Notes</label>
+                                <textarea name="notes" class="form-control" rows="3"><?= e($asset['notes']) ?></textarea>
+                            </div>
+                        </details>
                     </div>
                 </div>
 
                 <div class="card border-0 shadow-sm rounded-4 bg-primary text-white">
                     <div class="card-body p-4 text-center">
                         <button type="submit" class="btn btn-light btn-lg w-100 fw-bold shadow-sm text-primary">
-                            <i class="bi bi-check-circle me-1"></i> Update Asset Changes
+                            <i class="bi bi-check-circle me-1"></i> Save Changes
                         </button>
                     </div>
                 </div>

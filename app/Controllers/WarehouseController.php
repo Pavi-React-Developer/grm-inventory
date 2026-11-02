@@ -2338,7 +2338,7 @@ class WarehouseController {
     public function ajaxUpdateProductPrice(): void {
         header('Content-Type: application/json');
 
-        if (!hasPermission('catalog', 'edit') && !hasPermission('stock', 'edit') && !hasPermission('warehouse', 'edit') && (Session::get('role') !== 'ADMIN')) {
+        if (!hasPermission('stock', 'adjust') && !hasPermission('catalog', 'edit') && !hasPermission('stock', 'edit') && !hasPermission('warehouse', 'edit') && (Session::get('role') !== 'ADMIN')) {
             echo json_encode(['success' => false, 'message' => 'Access denied: Only administrators or authorized staff can edit product prices.']);
             exit;
         }
@@ -8095,7 +8095,7 @@ class WarehouseController {
     }
 
     public function createTransfer(): void {
-        if (!hasPermission('warehouse', 'view')) {
+        if (!hasPermission('warehouse', 'view') && !hasPermission('warehouse', 'create')) {
             Session::flash('error', 'Access denied.');
             Response::redirect(url('warehouse/transfers'));
             return;
@@ -8147,7 +8147,7 @@ class WarehouseController {
             return;
         }
 
-        if (!hasPermission('allocation', 'create') && !hasPermission('stock', 'adjust') && !hasPermission('warehouse', 'edit') && !hasPermission('warehouse', 'view')) {
+        if (!hasPermission('warehouse', 'create') && !hasPermission('allocation', 'create') && !hasPermission('stock', 'adjust') && !hasPermission('warehouse', 'edit') && !hasPermission('warehouse', 'view')) {
             Session::flash('error', 'Access denied.');
             Response::redirect(url('warehouse/transfers'));
             return;
@@ -8237,7 +8237,7 @@ class WarehouseController {
     }
 
     public function approveTransfer(int $id): void {
-        if (!hasPermission('allocation', 'approve') && !hasPermission('stock', 'adjust') && !hasPermission('warehouse', 'edit')) {
+        if (!hasPermission('warehouse', 'approve') && !hasPermission('allocation', 'approve') && !hasPermission('stock', 'adjust') && !hasPermission('warehouse', 'edit')) {
             Session::flash('error', 'Access denied.');
             Response::redirect(url('warehouse/transfers'));
             return;
@@ -8257,7 +8257,7 @@ class WarehouseController {
     }
 
     public function receiveTransfer(int $id): void {
-        if (!hasPermission('allocation', 'dispatch') && !hasPermission('stock', 'adjust') && !hasPermission('inward', 'verify') && !hasPermission('inward', 'create')) {
+        if (!hasPermission('warehouse', 'receive') && !hasPermission('allocation', 'dispatch') && !hasPermission('stock', 'adjust') && !hasPermission('inward', 'verify') && !hasPermission('inward', 'create')) {
             Session::flash('error', 'Access denied.');
             Response::redirect(url('warehouse/transfers'));
             return;

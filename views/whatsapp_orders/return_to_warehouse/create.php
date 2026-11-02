@@ -416,6 +416,7 @@ thead th.sticky-col-select {
                                             data-stock-state="<?= e($item['stock_state']) ?>"
                                             data-qr-code="<?= e(strtolower($item['qr_code'] ?? '')) ?>"
                                             data-piece-tags="<?= e(strtolower(implode('|', array_map('strval', $item['piece_tags'] ?? [])))) ?>"
+                                            data-all-piece-tags="<?= e(strtolower(implode('|', array_map('strval', $item['piece_tags_all'] ?? [])))) ?>"
                                             data-category-type="<?= e(strtoupper($item['category_type'] ?? 'NORMAL')) ?>"
                                             data-complementary="<?= !empty($item['is_complementary']) ? '1' : '0' ?>"
                                             data-qr-type="<?= e(strtoupper($item['qr_type'] ?? '')) ?>"
@@ -432,6 +433,7 @@ thead th.sticky-col-select {
                                                 <input type="hidden" name="items[<?= $idx ?>][variant_id]" value="<?= $item['variant_id'] ?>" disabled data-idx="<?= $idx ?>">
                                                 <input type="hidden" name="items[<?= $idx ?>][stock_state]" value="<?= $item['stock_state'] ?>" disabled data-idx="<?= $idx ?>">
                                                 <input type="hidden" name="items[<?= $idx ?>][tag_code]" value="" disabled data-idx="<?= $idx ?>">
+                                                <input type="hidden" name="items[<?= $idx ?>][scanned_qr_codes]" value="[]" disabled class="return-scanned-qrs" data-idx="<?= $idx ?>">
                                             </td>
 
                                             <!-- 2. Product Name -->
@@ -1577,7 +1579,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const row = candidates.find(candidate => {
             const exactValues = [candidate.getAttribute('data-qr-code'), candidate.getAttribute('data-sku'), candidate.getAttribute('data-code')]
                 .filter(Boolean).map(value => value.trim().toLowerCase());
-            const pieceTags = (candidate.getAttribute('data-piece-tags') || '').split('|').map(value => value.trim().toLowerCase()).filter(Boolean);
+            const tagAttribute = returnRowAllowsMultiple(candidate) ? 'data-all-piece-tags' : 'data-piece-tags';
+            const pieceTags = (candidate.getAttribute(tagAttribute) || '').split('|').map(value => value.trim().toLowerCase()).filter(Boolean);
             return exactValues.includes(code) || pieceTags.includes(code);
         });
         if (!row) {
@@ -1588,7 +1591,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const idx = row.getAttribute('data-idx');
         const tagInput = document.querySelector(`input[name="items[${idx}][tag_code]"]`);
-        if (tagInput) { tagInput.value = rawCode; tagInput.disabled = false; }
         const checkbox = document.querySelector(`.item-select[data-idx="${idx}"]`);
         const qtyInput = document.querySelector(`.return-qty[data-idx="${idx}"]`);
         const classSelect = document.querySelector(`.return-classification[data-idx="${idx}"]`);
@@ -1606,6 +1608,20 @@ document.addEventListener('DOMContentLoaded', function() {
             returnScanInput.focus();
             return;
         }
+        let scannedQrs = [];
+        const qrInput = document.querySelector(`.return-scanned-qrs[data-idx="${idx}"]`);
+        try {
+            const existingQrs = JSON.parse(qrInput?.value || '[]');
+            if (Array.isArray(existingQrs)) scannedQrs = existingQrs.filter(qr => typeof qr === 'string');
+        } catch (error) {
+            console.error('Unable to read scanned WhatsApp return QR tags.', error);
+        }
+        if (!scannedQrs.some(qr => qr.toLowerCase() === rawCode.toLowerCase())) scannedQrs.push(rawCode);
+        if (qrInput) {
+            qrInput.value = JSON.stringify(scannedQrs);
+            qrInput.disabled = false;
+        }
+        if (tagInput) { tagInput.value = scannedQrs[0] || rawCode; tagInput.disabled = false; }
         if (classSelect) classSelect.value = stockPool === 'DAMAGED' ? 'DAMAGED' : 'GOOD';
         calculateConsignment();
         if (returnScanStatus) returnScanStatus.innerHTML = `<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>Added ${escapeHtml(row.getAttribute('data-name-raw') || code)} from ${stockPool === 'DAMAGED' ? 'damaged' : 'available'} WhatsApp stock.</span>`;
@@ -1638,12 +1654,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const hiddenVarId = document.querySelector(`input[name="items[${idx}][variant_id]"]`);
             const hiddenStockState = document.querySelector(`input[name="items[${idx}][stock_state]"]`);
             const hiddenTagCode = document.querySelector(`input[name="items[${idx}][tag_code]"]`);
+            const hiddenScannedQrs = document.querySelector(`.return-scanned-qrs[data-idx="${idx}"]`);
             const selectedBadge = row?.querySelector('.selected-row-badge');
             const selectLabel = row?.querySelector('.select-label');
             const minusBtn = row?.querySelector('.row-qty-minus');
             const plusBtn = row?.querySelector('.row-qty-plus');
-            const scannedTag = (hiddenTagCode?.value || (row?.getAttribute('data-piece-tags') || '').split('|')[0] || row?.getAttribute('data-qr-code') || '').trim();
-
             if (chk.checked) {
                 selectedCount++;
                 row?.classList.add('inv-row-selected');
@@ -1665,6 +1680,25 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (firstPieceTag) hiddenTagCode.value = firstPieceTag;
                     }
                     hiddenTagCode.disabled = false;
+                }
+                let scannedQrs = [];
+                try {
+                    const parsedQrs = JSON.parse(hiddenScannedQrs?.value || '[]');
+                    if (Array.isArray(parsedQrs)) scannedQrs = parsedQrs.filter(qr => typeof qr === 'string' && qr.trim() !== '');
+                } catch (error) {
+                    console.error('Unable to read selected WhatsApp return QR tags.', error);
+                }
+                if (!scannedQrs.length && hiddenTagCode?.value.trim()) scannedQrs = [hiddenTagCode.value.trim()];
+                if (!scannedQrs.length) {
+                    const firstPieceTag = (row?.getAttribute('data-piece-tags') || '').split('|').map(v => v.trim()).find(Boolean);
+                    if (firstPieceTag) {
+                        scannedQrs = [firstPieceTag];
+                        if (hiddenTagCode) hiddenTagCode.value = firstPieceTag;
+                    }
+                }
+                if (hiddenScannedQrs) {
+                    hiddenScannedQrs.value = JSON.stringify(scannedQrs);
+                    hiddenScannedQrs.disabled = false;
                 }
                 // The quantity input starts disabled so unselected rows are not
                 // submitted. Re-enable it when a row is selected; otherwise the
@@ -1737,8 +1771,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td class="text-end font-monospace text-dark">₹${price.toFixed(2)}</td>
                         <td class="text-end font-monospace fw-bold text-success">₹${lineTotal.toFixed(2)}</td>
                         <td class="text-center pe-4">
-                            <div class="selected-product-qr d-inline-flex align-items-center justify-content-center bg-white border rounded p-1" style="width:52px;height:52px;" data-qr-payload="${escapeHtml(scannedTag)}"></div>
-                            <small class="d-block text-primary font-monospace" style="font-size:9px;">${escapeHtml(scannedTag || 'QR pending')}</small>
+                            ${scannedQrs.length ? scannedQrs.map(tag => `
+                                <div class="d-inline-flex flex-column align-items-center mx-1">
+                                    <div class="selected-product-qr d-flex align-items-center justify-content-center bg-white border rounded p-1" style="width:52px;height:52px;" data-qr-payload="${escapeHtml(tag)}"></div>
+                                    <small class="d-block text-primary font-monospace text-break" style="font-size:9px;max-width:90px;">${escapeHtml(tag)}</small>
+                                </div>
+                            `).join('') : '<span class="text-muted small">QR not captured</span>'}
                             <button type="button" class="btn btn-sm btn-link text-danger p-0 sec-remove-btn" data-idx="${idx}" title="Remove from return consignment"><i class="bi bi-trash-fill"></i></button>
                         </td>
                     </tr>
@@ -1754,6 +1792,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Disable inputs
                 if (hiddenVarId) hiddenVarId.disabled = true;
                 if (hiddenStockState) hiddenStockState.disabled = true;
+                if (hiddenTagCode) {
+                    hiddenTagCode.disabled = true;
+                    hiddenTagCode.value = '';
+                }
+                if (hiddenScannedQrs) {
+                    hiddenScannedQrs.disabled = true;
+                    hiddenScannedQrs.value = '[]';
+                }
                 qtyInput.disabled = true;
                 qtyInput.value = 0;
                 if (minusBtn) minusBtn.disabled = true;

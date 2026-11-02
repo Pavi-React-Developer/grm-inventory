@@ -988,9 +988,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 // Check submodule-level department restrictions (e.g. inside Reports)
                 subRows.forEach(row => {
-                    const rowDept = (row.getAttribute('data-dept') || 'ALL').toUpperCase();
-                    const isSubOp = operationalDepts.includes(rowDept);
-                    const isSubMismatched = isSubOp && (selectedDept !== 'ALL' && selectedDept !== 'GENERAL') && (rowDept !== selectedDept);
+                    const rowDepts = (row.getAttribute('data-dept') || 'ALL')
+                        .split(',')
+                        .map(dept => dept.trim().toUpperCase());
+                    const isSubOp = rowDepts.some(dept => operationalDepts.includes(dept));
+                    const isSubMismatched = isSubOp &&
+                        (selectedDept !== 'ALL' && selectedDept !== 'GENERAL') &&
+                        !rowDepts.includes(selectedDept);
 
                     const rowCbs = row.querySelectorAll('.perm-checkbox, .row-all-toggle');
                     if (isSubMismatched) {
