@@ -30,12 +30,6 @@
             </div>
         </div>
         <div class="d-flex gap-2">
-            <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/gatepass/' . $return['id']) ?>" target="_blank" class="btn btn-outline-primary rounded-pill px-3 btn-sm fw-semibold">
-                <i class="bi bi-file-earmark-text me-1"></i> Print Delivery Gate Pass
-            </a>
-            <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/label/' . $return['id']) ?>" target="_blank" class="btn btn-outline-secondary rounded-pill px-3 btn-sm fw-semibold">
-                <i class="bi bi-qr-code me-1"></i> Print Carton QR Sticker
-            </a>
             <button onclick="window.print()" class="btn btn-primary rounded-pill px-4 btn-sm shadow-sm fw-semibold">
                 <i class="bi bi-printer-fill me-1"></i> Print Manifest
             </button>
@@ -166,12 +160,10 @@
                             <tr>
                                 <th class="ps-4" style="width: 4%;">#</th>
                                 <th style="width: 27%;">Product & Variant</th>
-                                <th class="text-center" style="width: 10%;">Product QR</th>
+                                <th class="text-center" style="width: 14%;">Product QR</th>
                                 <th style="width: 13%;">Classification</th>
                                 <th class="text-center" style="width: 10%;">Dispatched Qty</th>
-                                <th style="width: 13%;">QC Breakdown</th>
                                 <th class="text-end" style="width: 14%;">Est. Line Value</th>
-                                <th class="text-end pe-4" style="width: 9%;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -179,27 +171,27 @@
                                 <tr>
                                     <td class="ps-4 text-muted small fw-bold"><?= $idx + 1 ?></td>
                                     <td>
-                                        <div class="d-flex align-items-center">
-                                            <?php if (!empty($it['image'])): ?>
-                                                <img src="<?= e($it['image']) ?>" alt="" class="rounded-3 border me-2 flex-shrink-0" style="width: 42px; height: 42px; object-fit: cover;">
-                                            <?php else: ?>
-                                                <div class="rounded-3 bg-light border me-2 flex-shrink-0 d-flex align-items-center justify-content-center text-secondary" style="width: 42px; height: 42px;">
-                                                    <i class="bi bi-box"></i>
-                                                </div>
-                                            <?php endif; ?>
-                                            <div>
+                                        <div>
                                                 <div class="fw-bold text-dark small"><?= e($it['product_name']) ?></div>
                                                 <div class="text-muted font-monospace d-flex flex-wrap align-items-center gap-1 mt-1" style="font-size: 11px;">
                                                     <span class="badge bg-light text-dark border"><i class="bi bi-qr-code text-primary me-1"></i><?= e($it['sku']) ?></span>
                                                     <?= !empty($it['size_name']) ? '<span class="badge bg-light text-dark border">' . e($it['size_name']) . '</span>' : '' ?>
                                                     <?= !empty($it['color_name']) ? '<span class="badge bg-light text-dark border">' . e($it['color_name']) . '</span>' : '' ?>
                                                 </div>
-                                            </div>
                                         </div>
                                     </td>
                                     <td class="text-center">
-                                        <div class="manifest-item-qr d-flex justify-content-center mx-auto mb-1" data-qr-payload="<?= e($it['qr_code'] ?: $it['sku']) ?>" aria-label="Product QR for <?= e($it['sku']) ?>"></div>
-                                        <small class="font-monospace fw-bold text-primary"><?= e($it['sku']) ?></small>
+                                        <?php
+                                            // Never manufacture an XXX/placeholder tag here. Use the exact
+                                            // scanned allocation tag first, then the stored product QR/SKU.
+                                            $returnTag = trim((string)($it['returned_tag_code'] ?? ''))
+                                                ?: trim((string)($it['barcode'] ?? ''))
+                                                ?: trim((string)($it['sku'] ?? ''));
+                                        ?>
+                                        <div class="d-inline-flex flex-column align-items-center">
+                                            <div class="manifest-item-qr d-flex align-items-center justify-content-center bg-white border rounded p-1" style="width:76px;height:76px;min-width:76px;min-height:76px;" data-qr-payload="<?= e($returnTag) ?>" aria-label="Returned product QR <?= e($returnTag) ?>"></div>
+                                            <small class="font-monospace fw-bold text-primary mt-1">QR: <?= e($returnTag) ?></small>
+                                        </div>
                                     </td>
                                     <td>
                                         <?php
@@ -220,38 +212,18 @@
                                             <?= $it['returned_qty'] ?>
                                         </span>
                                     </td>
-                                    <td class="text-center">
-                                        <?php if ($return['status'] === 'COMPLETED' || $return['status'] === 'CLASSIFIED'): ?>
-                                            <div class="small">
-                                                <span class="text-success fw-bold" title="Good Qty">✓ <?= (int)$it['good_qty'] ?></span> • 
-                                                <span class="text-danger fw-bold" title="Damaged Qty">✗ <?= (int)$it['damaged_qty'] ?></span> • 
-                                                <span class="text-warning-emphasis fw-bold" title="Defective Qty">⚠ <?= (int)$it['defective_qty'] ?></span>
-                                            </div>
-                                        <?php else: ?>
-                                            <span class="badge bg-light text-muted border">Pending QC</span>
-                                        <?php endif; ?>
-                                    </td>
                                     <td class="text-end">
                                         <div class="fw-bold text-dark font-monospace">₹<?= number_format((float)$it['line_total'], 2) ?></div>
                                         <small class="text-muted">@ ₹<?= number_format((float)$it['unit_price'], 2) ?>/pc</small>
-                                    </td>
-                                    <td class="text-end pe-4">
-                                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 shadow-sm fw-semibold" 
-                                                onclick="openProductDetailModal(<?= (int)$it['variant_id'] ?>, <?= (int)$it['returned_qty'] ?>, '<?= e($it['classification']) ?>')" 
-                                                title="View Complete Product Details, Images & Piece QR Codes">
-                                            <i class="bi bi-eye me-1"></i> View
-                                        </button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
                         <tfoot class="table-light">
                             <tr>
-                                <th colspan="4" class="ps-4 fw-bold text-dark">Consignment Totals</th>
+                            <th colspan="3" class="ps-4 fw-bold text-dark">Consignment Totals</th>
                                 <th class="text-center fw-bold text-danger"><?= $totalReturnedQty ?> pcs</th>
-                                <th></th>
                                 <th class="text-end fw-bold text-success font-monospace">₹<?= number_format((float)$totalEstimatedValue, 2) ?></th>
-                                <th></th>
                             </tr>
                         </tfoot>
                     </table>
@@ -259,23 +231,6 @@
             </div>
         </div>
 
-        <!-- Right: 2D Consignment QR Code Badge -->
-        <div class="col-lg-3">
-            <div class="card border-0 shadow-sm rounded-4 bg-white text-center p-4 h-100">
-                <small class="text-muted text-uppercase fw-bold mb-3" style="font-size: 10px; letter-spacing: 0.5px;">Master Consignment QR</small>
-                <div class="p-3 bg-light rounded-4 border d-inline-block mx-auto mb-3">
-                    <div id="consignmentQrCanvas" class="d-flex justify-content-center"></div>
-                </div>
-                <div class="fw-bold font-monospace text-dark mb-1"><?= e($return['return_number']) ?></div>
-                <p class="text-muted small mb-3" style="font-size: 11px;">Scan this QR sticker at the Central Warehouse inward terminal for automatic receipt.</p>
-                
-                <div class="d-grid gap-2">
-                    <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/label/' . $return['id']) ?>" target="_blank" class="btn btn-outline-primary btn-sm rounded-pill">
-                        <i class="bi bi-printer me-1"></i> Print QR Label
-                    </a>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -458,33 +413,40 @@
 </div>
 
 <!-- QRCode Library -->
-<script src="<?= url('assets/js/qrcode.min.js') ?>"></script>
+<script src="<?= asset('js/qrcode.min.js') ?>?v=20261102"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+function renderManifestQRCodes() {
     const qrContainer = document.getElementById('consignmentQrCanvas');
     if (qrContainer && typeof QRCode !== 'undefined') {
-        new QRCode(qrContainer, {
-            text: '<?= e($return["return_number"]) ?>',
-            width: 140,
-            height: 140,
-            colorDark: "#111827",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.H
-        });
+        try {
+            new QRCode(qrContainer, {
+                text: '<?= e($return["return_number"]) ?>', width: 140, height: 140,
+                colorDark: "#111827", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H
+            });
+        } catch (error) { qrContainer.textContent = 'QR generation failed'; }
     }
     document.querySelectorAll('.manifest-item-qr').forEach(container => {
         const payload = (container.dataset.qrPayload || '').trim();
-        if (!payload || typeof QRCode === 'undefined') return;
-        new QRCode(container, {
-            text: payload,
-            width: 64,
-            height: 64,
-            colorDark: '#111827',
-            colorLight: '#ffffff',
-            correctLevel: QRCode.CorrectLevel.M
-        });
+        if (!payload || typeof QRCode === 'undefined') {
+            container.textContent = payload || 'QR unavailable';
+            container.classList.add('font-monospace', 'small', 'text-break');
+            return;
+        }
+        container.innerHTML = '';
+        try {
+            new QRCode(container, {
+                text: payload, width: 68, height: 68,
+                colorDark: '#111827', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M
+            });
+        } catch (error) { container.textContent = payload; }
     });
-});
+}
+window.addEventListener('load', renderManifestQRCodes);
+if (document.readyState === 'complete') renderManifestQRCodes();
+// Run once immediately as well; this page is rendered after the QR library
+// and some layouts keep the document in a loading state longer than expected.
+setTimeout(renderManifestQRCodes, 100);
 
 let currentModalPieces = [];
 let currentModalReturnedQty = 0;
@@ -964,21 +926,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
 
-                <!-- Action Prompts -->
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/gatepass/' . $return['id']) ?>" target="_blank" class="btn btn-primary w-100 py-2 rounded-4 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2">
-                            <i class="bi bi-file-earmark-text fs-5"></i>
-                            <span>Print Delivery Gate Pass</span>
-                        </a>
-                    </div>
-                    <div class="col-md-6">
-                        <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/label/' . $return['id']) ?>" target="_blank" class="btn btn-outline-secondary w-100 py-2 rounded-4 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2">
-                            <i class="bi bi-qr-code fs-5"></i>
-                            <span>Print Carton QR Sticker</span>
-                        </a>
-                    </div>
-                </div>
             </div>
             <div class="modal-footer bg-white py-3 px-4 border-top d-flex justify-content-between">
                 <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse') ?>" class="btn btn-outline-secondary rounded-pill px-4">

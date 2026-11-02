@@ -3,10 +3,19 @@
         <h2 class="mb-1"><i class="bi bi-arrow-left-right me-2 text-success"></i>WhatsApp Returns &amp; Exchanges</h2>
         <span class="text-muted">Process customer product returns, size &amp; color exchanges, and refunds for WhatsApp orders</span>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
-        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#newReturnModal">
-            <i class="bi bi-plus-circle me-1"></i> New Return / Exchange
-        </button>
+</div>
+
+<!-- Customer invoice lookup (WhatsApp returns/exchanges) -->
+<div class="card border-0 shadow-sm rounded-3 mb-4 bg-white" style="border-top:3px solid #198754 !important;">
+    <div class="card-body p-3">
+        <label class="form-label small fw-semibold text-dark mb-2"><i class="bi bi-search text-success me-1"></i>Search WhatsApp Customer Order</label>
+        <div class="input-group input-group-lg mb-2" style="max-width:590px;">
+            <span class="input-group-text bg-white border-end-0"><i class="bi bi-qr-code-scan text-success"></i></span>
+            <input id="waPageLookupInput" type="text" class="form-control border-start-0" placeholder="Phone number, invoice number, or customer name">
+            <button id="waPageLookupBtn" class="btn btn-success px-4 fw-semibold" type="button">Lookup Order</button>
+        </div>
+        <div id="waPageLookupMessage" class="small text-primary fw-semibold mb-2" style="display:none;"></div>
+        <div id="waPageInvoiceList" class="list-group" style="display:none; max-height:245px; overflow:auto;"></div>
     </div>
 </div>
 
@@ -279,6 +288,7 @@
 
                 <!-- Lookup Results Container -->
                 <div id="lookupResultsContainer" style="display: none;">
+                    <div id="invoiceChoices" class="card border-primary-subtle shadow-sm mb-3 p-3" style="display:none; border-radius:12px;"></div>
                     
                     <form id="processReturnForm" method="POST" action="<?= url('warehouse/whatsapp-orders/returns/process') ?>">
                         <?= CSRF::field() ?>
@@ -481,7 +491,7 @@
                                     <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill font-monospace px-2.5 py-1" style="font-size:11px;">
                                         <i class="bi bi-arrow-left-right me-1"></i>STEP 2B: REPLACEMENT (NEW) SIZE / COLOR SWAP
                                     </span>
-                                    <span class="text-muted small">Choose new garment variant for each returned item</span>
+                                    <span class="text-muted small">Scan the new product QR/SKU</span>
                                 </div>
                                 <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2.5 py-1" style="font-size:11px;">
                                     Live Warehouse Stock Available
@@ -492,10 +502,7 @@
                                     <table class="table table-hover align-middle mb-0" id="sameExchangeTable" style="font-size:13px;">
                                         <thead style="background:#f0fdf4; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#166534; font-weight:700;">
                                             <tr>
-                                                <th class="ps-3" style="width:28%;">Old Returning Garment</th>
-                                                <th style="width:34%;">Choose New Replacement Variant (Size / Color)</th>
-                                                <th style="width:22%;">Scan New Piece Tag / Barcode</th>
-                                                <th class="text-end pe-3" style="width:16%;">New Price / Diff</th>
+                                                <th style="width:100%;">Scan New Product QR / Barcode</th>
                                             </tr>
                                         </thead>
                                         <tbody id="sameExchangeTbody">
@@ -836,7 +843,7 @@ window.renderSameExchangeTable = function() {
 
     const checkboxes = document.querySelectorAll('.item-select-cb:checked');
     if (checkboxes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted small"><i class="bi bi-arrow-left-right fs-4 d-block mb-1 text-secondary opacity-50"></i>Select at least one returning item in Step 2A above to choose replacement variants.</td></tr>';
+        tbody.innerHTML = '<tr><td class="text-center py-3 text-muted small"><i class="bi bi-qr-code-scan fs-4 d-block mb-1 text-secondary opacity-50"></i>Select a returning item above to scan its replacement product.</td></tr>';
         return;
     }
 
@@ -848,57 +855,20 @@ window.renderSameExchangeTable = function() {
         const qty = parseInt(document.getElementById('qty_' + itemId)?.value || 1) || 1;
         const unitPrice = parseFloat(item.unit_price || 0);
 
-        let siblingOptions = `<option value="" data-price="${unitPrice}">-- Keep Same / Even Swap (₹${unitPrice.toFixed(2)}) --</option>`;
-        if (item.sibling_variants && item.sibling_variants.length > 0) {
-            item.sibling_variants.forEach(s => {
-                const sPrice = parseFloat(s.price || unitPrice);
-                const isCurrent = (parseInt(s.id) === parseInt(item.variant_id));
-                siblingOptions += `<option value="${s.id}" data-price="${sPrice}" data-sku="${s.sku || ''}" data-size="${s.size_name || ''}" data-color="${s.color_name || ''}">${s.size_name || 'Free'} / ${s.color_name || 'Standard'} — ₹${sPrice.toFixed(2)} ${isCurrent ? '(Current)' : ''}</option>`;
-            });
-        }
-
-        const prevVal = currentSwapValues[itemId] || '';
         const prevTag = currentSwapTags[itemId] || '';
 
         const tr = document.createElement('tr');
         tr.id = `sameSwapRow_${itemId}`;
         tr.innerHTML = `
-            <td class="ps-3 align-middle">
-                <div class="fw-bold text-dark" style="font-size:13px;">${item.product_name}</div>
-                <div class="small text-muted font-monospace mt-0.5">
-                    Old: <span class="badge bg-light text-dark border">${item.size_name || '-'} / ${item.color_name || '-'}</span>
-                    <span class="ms-1 badge bg-secondary-subtle text-secondary font-monospace">${item.sku || '-'}</span>
-                </div>
-                <div class="small text-secondary mt-1">
-                    Returning: <strong class="text-danger font-monospace" id="sameSwapQtyDisplay_${itemId}">${qty}</strong> pcs @ ₹${unitPrice.toFixed(2)}
-                </div>
-            </td>
-            <td class="align-middle">
-                <select name="items[${itemId}][exchange_variant_id]" id="swap_${itemId}" class="form-select form-select-sm border-success fw-semibold" onchange="updateSameSwapRow(${itemId}); recalculateSettlementSummary();" style="font-size:12.5px;">
-                    ${siblingOptions}
-                </select>
-                <small class="text-muted d-block mt-1"><i class="bi bi-info-circle me-1"></i>Select a different size/color variant of this same garment</small>
-            </td>
-            <td class="align-middle">
-                <div class="input-group input-group-sm">
-                    <span class="input-group-text bg-success-subtle text-success border-success" title="Scan Replacement Piece Tag or Barcode"><i class="bi bi-upc-scan"></i></span>
-                    <input type="text" id="swapTagInput_${itemId}" class="form-control form-control-sm font-monospace border-success" placeholder="Scan Swap Tag..." style="font-size:11px;"
-                           onkeydown="if(event.key === 'Enter') { event.preventDefault(); scanSameProductSwap(${itemId}, this.value, this); }">
-                    <button type="button" class="btn btn-sm btn-outline-success px-2" onclick="scanSameProductSwap(${itemId}, document.getElementById('swapTagInput_${itemId}').value, document.getElementById('swapTagInput_${itemId}'))">OK</button>
-                </div>
+            <td class="align-middle p-3">
+                <input type="hidden" name="items[${itemId}][exchange_variant_id]" id="swap_${itemId}" value="${item.variant_id}" data-price="${unitPrice}">
+                <input type="text" id="swapTagInput_${itemId}" class="form-control form-control-sm font-monospace border-success" placeholder="Scan or enter new product QR / SKU" style="font-size:11px;" onkeydown="if(event.key === 'Enter'){event.preventDefault(); scanSameProductSwap(${itemId}, this.value, this);}">
+                <div id="swapProductDetails_${itemId}" class="small mt-2 text-success" style="display:none;"></div>
                 <div class="scanned-replacement-tags-display d-flex flex-wrap gap-1 mt-1" id="swapTagsDisplay_${itemId}"></div>
-            </td>
-            <td class="text-end pe-3 align-middle">
-                <div class="fw-bold font-monospace text-success fs-6" id="newRateText_${itemId}">₹${(unitPrice * qty).toFixed(2)}</div>
-                <small class="badge bg-light text-secondary border font-monospace" id="newDiffText_${itemId}">Even Swap</small>
             </td>
         `;
         tbody.appendChild(tr);
 
-        const swapSel = document.getElementById(`swap_${itemId}`);
-        if (swapSel && prevVal) {
-            swapSel.value = prevVal;
-        }
         if (prevTag) {
             addSwapReplacementPieceTag(itemId, prevTag);
         }
@@ -915,14 +885,7 @@ window.updateSameSwapRow = function(itemId) {
     const oldLineTotal = oldUnitPrice * qty;
 
     const swapSelect = document.getElementById('swap_' + itemId);
-    let newUnitPrice = oldUnitPrice;
-    if (swapSelect && swapSelect.value) {
-        const opt = swapSelect.options[swapSelect.selectedIndex];
-        newUnitPrice = parseFloat(opt.getAttribute('data-price') || oldUnitPrice);
-        currentSwapValues[itemId] = swapSelect.value;
-    } else {
-        currentSwapValues[itemId] = '';
-    }
+    const newUnitPrice = parseFloat(swapSelect?.dataset.price || oldUnitPrice);
 
     const newLineTotal = newUnitPrice * qty;
     const diff = newLineTotal - oldLineTotal;
@@ -976,8 +939,7 @@ window.recalculateSettlementSummary = function() {
             const unitPrice = parseFloat(cb.getAttribute('data-unit-price') || document.getElementById('price_' + itemId)?.value || 0) || 0;
             const swapSelect = document.getElementById('swap_' + itemId);
             if (swapSelect && swapSelect.value) {
-                const opt = swapSelect.options[swapSelect.selectedIndex];
-                const swapPrice = parseFloat(opt.getAttribute('data-price') || 0);
+                const swapPrice = parseFloat(swapSelect.dataset.price || unitPrice);
                 chooseAmount += (swapPrice * qty);
             } else {
                 chooseAmount += (unitPrice * qty);
@@ -1071,7 +1033,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 // Render the matched order (support both array and object response)
-                const match = Array.isArray(res.data) ? res.data[0] : res.data;
+                const matches = Array.isArray(res.data) ? res.data : [res.data];
+                const choiceBox = document.getElementById('invoiceChoices');
+                if (choiceBox && matches.length > 1) {
+                    choiceBox.style.display = 'block';
+                    choiceBox.innerHTML = `<label class="form-label fw-bold mb-2"><i class="bi bi-receipt me-1 text-primary"></i>Select the customer invoice</label>
+                        <select class="form-select" id="customerInvoiceChoice">
+                            ${matches.map((m, i) => `<option value="${i}">${m.sale.invoice_number} — ${m.sale.created_at} — ₹${parseFloat(m.sale.total_amount || 0).toFixed(2)}</option>`).join('')}
+                        </select>`;
+                    document.getElementById('customerInvoiceChoice').addEventListener('change', function () {
+                        searchInput.value = matches[Number(this.value)].sale.invoice_number;
+                        performLookup();
+                    });
+                } else if (choiceBox) {
+                    choiceBox.style.display = 'none';
+                    choiceBox.innerHTML = '';
+                }
+                const match = matches[0];
                 if (!match) {
                     alert(res.message || 'No matching WhatsApp orders found.');
                     resultsContainer.style.display = 'none';
@@ -1080,6 +1058,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 const sale = match.sale || match;
                 const items = match.items || res.items || [];
+
+                if (match.already_returned) {
+                    alert(`Invoice ${sale.invoice_number} was already returned/exchanged${match.return_number ? ` under ${match.return_number}` : ''}. Please select another invoice.`);
+                    resultsContainer.style.display = 'none';
+                    return;
+                }
 
                 document.getElementById('formSaleId').value = sale.id;
                 document.getElementById('metaInvoice').textContent = sale.invoice_number;
@@ -1280,6 +1264,30 @@ document.addEventListener('DOMContentLoaded', function() {
         const swapSelect = document.getElementById('swap_' + itemId);
         if (!swapSelect) return;
 
+        // Replacement is selected by scanning/entering the new QR or SKU.
+        fetch('<?= url('api/whatsapp/returns/lookup-piece') ?>?q=' + encodeURIComponent(rawCode))
+            .then(r => r.json())
+            .then(res => {
+                const variant = res && (res.variant || res.data || res.product);
+                if (!res.success || !variant) { alert(res.message || `Product matching "${rawCode}" not found.`); return; }
+                swapSelect.value = String(variant.variant_id || variant.id);
+                swapSelect.dataset.price = variant.selling_price || variant.price || swapSelect.dataset.price;
+                const detail = document.getElementById('swapProductDetails_' + itemId);
+                if (detail) {
+                    const mrp = Number(variant.mrp || variant.selling_price || 0);
+                    const selling = Number(variant.selling_price || variant.price || 0);
+                    const discount = mrp > selling ? (((mrp - selling) / mrp) * 100).toFixed(0) : '0';
+                    detail.innerHTML = `<strong>${variant.product_name || 'Product'}</strong> · ${variant.sku || ''}<br><span class="text-muted">Base Price: ₹${mrp.toFixed(2)}</span> · <strong>Discount Price: ₹${selling.toFixed(2)}</strong>${discount > 0 ? ` · <span class="text-danger">${discount}% OFF</span>` : ''}`;
+                    detail.style.display = 'block';
+                }
+                if (inputEl) inputEl.value = '';
+                addSwapReplacementPieceTag(itemId, res.tag_code || rawCode);
+                updateSameSwapRow(itemId);
+                recalculateSettlementSummary();
+            })
+            .catch(() => alert(`Product matching "${rawCode}" not found.`));
+        return;
+
         let matchedVal = null;
         let matchedText = '';
 
@@ -1442,5 +1450,55 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+});
+
+// Full-page WhatsApp customer invoice lookup (same workflow as Direct Purchases).
+document.addEventListener('DOMContentLoaded', function () {
+    const input = document.getElementById('waPageLookupInput');
+    const button = document.getElementById('waPageLookupBtn');
+    const message = document.getElementById('waPageLookupMessage');
+    const list = document.getElementById('waPageInvoiceList');
+    if (!input || !button || !list) return;
+
+    function lookup() {
+        const q = input.value.trim();
+        if (!q) { message.textContent = 'Enter a phone number or invoice number.'; message.style.display = 'block'; return; }
+        button.disabled = true;
+        list.style.display = 'none';
+        message.textContent = 'Searching customer invoices...';
+        message.style.display = 'block';
+        fetch('<?= url('warehouse/whatsapp-orders/returns/lookup') ?>?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(result => {
+                button.disabled = false;
+                if (!result.success || !result.data || !result.data.length) {
+                    message.textContent = result.message || 'No WhatsApp invoices found.';
+                    return;
+                }
+                const orders = Array.isArray(result.data) ? result.data : [result.data];
+                message.textContent = `This customer has ${orders.length} invoice${orders.length === 1 ? '' : 's'}. Select a bill to continue.`;
+                list.innerHTML = orders.map((order, index) => {
+                    const sale = order.sale || order;
+                    const usable = !order.already_returned && (order.items || []).some(i => Number(i.returnable_quantity ?? i.quantity ?? 0) > 0);
+                    return `<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 ${usable ? '' : 'disabled'}" data-invoice="${sale.invoice_number || ''}">
+                        <span class="font-monospace text-primary fw-semibold flex-grow-1">${sale.invoice_number || '-'}</span>
+                        <span class="text-muted small">${sale.created_at || ''}</span>
+                        <span class="fw-semibold text-success">₹${Number(sale.total_amount || 0).toFixed(2)}</span>
+                        <span class="badge bg-light text-dark border">${(order.items || []).length} line(s)</span>
+                        <span class="btn btn-sm btn-outline-success">${usable ? 'Select Bill' : 'Already Returned'}</span>
+                    </button>`;
+                }).join('');
+                list.querySelectorAll('[data-invoice]').forEach(row => row.addEventListener('click', function () {
+                    if (this.classList.contains('disabled')) return;
+                    document.getElementById('orderSearchInput').value = this.dataset.invoice;
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('newReturnModal')).show();
+                    document.getElementById('btnSearchOrder').click();
+                }));
+                list.style.display = 'block';
+            })
+            .catch(() => { button.disabled = false; message.textContent = 'Unable to lookup invoices right now.'; });
+    }
+    button.addEventListener('click', lookup);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lookup(); } });
 });
 </script>

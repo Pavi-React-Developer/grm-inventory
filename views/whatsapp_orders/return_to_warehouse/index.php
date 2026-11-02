@@ -17,9 +17,6 @@
             <p class="text-muted small mb-0">Manage damaged goods dispatches, excess inventory returns, seasonal stock transfers, and delivery gate passes to central warehouse.</p>
         </div>
         <div class="d-flex gap-2">
-            <a href="<?= url('warehouse/whatsapp-orders/allocations') ?>" class="btn btn-outline-secondary rounded-pill px-3 fw-semibold">
-                <i class="bi bi-boxes me-1"></i> WhatsApp Stock Balances
-            </a>
             <?php if (hasPermission('whatsapp_return_to_wh', 'create') || hasPermission('whatsapp', 'create') || hasPermission('whatsapp_returns', 'create')): ?>
             <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/create') ?>" class="btn btn-danger rounded-pill px-4 shadow-sm fw-semibold">
                 <i class="bi bi-plus-circle me-1"></i> New Return Dispatch
@@ -152,7 +149,7 @@
                         <th class="text-center" style="width: 12%;">Volume</th>
                         <th class="text-center" style="width: 12%;">Status</th>
                         <th style="width: 15%;">Dispatched Date</th>
-                        <th class="text-end pe-4" style="width: 12%;">Actions</th>
+                        <th class="text-end pe-4" style="width: 10%;">View</th>
                     </tr>
                 </thead>
                 <tbody id="rtwTableBody">
@@ -214,21 +211,9 @@
                                     <div class="small text-dark"><?= formatDateTime($r['created_at']) ?></div>
                                 </td>
                                 <td class="text-end pe-4">
-                                    <div class="d-flex justify-content-end gap-1">
-                                        <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/view/' . $r['id']) ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3" title="View Manifest Details">
-                                            <i class="bi bi-eye-fill me-1"></i> View
-                                        </a>
-                                        <?php if (hasPermission('whatsapp_return_to_wh', 'gatepass') || hasPermission('whatsapp', 'print') || hasPermission('whatsapp_returns', 'print')): ?>
-                                        <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/gatepass/' . $r['id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print Delivery Gate Pass">
-                                            <i class="bi bi-file-earmark-text"></i>
-                                        </a>
-                                        <?php endif; ?>
-                                        <?php if (hasPermission('whatsapp_return_to_wh', 'print') || hasPermission('whatsapp', 'print') || hasPermission('whatsapp_returns', 'print')): ?>
-                                        <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/label/' . $r['id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print Carton QR Label">
-                                            <i class="bi bi-qr-code"></i>
-                                        </a>
-                                        <?php endif; ?>
-                                    </div>
+                                    <a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse/view/' . $r['id']) ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                                        <i class="bi bi-eye me-1"></i> View
+                                    </a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

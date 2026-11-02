@@ -12,7 +12,9 @@ class WarehouseReturnItem {
                     pv.sku, pv.qr_code as barcode, pv.mrp, pv.selling_price,
                     p.name as product_name, p.code as product_code, p.qr_code_prefix,
                     p.category_code, p.subcategory_code, p.sub_subcategory_code,
-                    cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name,
+                    COALESCE(wcat.name, cat.name) as category_name,
+                    COALESCE(wsub.name, subcat.name) as subcategory_name,
+                    COALESCE(wsubsub.name, subsubcat.name) as sub_subcategory_name,
                     sz.name as size_name, sz.code as size_code,
                     c.name as color_name, c.hex_code as color_hex
              FROM warehouse_return_items wri
@@ -21,6 +23,9 @@ class WarehouseReturnItem {
              LEFT JOIN categories cat ON p.category_id = cat.id
              LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
              LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
+             LEFT JOIN warehouse_categories wcat ON p.warehouse_category_id = wcat.id
+             LEFT JOIN warehouse_subcategories wsub ON p.warehouse_subcategory_id = wsub.id
+             LEFT JOIN warehouse_sub_subcategories wsubsub ON p.warehouse_sub_subcategory_id = wsubsub.id
              LEFT JOIN sizes sz ON pv.size_id = sz.id
              LEFT JOIN colors c ON pv.color_id = c.id
              WHERE wri.warehouse_return_id = ?

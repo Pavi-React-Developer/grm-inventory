@@ -560,8 +560,12 @@
 
 <?php
     $itemPiecesMap = [];
+    $itemProductTypes = [];
+    $itemExpectedQty = [];
     foreach ($items as $it) {
         $itemPiecesMap[$it['id']] = $it['piece_qrs'] ?? [];
+        $itemProductTypes[$it['id']] = $it['product_type'] ?? 'NORMAL';
+        $itemExpectedQty[$it['id']] = (int)($it['quantity'] ?? $it['dispatched_qty'] ?? 1);
     }
     $inwardGroupMembersMap = [];
     foreach ($inwardItemGroups as $groupId => $group) {
@@ -574,6 +578,8 @@ const DRAFT_STORAGE_KEY = 'grm_website_inward_draft_' + ALLOCATION_ID;
 const IS_COMPLETED = <?= $isFullyReceived ? 'true' : 'false' ?>;
 
 const ITEM_PIECES_MAP = <?= json_encode($itemPiecesMap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+const ITEM_PRODUCT_TYPES = <?= json_encode($itemProductTypes, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+const ITEM_EXPECTED_QTY = <?= json_encode($itemExpectedQty, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 const ITEM_GROUPS_MAP = <?= json_encode($inwardGroupMembersMap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 const ITEM_TO_GROUP_MAP = <?= json_encode($inwardItemGroupMap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 const ITEM_EXPECTED_MAP = <?= json_encode($inwardItemExpectedMap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
@@ -756,7 +762,8 @@ function openPieceInspectionModal(itemId) {
     inspState.color = first.color_name || 'Std';
     inspState.mrp = first.mrp || '999';
     inspState.disc = first.disc || '500';
-    inspState.totalQty = rawPieces.length;
+    inspState.productType = String(ITEM_PRODUCT_TYPES[itemIds[0]] || 'NORMAL').toUpperCase();
+    inspState.totalQty = itemIds.reduce((sum, id) => sum + parseInt(ITEM_EXPECTED_QTY[id] || 0, 10), 0) || rawPieces.length;
     inspState.activeFilter = 'all';
 
     const memberPositions = {};
@@ -796,6 +803,10 @@ function openPieceInspectionModal(itemId) {
     });
     inspState.goodCount = inspState.pieces.filter(piece => piece.status === 'good').length;
     inspState.damagedCount = inspState.pieces.filter(piece => piece.status === 'damaged').length;
+    if (inspState.productType === 'SERIES' || inspState.productType === 'COMPLEMENTARY') {
+        inspState.goodCount = inspState.goodCount > 0 ? inspState.totalQty : 0;
+        inspState.damagedCount = inspState.damagedCount > 0 ? inspState.totalQty : 0;
+    }
 
     document.getElementById('inspProdName').textContent = inspState.prodName;
     document.getElementById('inspCategory').textContent = inspState.category;
@@ -831,6 +842,10 @@ function updateInspectionUI() {
     });
     inspState.goodCount = inspState.pieces.filter(piece => piece.status === 'good').length;
     inspState.damagedCount = inspState.pieces.filter(piece => piece.status === 'damaged').length;
+    if (inspState.productType === 'SERIES' || inspState.productType === 'COMPLEMENTARY') {
+        inspState.goodCount = inspState.goodCount > 0 ? inspState.totalQty : 0;
+        inspState.damagedCount = inspState.damagedCount > 0 ? inspState.totalQty : 0;
+    }
     const missing = inspState.totalQty - (inspState.goodCount + inspState.damagedCount);
     document.getElementById('inspGood').textContent = inspState.goodCount;
     document.getElementById('inspDamaged').textContent = inspState.damagedCount;
@@ -947,6 +962,17 @@ function markPieceSingle(pieceNum, status) {
     const target = inspState.pieces.find(p => p.num === pieceNum);
     if (!target) return;
     const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    // Series and complementary products use a shared/pack QR. One inspection
+    // action must credit the complete allocated quantity, not just one QR card.
+    if (inspState.productType === 'SERIES' || inspState.productType === 'COMPLEMENTARY') {
+        inspState.pieces.forEach(piece => {
+            piece.status = status;
+            piece.scannedAt = now;
+        });
+        updateInspectionUI();
+        return;
+    }
 
     if (target.status === 'good') inspState.goodCount--;
     if (target.status === 'damaged') inspState.damagedCount--;

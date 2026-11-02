@@ -39,6 +39,45 @@ class WarehouseReturn {
             }
 
             $return['items'] = WarehouseReturnItem::getByReturnId($id);
+            $notes = json_decode((string)($return['notes'] ?? ''), true);
+            $scannedTags = [];
+            foreach (($notes['scanned_tags'] ?? []) as $scan) {
+                if (!empty($scan['variant_id']) && !empty($scan['tag_code'])) $scannedTags[(int)$scan['variant_id']] = $scan['tag_code'];
+            }
+            $allocationTags = [];
+            if (in_array($return['source_type'], ['WHATSAPP', 'WEBSITE'], true) && !empty($return['source_id'])) {
+                $allocationRows = Database::fetchAll(
+                    "SELECT ai.variant_id, ai.selected_qr_codes
+                     FROM allocation_items ai
+                     JOIN warehouse_allocations wa ON wa.id = ai.allocation_id
+                     WHERE ai.variant_id IN (SELECT variant_id FROM warehouse_return_items WHERE warehouse_return_id = ?)
+                       AND (wa.channel_id = ? OR (wa.destination_type = 'CHANNEL' AND wa.destination_id = ?))
+                       AND ai.selected_qr_codes IS NOT NULL AND ai.selected_qr_codes != ''
+                     ORDER BY wa.id ASC, ai.id ASC",
+                    [$id, (int)$return['source_id'], (int)$return['source_id']]
+                );
+                foreach ($allocationRows as $allocationRow) {
+                    $raw = json_decode((string)$allocationRow['selected_qr_codes'], true);
+                    $raw = is_array($raw) ? $raw : explode(',', (string)$allocationRow['selected_qr_codes']);
+                    foreach ($raw as $tag) {
+                        $tag = is_array($tag) ? ($tag['tag_code'] ?? ($tag['qr_code'] ?? '')) : $tag;
+                        $tag = trim((string)$tag);
+                        if ($tag !== '') $allocationTags[(int)$allocationRow['variant_id']][] = $tag;
+                    }
+                }
+            }
+            $allocationOffsets = [];
+            foreach ($return['items'] as &$returnItem) {
+                $variantId = (int)$returnItem['variant_id'];
+                $tag = $scannedTags[$variantId] ?? null;
+                if (!$tag && !empty($allocationTags[$variantId])) {
+                    $offset = $allocationOffsets[$variantId] ?? 0;
+                    $tag = $allocationTags[$variantId][$offset] ?? $allocationTags[$variantId][0];
+                    $allocationOffsets[$variantId] = $offset + 1;
+                }
+                $returnItem['returned_tag_code'] = $tag ?: ($returnItem['barcode'] ?? $returnItem['sku'] ?? null);
+            }
+            unset($returnItem);
         }
 
         return $return;

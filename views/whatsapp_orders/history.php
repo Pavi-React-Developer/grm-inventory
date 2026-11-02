@@ -57,22 +57,6 @@
             </div>
         </div>
     </div>
-    <div class="col-sm-6 col-xl-3">
-        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
-            <div class="d-flex align-items-center">
-                <div class="flex-shrink-0 p-3 rounded-3 me-3" style="background-color: rgba(111, 66, 193, 0.12); color: #6f42c1;">
-                    <i class="bi bi-check2-circle fs-3"></i>
-                </div>
-                <div>
-                    <div class="text-muted small fw-semibold">Order Completion Rate</div>
-                    <h4 class="fw-bold mb-0 text-dark">
-                        <?= (!empty($totalOrdersCount) && $totalOrdersCount > 0) ? round((($completedCount ?? 0) / $totalOrdersCount) * 100, 1) : 0 ?>%
-                    </h4>
-                    <small class="text-muted"><?= number_format($pendingCount ?? 0) ?> pending / processing</small>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <!-- Search & Filter Card -->
@@ -86,18 +70,6 @@
                     <span class="input-group-text bg-light text-muted"><i class="bi bi-search"></i></span>
                     <input type="text" name="search" class="form-control" placeholder="Invoice #, Customer name, Phone, Staff..." value="<?= htmlspecialchars($search ?? '') ?>">
                 </div>
-            </div>
-
-            <!-- Status Filter -->
-            <div class="col-lg-2 col-md-3 col-6">
-                <label class="form-label small fw-semibold text-secondary mb-1">Status</label>
-                <select name="status" class="form-select form-select-sm">
-                    <option value="">-- All Statuses --</option>
-                    <option value="COMPLETED" <?= ($status ?? '') === 'COMPLETED' ? 'selected' : '' ?>>COMPLETED</option>
-                    <option value="PAID" <?= ($status ?? '') === 'PAID' ? 'selected' : '' ?>>PAID</option>
-                    <option value="PENDING" <?= ($status ?? '') === 'PENDING' ? 'selected' : '' ?>>PENDING</option>
-                    <option value="CANCELLED" <?= ($status ?? '') === 'CANCELLED' ? 'selected' : '' ?>>CANCELLED</option>
-                </select>
             </div>
 
             <!-- Date Range From -->

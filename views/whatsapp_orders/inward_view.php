@@ -510,8 +510,12 @@
 
 <?php
     $itemPiecesMap = [];
+    $itemProductTypes = [];
+    $itemExpectedQty = [];
     foreach ($items as $it) {
         $itemPiecesMap[$it['id']] = $it['piece_qrs'] ?? [];
+        $itemProductTypes[$it['id']] = $it['product_type'] ?? 'NORMAL';
+        $itemExpectedQty[$it['id']] = (int)($it['quantity'] ?? $it['dispatched_qty'] ?? 1);
     }
 ?>
 <script>
@@ -520,6 +524,8 @@ const DRAFT_STORAGE_KEY = 'grm_whatsapp_inward_draft_' + ALLOCATION_ID;
 const IS_COMPLETED = <?= $isFullyReceived ? 'true' : 'false' ?>;
 
 const ITEM_PIECES_MAP = <?= json_encode($itemPiecesMap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+const ITEM_PRODUCT_TYPES = <?= json_encode($itemProductTypes, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+const ITEM_EXPECTED_QTY = <?= json_encode($itemExpectedQty, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 const ALL_PIECE_QRS = <?= json_encode($pieceQRs ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 
 // Global piece status tracking cache: itemId -> array of piece status objects
@@ -535,6 +541,7 @@ let inspState = {
     mrp: '',
     disc: '',
     totalQty: 0,
+    productType: 'NORMAL',
     goodCount: 0,
     damagedCount: 0,
     mode: 'good',
@@ -694,7 +701,8 @@ function openPieceInspectionModal(itemId) {
     inspState.color = first.color_name || 'Std';
     inspState.mrp = first.mrp || '999';
     inspState.disc = first.disc || '500';
-    inspState.totalQty = rawPieces.length;
+    inspState.totalQty = parseInt(ITEM_EXPECTED_QTY[itemId] || rawPieces.length, 10);
+    inspState.productType = String(ITEM_PRODUCT_TYPES[itemId] || 'NORMAL').toUpperCase();
     inspState.mode = 'good';
     inspState.activeFilter = 'all';
     inspState.activePieceNum = rawPieces[0].piece_no || 1;
@@ -760,6 +768,11 @@ function openPieceInspectionModal(itemId) {
         inspState.damagedCount = curDmg;
     }
 
+    if (inspState.productType === 'SERIES' || inspState.productType === 'COMPLEMENTARY') {
+        inspState.goodCount = curRecv > 0 ? inspState.totalQty : 0;
+        inspState.damagedCount = curDmg > 0 ? inspState.totalQty : 0;
+    }
+
     document.getElementById('inspProdName').textContent = inspState.prodName;
     document.getElementById('inspCategory').textContent = inspState.category;
     document.getElementById('inspSku').textContent = inspState.sku;
@@ -786,17 +799,39 @@ function setInspectionMode(mode) {
     if (mode === 'good') {
         btnGood.className = 'btn btn-success fw-bold py-2 flex-grow-1 shadow-sm';
         btnDamage.className = 'btn btn-outline-danger fw-bold py-2 flex-grow-1';
-        btnText.textContent = 'Inward Next Piece (Good Product)';
+        btnText.textContent = (inspState.productType === 'SERIES' || inspState.productType === 'COMPLEMENTARY') ? 'Inward All Products (Good Product)' : 'Inward Next Piece (Good Product)';
         btnNext.className = 'btn btn-success btn-lg fw-bold py-3 w-100';
     } else {
         btnGood.className = 'btn btn-outline-success fw-bold py-2 flex-grow-1';
         btnDamage.className = 'btn btn-danger fw-bold py-2 flex-grow-1 shadow-sm';
-        btnText.textContent = 'Inward Next Piece (Damage Product)';
+        btnText.textContent = (inspState.productType === 'SERIES' || inspState.productType === 'COMPLEMENTARY') ? 'Inward All Products (Damage Product)' : 'Inward Next Piece (Damage Product)';
         btnNext.className = 'btn btn-danger btn-lg fw-bold py-3 w-100';
     }
 }
 
 function inwardNextPiece() {
+    const isBulkProduct = inspState.productType === 'SERIES' || inspState.productType === 'COMPLEMENTARY';
+    if (isBulkProduct) {
+        const nextPieces = inspState.pieces.filter(piece => piece.status === 'pending');
+        if (nextPieces.length === 0 && (inspState.goodCount + inspState.damagedCount) >= inspState.totalQty) {
+            alert('All ' + inspState.totalQty + ' pieces have already been processed!');
+            return;
+        }
+        nextPieces.forEach(piece => {
+            piece.status = inspState.mode === 'good' ? 'good' : 'damaged';
+            piece.scannedAt = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        });
+        if (inspState.mode === 'good') {
+            inspState.goodCount = inspState.totalQty;
+            inspState.damagedCount = 0;
+        } else {
+            inspState.goodCount = 0;
+            inspState.damagedCount = inspState.totalQty;
+        }
+        inspState.activePieceNum = inspState.pieces[0]?.num || 1;
+        updateInspectionUI();
+        return;
+    }
     const nextPiece = inspState.pieces.find(piece => piece.status === 'pending');
     if (!nextPiece) {
         alert('All ' + inspState.totalQty + ' pieces have already been processed!');

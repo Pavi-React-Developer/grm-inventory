@@ -1176,6 +1176,8 @@ ksort($distinctCatalogCodes);
 <?php
 // Group batches by Supplier / Brand (Task 4: Profile-wise view)
 $supplierGroups = [];
+$historyTab = $_GET['history_tab'] ?? 'warehouse';
+if (!in_array($historyTab, ['warehouse', 'returns'], true)) $historyTab = 'warehouse';
 foreach ($qrBatches as $batch) {
     $sKey = trim($batch['brand_name'] ?? '') ?: 'Direct Supplier';
     if (!isset($supplierGroups[$sKey])) {
@@ -1214,6 +1216,49 @@ foreach ($qrBatches as $batch) {
 }
 ?>
 <div id="qrBatchesListSection" style="display: <?= !$isGeneratingView ? 'block' : 'none' ?>;" class="no-print">
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link fw-semibold <?= $historyTab === 'warehouse' ? 'active' : '' ?>" href="<?= url('warehouse/labels?history_tab=warehouse') ?>">
+                <i class="bi bi-box-arrow-in-down me-1"></i>Warehouse Inward History
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link fw-semibold <?= $historyTab === 'returns' ? 'active' : '' ?>" href="<?= url('warehouse/labels?history_tab=returns') ?>">
+                <i class="bi bi-arrow-return-left me-1"></i>Return QR History
+            </a>
+        </li>
+    </ul>
+    <?php if ($historyTab === 'returns'): ?>
+    <div class="card border-0 shadow-sm rounded-3">
+        <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0 fw-bold"><i class="bi bi-arrow-return-left text-danger me-2"></i>Warehouse Return QR History</h5>
+                <small class="text-muted">Returned products available for QR label generation and warehouse inward.</small>
+            </div>
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><?= count($classifiedReturns ?? []) ?> Return Items</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light"><tr><th>Return No.</th><th>Product</th><th>SKU</th><th>Classification</th><th>Quantity</th><th class="text-end">Action</th></tr></thead>
+                <tbody>
+                <?php if (empty($classifiedReturns)): ?>
+                    <tr><td colspan="6" class="text-center text-muted py-5">No warehouse return QR history found.</td></tr>
+                <?php else: foreach ($classifiedReturns as $returnItem): ?>
+                    <?php $returnQty = (int)($returnItem['good_qty'] ?? 0) + (int)($returnItem['damaged_qty'] ?? 0) + (int)($returnItem['defective_qty'] ?? 0); ?>
+                    <tr>
+                        <td class="font-monospace fw-semibold text-danger"><?= e($returnItem['return_number'] ?? '-') ?></td>
+                        <td class="fw-semibold"><?= e($returnItem['product_name'] ?? '-') ?></td>
+                        <td class="font-monospace small"><?= e($returnItem['sku'] ?? '-') ?></td>
+                        <td><span class="badge <?= strtoupper($returnItem['classification'] ?? '') === 'DAMAGED' ? 'bg-danger' : 'bg-success' ?>"><?= e($returnItem['classification'] ?? 'GOOD') ?></span></td>
+                        <td><?= $returnQty ?> pcs</td>
+                        <td class="text-end"><a class="btn btn-sm btn-outline-danger" href="<?= url('warehouse/labels?source_type=returns&view=generate&return_id=' . (int)$returnItem['warehouse_return_id'] . '&return_item_id=' . (int)$returnItem['id'] . '&return_variant_id=' . (int)$returnItem['variant_id']) ?>"><i class="bi bi-qr-code me-1"></i>Return QR</a></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php else: ?>
     <div class="card border-0 shadow-sm rounded-3 mb-4 bg-white">
         <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
@@ -1438,6 +1483,8 @@ foreach ($qrBatches as $batch) {
 
     </div>
 </div>
+
+    <?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- VIEW 2: QR GENERATION AREA -->
@@ -1985,6 +2032,28 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                     </div>
                 <?php endforeach; ?>
             </div>
+            <?php if ($currentSourceType === 'returns'): ?>
+            <!-- Return QR pages do not use the PO/third-party inward banner, but
+                 the shared selected-QR action still needs a form to submit. -->
+            <form id="formConfirmInward" onsubmit="confirmStickeredInwardAction(event)" class="d-none">
+                <?= CSRF::field() ?>
+                <input type="hidden" name="variant_id" value="<?= (int)$selectedVariantId ?>">
+                <input type="hidden" name="warehouse_id" value="<?= (int)($targetWarehouseId ?? 1) ?>">
+                <input type="hidden" name="quantity" id="inwardQtyInput" value="0">
+                <input type="hidden" name="seller_id" value="<?= (int)($selectedSellerId ?? 0) ?>">
+                <input type="hidden" name="source_id" value="<?= (int)($selectedSourceId ?? 0) ?>">
+                <input type="hidden" name="return_inward" value="1">
+                <input type="hidden" name="tag_codes" id="inwardTagCodesInput" value="[]">
+                <span id="btnInwardSubmitText"></span>
+                <span id="btnInwardSubmitIcon"></span>
+            </form>
+            <?php endif; ?>
+            <div class="d-flex justify-content-end align-items-center gap-2 mt-3 pt-3 border-top no-print">
+                <small class="text-muted me-auto"><i class="bi bi-info-circle me-1"></i>Select QR sticker(s) above, then inward them into warehouse stock.</small>
+                <button type="button" class="btn btn-success fw-bold shadow-sm" id="btnBottomInwardSelected" onclick="confirmStickeredInwardAction(event)" disabled title="Select QR sticker(s) first to inward them into warehouse stock">
+                    <i class="bi bi-box-arrow-in-down me-1"></i> Inward Selected QR
+                </button>
+            </div>
         <?php endif; ?>
     </div>
 </div>
@@ -2170,7 +2239,7 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                     <input type="hidden" name="return_inward" value="<?= $currentSourceType === 'returns' ? '1' : '0' ?>">
                     <input type="hidden" name="tag_codes" id="inwardTagCodesInput" value="<?= htmlspecialchars(json_encode(array_column($generatedItems, 'tag_code')), ENT_QUOTES, 'UTF-8') ?>">
                     
-                    <button type="submit" id="btnConfirmInwardSubmit" class="btn <?= $isFullyInwarded ? 'btn-secondary opacity-75' : 'btn-success' ?> btn-lg shadow fw-bold px-4 py-3 d-flex align-items-center gap-2" <?= $isFullyInwarded ? 'disabled' : '' ?>>
+                    <button type="submit" id="btnConfirmInwardSubmit" class="btn <?= ($isFullyInwarded && $currentSourceType !== 'returns') ? 'btn-secondary opacity-75' : 'btn-success' ?> btn-lg shadow fw-bold px-4 py-3 d-flex align-items-center gap-2" <?= ($isFullyInwarded && $currentSourceType !== 'returns') ? 'disabled' : '' ?>>
                         <i class="bi <?= $isFullyInwarded ? 'bi-check-circle-fill' : 'bi-box-arrow-in-down-right' ?> fs-4" id="btnInwardSubmitIcon"></i>
                         <span id="btnInwardSubmitText">
                             <?php if ($isFullyInwarded): ?>
@@ -3180,6 +3249,7 @@ function syncInwardButtonWithSelection() {
     const tagsInput = document.getElementById('inwardTagCodesInput');
     const btn = document.getElementById('btnConfirmInwardSubmit');
     const quickBtn = document.getElementById('btnQuickInwardSelected');
+    const bottomBtn = document.getElementById('btnBottomInwardSelected');
     const icon = document.getElementById('btnInwardSubmitIcon');
     if (!btnText || !qtyInput || !tagsInput) return;
 
@@ -3194,6 +3264,7 @@ function syncInwardButtonWithSelection() {
         }
         if (icon) icon.className = 'bi bi-check-circle-fill fs-4';
         if (quickBtn) quickBtn.disabled = true;
+        if (bottomBtn) bottomBtn.disabled = true;
         return;
     }
 
@@ -3204,7 +3275,7 @@ function syncInwardButtonWithSelection() {
     // Collect available, not-yet-inwarded items
     const availableItems = [];
     GENERATED_ITEMS.forEach((it, idx) => {
-        if (it && !it.is_inwarded && !it.is_deleted) {
+        if (it && (<?= $currentSourceType === 'returns' ? 'true' : 'false' ?> || !it.is_inwarded) && !it.is_deleted) {
             availableItems.push({ index: idx, item: it });
         }
     });
@@ -3220,6 +3291,7 @@ function syncInwardButtonWithSelection() {
         }
         if (icon) icon.className = 'bi bi-check-circle-fill fs-4';
         if (quickBtn) quickBtn.disabled = true;
+        if (bottomBtn) bottomBtn.disabled = true;
         return;
     }
 
@@ -3244,6 +3316,11 @@ function syncInwardButtonWithSelection() {
             quickBtn.classList.remove('btn-outline-success');
             quickBtn.classList.add('btn-success', 'text-white');
         }
+        if (bottomBtn) {
+            bottomBtn.disabled = false;
+            bottomBtn.classList.remove('btn-outline-success');
+            bottomBtn.classList.add('btn-success');
+        }
     } else {
         // No selection means no inward action. Stock must never be credited implicitly.
         btnText.textContent = 'Select QR Sticker(s) to Inward';
@@ -3259,6 +3336,11 @@ function syncInwardButtonWithSelection() {
             quickBtn.disabled = true;
             quickBtn.classList.add('btn-outline-success');
             quickBtn.classList.remove('btn-success', 'text-white');
+        }
+        if (bottomBtn) {
+            bottomBtn.disabled = true;
+            bottomBtn.classList.add('btn-outline-success');
+            bottomBtn.classList.remove('btn-success', 'text-white');
         }
     }
 }

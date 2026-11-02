@@ -8,6 +8,8 @@ $currStatus = strtolower($filters['stock_status'] ?? '');
 $currCategory = (int)($filters['category_id'] ?? 0);
 $currSort = $filters['sort'] ?? 'name_asc';
 $currSearch = $filters['search'] ?? '';
+$currProductType = $filters['product_type'] ?? 'normal';
+$productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series Products', 'bi-boxes'], 'complementary' => ['Complementary Products', 'bi-gift-fill']];
 ?>
 
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
@@ -162,12 +164,13 @@ $currSearch = $filters['search'] ?? '';
 <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white overflow-hidden">
     <div class="card-header bg-white border-bottom pt-3 pb-2 px-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <ul class="nav nav-tabs card-header-tabs" id="websiteInventoryTabs" role="tablist">
+            <?php foreach ($productTabs as $type => [$label, $icon]): ?>
             <li class="nav-item">
-                <a class="nav-link fw-semibold <?= $currTab === 'stock' ? 'active text-primary border-primary border-bottom-0' : 'text-muted' ?>" 
-                   href="<?= url('warehouse/website-orders/allocations?tab=stock') ?>">
-                    <i class="bi bi-box-seam me-1"></i> Live Product Stock Balances (<?= count($inventory ?? []) ?> items)
+                <a class="nav-link fw-semibold <?= $currTab === 'stock' && $currProductType === $type ? 'active text-primary border-primary border-bottom-0' : 'text-muted' ?>" href="<?= url('warehouse/website-orders/allocations?tab=stock&product_type=' . $type) ?>">
+                    <i class="bi <?= $icon ?> me-1"></i><?= $label ?> (<?= count($productBuckets[$type] ?? []) ?>)
                 </a>
             </li>
+            <?php endforeach; ?>
         </ul>
         <div class="d-flex align-items-center gap-2 flex-wrap">
             <button type="button" class="btn btn-outline-success shadow-sm fw-semibold btnTogglePriceEdit" onclick="togglePriceEditMode()">
@@ -351,9 +354,11 @@ $currSearch = $filters['search'] ?? '';
 
                                 <!-- Category -->
                                 <td>
-                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-                                        <?= htmlspecialchars($it['category_name'] ?? 'General') ?>
-                                    </span>
+                                    <?php if (!empty($it['category_name'])): ?>
+                                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                            <?= htmlspecialchars($it['category_name']) ?>
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
 
                                 <!-- Commercial Pricing -->

@@ -1,5 +1,6 @@
 <?php 
 $canClassify = hasPermission('returns', 'inspect') || hasPermission('returns', 'create') || hasPermission('returns', 'edit');
+$returnQrDate = !empty($return['created_at']) ? date('my', strtotime($return['created_at'])) : date('my');
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <div>
@@ -60,6 +61,22 @@ $canClassify = hasPermission('returns', 'inspect') || hasPermission('returns', '
                                 <div class="my-1"><span class="badge bg-light text-primary border small font-monospace"><i class="bi bi-diagram-3-fill me-1 text-warning"></i><?= htmlspecialchars(implode(' › ', $catParts)) ?></span></div>
                             <?php endif; ?>
                             <code><?= htmlspecialchars($item['sku']) ?></code>
+                            <div class="mt-2 d-flex align-items-center gap-2">
+                                <?php
+                                    $initial = static function ($value): string {
+                                        $clean = trim((string)$value);
+                                        return $clean !== '' ? strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $clean), 0, 1)) : 'X';
+                                    };
+                                    $returnQrPrefix = $initial($item['category_name'] ?? '')
+                                        . $initial($item['subcategory_name'] ?? '')
+                                        . $initial($item['sub_subcategory_name'] ?? '');
+                                    $returnQrValue = trim((string)($item['returned_tag_code'] ?? '')) !== ''
+                                        ? $item['returned_tag_code']
+                                        : $returnQrPrefix . $returnQrDate . str_pad((string)$item['id'], 3, '0', STR_PAD_LEFT);
+                                ?>
+                                <div class="return-item-qr border rounded p-1 bg-white" data-qr-value="<?= htmlspecialchars($returnQrValue) ?>" style="width:58px;height:58px;"></div>
+                                <small class="font-monospace text-dark fw-bold">QR: <?= htmlspecialchars($returnQrValue) ?></small>
+                            </div>
                         </td>
                         <td><span class="badge bg-secondary fs-6"><?= $item['returned_qty'] ?> pcs</span></td>
                         <td>
@@ -123,6 +140,12 @@ $canClassify = hasPermission('returns', 'inspect') || hasPermission('returns', '
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+
+    document.querySelectorAll('.return-item-qr').forEach(function (el) {
+        if (typeof QRCode !== 'undefined') {
+            new QRCode(el, { text: el.dataset.qrValue, width: 50, height: 50, correctLevel: QRCode.CorrectLevel.M });
+        }
+    });
 
     // Classification config: label, colors, whether damaged field is used
     const classConfig = {

@@ -15,6 +15,10 @@ $exchangesHistory = $exchangesHistory ?? [];
 $warehouseReturnsHistory = $warehouseReturnsHistory ?? [];
 
 $pieceTags = $pieceTags ?? [];
+$isPackType = !empty($item['product_is_complementary']) || !empty($item['is_complementary'])
+    || in_array(strtoupper((string)($item['warehouse_category_type'] ?? '')), ['SERIES', 'COMPLEMENTARY'], true)
+    || strtoupper((string)($item['qr_type'] ?? '')) === 'SERIES_BATCH'
+    || (int)($item['pack_quantity'] ?? 1) > 1;
 $tagStats = [
     'total'      => count($pieceTags),
     'available'  => count(array_filter($pieceTags, fn($p) => ($p['status'] ?? '') === 'AVAILABLE')),
@@ -23,6 +27,15 @@ $tagStats = [
     'in_transit' => count(array_filter($pieceTags, fn($p) => ($p['status'] ?? '') === 'IN_TRANSIT')),
     'returned'   => count(array_filter($pieceTags, fn($p) => ($p['status'] ?? '') === 'RETURNED')),
 ];
+if ($isPackType) {
+    // A shared Series/Complementary QR represents the live pack balance. As
+    // long as any units remain available, do not label that shared QR SOLD.
+    $packSold = $availQty > 0 ? 0 : max(0, (int)($metrics['net_sold_qty'] ?? 0));
+    $tagStats['available'] = (int)$availQty;
+    $tagStats['damaged'] = (int)$damagedQty;
+    $tagStats['sold'] = $packSold;
+    $tagStats['total'] = (int)$availQty + (int)$damagedQty + $packSold;
+}
 
 $firstTag = !empty($pieceTags) ? ($pieceTags[0]['tag_code'] ?? '') : '';
 $lastTag  = !empty($pieceTags) ? ($pieceTags[count($pieceTags) - 1]['tag_code'] ?? '') : '';
@@ -96,6 +109,8 @@ usort($pieceTags, static function ($a, $b) {
     background: #f1f5f9 !important;
     border-color: #cbd5e1 !important;
 }
+.piece-item-card.is-sold,
+.piece-table-row.is-sold { display: none !important; }
 </style>
 
 <div class="container-fluid py-4">
@@ -111,7 +126,7 @@ usort($pieceTags, static function ($a, $b) {
                 </span>
                 <?php if (!empty($pieceTags)): ?>
                     <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
-                        <i class="bi bi-qr-code me-1"></i><?= $tagStats['available'] ?> Available In Stock<?php if ($tagStats['sold'] > 0): ?> <span class="text-muted fw-normal">(<?= $tagStats['sold'] ?> Billed / <?= count($pieceTags) ?> Total)</span><?php endif; ?>
+                        <i class="bi bi-qr-code me-1"></i><?= $tagStats['available'] ?> Available In Stock <span class="text-muted fw-normal">/ <?= $tagStats['total'] ?> Total</span>
                     </span>
                 <?php endif; ?>
             </div>
@@ -139,13 +154,6 @@ usort($pieceTags, static function ($a, $b) {
                                      style="max-height: 220px; width: 100%; object-fit: cover;">
                             <?php endif; ?>
 
-                            <?php if ($discount > 0): ?>
-                                <span class="position-absolute top-0 end-0 badge bg-danger rounded-pill m-2 px-2 py-1 shadow-sm" id="detailPageDiscountBadge">
-                                    <?= $discount ?>% OFF
-                                </span>
-                            <?php else: ?>
-                                <span class="position-absolute top-0 end-0 badge bg-danger rounded-pill m-2 px-2 py-1 shadow-sm d-none" id="detailPageDiscountBadge"></span>
-                            <?php endif; ?>
                         </div>
 
                     </div>
@@ -213,18 +221,6 @@ usort($pieceTags, static function ($a, $b) {
                     </div>
                 </div>
 
-                <!-- 4. Total Website Sales Revenue -->
-                <div class="col-sm-6 col-xl-3">
-                    <div class="card border-0 shadow-sm rounded-4 h-100 p-3 bg-white border-start border-info border-4">
-                        <small class="text-muted fw-semibold d-block text-uppercase" style="font-size: 11px;">Total Units Sold</small>
-                        <h3 class="fw-bold text-info-emphasis mb-0 mt-1">
-                            <?= number_format($metrics['total_sold_qty'] ?? 0) ?> <small class="fs-6 fw-normal text-muted">pcs</small>
-                        </h3>
-                        <small class="text-muted d-block mt-1" style="font-size: 11px;">
-                            Rev: <span class="fw-bold text-dark">₹<?= number_format($metrics['total_sold_amt'] ?? 0, 2) ?></span>
-                        </small>
-                    </div>
-                </div>
             </div>
 
             <!-- Product Specifications Card -->
@@ -273,7 +269,7 @@ usort($pieceTags, static function ($a, $b) {
                 <!-- 1. Tracked Piece QR & Tag Codes -->
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active fw-semibold text-primary border-primary border-bottom-0" id="tab-piecetags-tab" data-bs-toggle="tab" data-bs-target="#tab-piecetags" type="button" role="tab">
-                        <i class="bi bi-qr-code-scan me-1 text-primary"></i> Piece QR &amp; Tag Codes (<?= $tagStats['available'] ?> In Stock / <?= count($pieceTags) ?> Total)
+                        <i class="bi bi-qr-code-scan me-1 text-primary"></i> Piece QR &amp; Tag Codes (<?= $tagStats['available'] ?> In Stock / <?= $tagStats['total'] ?> Total)
                     </button>
                 </li>
                 <!-- 2. Stock Ledger Transactions -->
@@ -344,7 +340,7 @@ usort($pieceTags, static function ($a, $b) {
                     </div>
 
                     <!-- Piece KPI Filter Pills -->
-                    <div class="row g-2 mb-4">
+                    <div id="pieceKpiFilters" class="row g-2 mb-4 d-none">
                         <div class="col-6 col-md-auto">
                             <button type="button" class="btn btn-sm btn-outline-success rounded-pill w-100 fw-semibold piece-filter-btn" data-filter="AVAILABLE" onclick="filterPieceTags('AVAILABLE', this)">
                                 Available in Stock <span class="badge bg-success rounded-pill ms-1"><?= $tagStats['available'] ?></span>
@@ -353,11 +349,6 @@ usort($pieceTags, static function ($a, $b) {
                         <div class="col-6 col-md-auto">
                             <button type="button" class="btn btn-sm btn-outline-danger rounded-pill w-100 fw-semibold piece-filter-btn" data-filter="DAMAGED" onclick="filterPieceTags('DAMAGED', this)">
                                 Damaged / Quarantined <span class="badge bg-danger rounded-pill ms-1"><?= $tagStats['damaged'] ?></span>
-                            </button>
-                        </div>
-                        <div class="col-6 col-md-auto">
-                            <button type="button" class="btn btn-sm btn-outline-info rounded-pill w-100 fw-semibold piece-filter-btn" data-filter="SOLD" onclick="filterPieceTags('SOLD', this)">
-                                Sold <span class="badge bg-info text-dark rounded-pill ms-1"><?= $tagStats['sold'] ?></span>
                             </button>
                         </div>
                         <?php if ($tagStats['returned'] > 0): ?>

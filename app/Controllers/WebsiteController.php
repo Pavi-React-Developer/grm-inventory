@@ -899,6 +899,7 @@ class WebsiteController {
         $chan = $this->getChannel();
         $channelId = (int)($chan['id'] ?? 2);
         $activeTab = $_GET['tab'] ?? 'stock';
+        $productType = strtolower(trim($_GET['product_type'] ?? 'normal'));
 
         $search = trim($_GET['search'] ?? '');
         $categoryId = (int)($_GET['category_id'] ?? 0);
@@ -922,7 +923,8 @@ class WebsiteController {
             SELECT pv.id as variant_id, pv.sku, pv.qr_code, pv.mrp, pv.selling_price, pv.purchase_price, pv.production_cost,
                    pv.image_url as variant_image,
                    p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                   p.category_code, p.min_stock, p.max_stock, p.description,
+                   p.category_code, p.min_stock, p.max_stock, p.description, p.is_complementary,
+                   pv.is_complementary as variant_is_complementary, pv.qr_type, pv.pack_quantity,
                    cat.id as category_id, cat.name as category_name,
                    subcat.name as subcategory_name,
                    s.name as size_name,
@@ -950,6 +952,7 @@ class WebsiteController {
             FROM product_variants pv
             JOIN products p ON pv.product_id = p.id
             LEFT JOIN categories cat ON p.category_id = cat.id
+            LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
             LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
             LEFT JOIN sizes s ON pv.size_id = s.id
             LEFT JOIN colors c ON pv.color_id = c.id
@@ -1043,6 +1046,15 @@ class WebsiteController {
             return true;
         });
 
+        $productBuckets = ['normal' => [], 'series' => [], 'complementary' => []];
+        foreach ($filteredStockItems as $it) {
+            $isComp = !empty($it['is_complementary']) || !empty($it['variant_is_complementary']);
+            $isSeries = (($it['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($it['pack_quantity'] ?? 1) > 1);
+            $productBuckets[$isComp ? 'complementary' : ($isSeries ? 'series' : 'normal')][] = $it;
+        }
+        if (!array_key_exists($productType, $productBuckets)) $productType = 'normal';
+        $filteredStockItems = $productBuckets[$productType];
+
         usort($filteredStockItems, function($a, $b) use ($sort) {
             return match($sort) {
                 'stock_desc' => (float)$b['available_quantity'] <=> (float)$a['available_quantity'],
@@ -1135,7 +1147,9 @@ class WebsiteController {
                 'alloc_status' => $allocStatus,
                 'date_from'    => $dateFrom,
                 'date_to'      => $dateTo,
+                'product_type' => $productType,
             ],
+            'productBuckets'        => $productBuckets,
             'allocations'           => $allocations,
             'totalAllocationsCount' => $totalAllocationsCount,
             'totalAllocatedQty'     => $totalAllocatedQty,
@@ -1169,6 +1183,8 @@ class WebsiteController {
                    p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
                    p.category_code, p.subcategory_code, p.sub_subcategory_code, p.qr_code_prefix,
                    p.description, p.material, p.hsn_code, p.gst_percentage, p.min_stock, p.max_stock, p.source_type,
+                   p.is_complementary as product_is_complementary,
+                   wc.category_type as warehouse_category_type,
                    s.name as size_name, c.name as color_name, 
                    cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name,
                    b.name as brand_name, sel.name as seller_name,
@@ -1183,6 +1199,7 @@ class WebsiteController {
             FROM product_variants pv
             JOIN products p ON pv.product_id = p.id
             LEFT JOIN categories cat ON p.category_id = cat.id
+            LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
             LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
             LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
             LEFT JOIN brands b ON p.brand_id = b.id
@@ -1199,6 +1216,13 @@ class WebsiteController {
             Response::redirect(url('warehouse/website-orders/allocations'));
             return;
         }
+
+         $isPackType = !empty($item['product_is_complementary'])
+             || !empty($item['is_complementary'])
+             || strtoupper((string)($item['warehouse_category_type'] ?? '')) === 'COMPLEMENTARY'
+             || strtoupper((string)($item['warehouse_category_type'] ?? '')) === 'SERIES'
+             || strtoupper((string)($item['qr_type'] ?? '')) === 'SERIES_BATCH'
+             || (int)($item['pack_quantity'] ?? 1) > 1;
 
         // 1. Stock Ledger / Transactions for this variant at Website Channel
         $transactions = Database::fetchAll(
@@ -1565,14 +1589,14 @@ class WebsiteController {
                                 'damage_reason'       => 'Returned Damaged Stock'
                             ]);
                         }
-                    } elseif (isset($exchangeDispatchedTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($exchangeDispatchedTagsMap[$tagCode])) {
                         $status = 'SOLD';
                         $statusMeta = array_merge($exchangeDispatchedTagsMap[$tagCode], [
                             'is_exchange_dispatched' => true,
                             'dispatch_badge'         => 'Dispatched in Exchange',
                             'invoice_number'         => $exchangeDispatchedTagsMap[$tagCode]['exchange_number'] ?? 'Exchange Order'
                         ]);
-                    } elseif (isset($soldTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($soldTagsMap[$tagCode])) {
                         $status = 'SOLD';
                         $statusMeta = $soldTagsMap[$tagCode];
                     } elseif ($pSeq > $rec && $pSeq <= ($rec + $dmg)) {
@@ -1660,14 +1684,14 @@ class WebsiteController {
                                 'damage_reason'       => 'Returned Damaged Stock'
                             ]);
                         }
-                    } elseif (isset($exchangeDispatchedTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($exchangeDispatchedTagsMap[$tagCode])) {
                         $status = 'SOLD';
                         $statusMeta = array_merge($exchangeDispatchedTagsMap[$tagCode], [
                             'is_exchange_dispatched' => true,
                             'dispatch_badge'         => 'Dispatched in Exchange',
                             'invoice_number'         => $exchangeDispatchedTagsMap[$tagCode]['exchange_number'] ?? 'Exchange Order'
                         ]);
-                    } elseif (isset($soldTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($soldTagsMap[$tagCode])) {
                         $status = 'SOLD';
                         $statusMeta = $soldTagsMap[$tagCode];
                     } elseif ($p > $rec && $p <= ($rec + $dmg)) {
@@ -1760,14 +1784,14 @@ class WebsiteController {
                             'damage_reason'       => 'Returned Damaged Stock'
                         ]);
                     }
-                } elseif (isset($exchangeDispatchedTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($exchangeDispatchedTagsMap[$tagCode])) {
                     $status = 'SOLD';
                     $statusMeta = array_merge($exchangeDispatchedTagsMap[$tagCode], [
                         'is_exchange_dispatched' => true,
                         'dispatch_badge'         => 'Dispatched in Exchange',
                         'invoice_number'         => $exchangeDispatchedTagsMap[$tagCode]['exchange_number'] ?? 'Exchange Order'
                     ]);
-                } elseif (isset($soldTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($soldTagsMap[$tagCode])) {
                     $status = 'SOLD';
                     $statusMeta = $soldTagsMap[$tagCode];
                 }
@@ -1841,7 +1865,7 @@ class WebsiteController {
             unset($pt);
         }
 
-        if ($unassignedSoldCount > 0) {
+        if ($unassignedSoldCount > 0 && !$isPackType) {
             foreach ($pieceTags as &$pt) {
                 if ($unassignedSoldCount <= 0) break;
                 if ($pt['status'] === 'AVAILABLE' && empty($pt['meta']['is_restocked'])) {

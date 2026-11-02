@@ -11,6 +11,10 @@ $cost = (float)($item['production_cost'] > 0 ? $item['production_cost'] : ($item
 $discount = ($mrp > $sellingPrice && $mrp > 0) ? round((($mrp - $sellingPrice) / $mrp) * 100) : 0;
 
 $pieceTags = $pieceTags ?? [];
+$isPackType = !empty($item['product_is_complementary']) || !empty($item['is_complementary'])
+    || in_array(strtoupper((string)($item['warehouse_category_type'] ?? '')), ['SERIES', 'COMPLEMENTARY'], true)
+    || strtoupper((string)($item['qr_type'] ?? '')) === 'SERIES_BATCH'
+    || (int)($item['pack_quantity'] ?? 1) > 1;
 $tagStats = [
     'total'              => count($pieceTags),
     'available'          => count(array_filter($pieceTags, fn($p) => ($p['status'] ?? '') === 'AVAILABLE')),
@@ -21,6 +25,15 @@ $tagStats = [
     'returned_warehouse' => count(array_filter($pieceTags, fn($p) => ($p['status'] ?? '') === 'RETURNED' || !empty($p['meta']['is_warehouse_returned']))),
     'in_transit'         => count(array_filter($pieceTags, fn($p) => ($p['status'] ?? '') === 'IN_TRANSIT')),
 ];
+if ($isPackType) {
+    // A shared Series/Complementary QR represents the live pack balance. As
+    // long as any units remain available, do not label that shared QR SOLD.
+    $packSold = $availQty > 0 ? 0 : max(0, (int)($metrics['net_sold_qty'] ?? 0));
+    $tagStats['available'] = (int)$availQty;
+    $tagStats['damaged'] = (int)$damagedQty;
+    $tagStats['sold'] = $packSold;
+    $tagStats['total'] = (int)$availQty + (int)$damagedQty + $packSold;
+}
 
 $firstTag = !empty($pieceTags) ? ($pieceTags[0]['tag_code'] ?? '') : '';
 $lastTag  = !empty($pieceTags) ? ($pieceTags[count($pieceTags) - 1]['tag_code'] ?? '') : '';
@@ -169,6 +182,8 @@ usort($pieceTags, static function ($a, $b) {
     background: #f1f5f9 !important;
     border-color: #cbd5e1 !important;
 }
+.piece-item-card.is-sold,
+.piece-table-row.is-sold { display: none !important; }
 .piece-table-row.is-exchanged {
     background-color: #faf5ff !important;
     color: #6b21a8 !important;
@@ -191,7 +206,7 @@ usort($pieceTags, static function ($a, $b) {
                 </span>
                 <?php if (!empty($pieceTags)): ?>
                     <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
-                        <i class="bi bi-qr-code me-1"></i><?= $tagStats['available'] ?> Available In Stock<?php if ($tagStats['sold'] > 0 || $tagStats['restocked'] > 0 || $tagStats['exchanged'] > 0 || $tagStats['returned_warehouse'] > 0): ?> <span class="text-muted fw-normal">(<?= $tagStats['sold'] ?> Sold<?php if ($tagStats['restocked'] > 0): ?> &bull; <?= $tagStats['restocked'] ?> Restocked<?php endif; ?><?php if ($tagStats['exchanged'] > 0): ?> &bull; <?= $tagStats['exchanged'] ?> Exchanged<?php endif; ?><?php if ($tagStats['returned_warehouse'] > 0): ?> &bull; <?= $tagStats['returned_warehouse'] ?> Returned to Warehouse<?php endif; ?> / <?= count($pieceTags) ?> Total)</span><?php endif; ?>
+                        <i class="bi bi-qr-code me-1"></i><?= $tagStats['available'] ?> Available In Stock <span class="text-muted fw-normal">/ <?= $tagStats['total'] ?> Total</span>
                     </span>
                 <?php endif; ?>
             </div>
@@ -207,44 +222,8 @@ usort($pieceTags, static function ($a, $b) {
 
     <!-- Product Hero & Metrics Row -->
     <div class="row g-4 mb-4">
-        <!-- 1. Product Image & Piece QR Card -->
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm rounded-4 h-100 overflow-hidden bg-white">
-                <div class="card-body p-4 text-center bg-light bg-opacity-50 d-flex flex-column justify-content-between">
-                    <div>
-                        <div class="position-relative d-inline-block mb-3">
-                            <?php if ($imgUrl): ?>
-                                <img src="<?= htmlspecialchars($imgUrl) ?>" alt="<?= htmlspecialchars($item['product_name']) ?>" 
-                                     class="img-fluid rounded-4 shadow-sm border bg-white" 
-                                     style="max-height: 220px; width: 100%; object-fit: cover;">
-                            <?php endif; ?>
-
-                            <?php if ($discount > 0): ?>
-                                <span class="position-absolute top-0 end-0 badge bg-danger rounded-pill m-2 px-2 py-1 shadow-sm" id="detailPageDiscountBadge">
-                                    <?= $discount ?>% OFF
-                                </span>
-                            <?php else: ?>
-                                <span class="position-absolute top-0 end-0 badge bg-danger rounded-pill m-2 px-2 py-1 shadow-sm d-none" id="detailPageDiscountBadge"></span>
-                            <?php endif; ?>
-                        </div>
-
-                    </div>
-
-                    <!-- Master SKU QR Code Canvas -->
-                    <div class="p-3 bg-white rounded-3 border shadow-sm">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="small fw-bold text-muted text-uppercase"><i class="bi bi-qr-code me-1 text-success"></i>Master SKU QR</span>
-                            <span class="badge bg-light text-secondary border font-monospace"><?= htmlspecialchars($item['qr_code_prefix'] ?? 'PREFIX') ?></span>
-                        </div>
-                        <div id="productQrCanvas" class="d-flex justify-content-center my-2"></div>
-                        <span class="badge bg-dark text-white font-monospace px-3 py-1"><?= htmlspecialchars($item['qr_code'] ?: $item['sku']) ?></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 2. Commercials & Stock Balances Summary -->
-        <div class="col-lg-8">
+        <!-- Commercials & Stock Balances Summary -->
+        <div class="col-12">
             <div class="row g-3 mb-4">
                 <!-- 1. Selling Price -->
                 <div class="col-sm-6 col-xl-3">
@@ -293,23 +272,6 @@ usort($pieceTags, static function ($a, $b) {
                     </div>
                 </div>
 
-                <!-- 4. Total WhatsApp Sales Revenue & Net Sold -->
-                <div class="col-sm-6 col-xl-3">
-                    <div class="card border-0 shadow-sm rounded-4 h-100 p-3 bg-white border-start border-info border-4">
-                        <small class="text-muted fw-semibold d-block text-uppercase" style="font-size: 11px;">Units Sold (Net)</small>
-                        <h3 class="fw-bold text-info-emphasis mb-0 mt-1">
-                            <?= number_format($metrics['net_sold_qty'] ?? $metrics['total_sold_qty'] ?? 0) ?> <small class="fs-6 fw-normal text-muted">pcs</small>
-                        </h3>
-                        <small class="text-muted d-block mt-1" style="font-size: 11px;">
-                            <?php if (!empty($metrics['total_returned_qty']) || !empty($metrics['total_exchanged_qty'])): ?>
-                                <span class="text-success fw-semibold"><?= (int)($metrics['total_returned_qty'] ?? 0) ?> Ret</span> &bull; 
-                                <span class="text-primary fw-semibold"><?= (int)($metrics['total_exchanged_qty'] ?? 0) ?> Swapped</span>
-                            <?php else: ?>
-                                Rev: <span class="fw-bold text-dark">₹<?= number_format($metrics['total_sold_amt'] ?? 0, 2) ?></span>
-                            <?php endif; ?>
-                        </small>
-                    </div>
-                </div>
             </div>
 
         </div>
@@ -322,7 +284,7 @@ usort($pieceTags, static function ($a, $b) {
                 <!-- 1. Tracked Piece QR & Tag Codes -->
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active fw-semibold text-primary border-primary border-bottom-0" id="tab-piecetags-tab" data-bs-toggle="tab" data-bs-target="#tab-piecetags" type="button" role="tab">
-                        <i class="bi bi-qr-code-scan me-1 text-primary"></i> Piece QR &amp; Tag Codes (<?= $tagStats['available'] ?> In Stock / <?= count($pieceTags) ?> Total)
+                        <i class="bi bi-qr-code-scan me-1 text-primary"></i> Piece QR &amp; Tag Codes (<?= $tagStats['available'] ?> In Stock / <?= $tagStats['total'] ?> Total)
                     </button>
                 </li>
                 <!-- 2. Stock Ledger Transactions -->
@@ -391,7 +353,7 @@ usort($pieceTags, static function ($a, $b) {
                     </div>
 
                     <!-- Piece KPI Filter Pills -->
-                    <div class="row g-2 mb-4">
+                    <div id="pieceKpiFilters" class="row g-2 mb-4 d-none">
                         <div class="col-6 col-md-auto">
                             <button type="button" class="btn btn-sm btn-outline-success rounded-pill w-100 fw-semibold piece-filter-btn" data-filter="AVAILABLE" onclick="filterPieceTags('AVAILABLE', this)">
                                 Available in Stock <span class="badge bg-success rounded-pill ms-1"><?= $tagStats['available'] ?></span>
@@ -423,11 +385,6 @@ usort($pieceTags, static function ($a, $b) {
                                 </button>
                             </div>
                         <?php endif; ?>
-                        <div class="col-6 col-md-auto">
-                            <button type="button" class="btn btn-sm btn-outline-info rounded-pill w-100 fw-semibold piece-filter-btn" data-filter="SOLD" onclick="filterPieceTags('SOLD', this)">
-                                Sold <span class="badge bg-info text-dark rounded-pill ms-1"><?= $tagStats['sold'] ?></span>
-                            </button>
-                        </div>
                         <?php if ($tagStats['in_transit'] > 0): ?>
                             <div class="col-6 col-md-auto">
                                 <button type="button" class="btn btn-sm btn-outline-warning rounded-pill w-100 fw-semibold piece-filter-btn" data-filter="IN_TRANSIT" onclick="filterPieceTags('IN_TRANSIT', this)">
@@ -1337,20 +1294,7 @@ const mrpVal = <?= json_encode($mrp) ?>;
 const sellVal = <?= json_encode($sellingPrice) ?>;
 
 document.addEventListener('DOMContentLoaded', function() {
-    // 1. Initialize Master SKU QR Canvas
-    const masterCanvas = document.getElementById("productQrCanvas");
-    if (masterCanvas) {
-        new QRCode(masterCanvas, {
-            text: <?= json_encode($item['qr_code'] ?: $item['sku']) ?>,
-            width: 90,
-            height: 90,
-            colorDark : "#000000",
-            colorLight : "#ffffff",
-            correctLevel : QRCode.CorrectLevel.M
-        });
-    }
-
-    // 2. Initialize Individual Piece QR Canvases for Card Grid
+    // Initialize Individual Piece QR Canvases for Card Grid
     document.querySelectorAll('.piece-qr-canvas').forEach(function(el) {
         const payload = el.getAttribute('data-payload');
         if (payload) {
@@ -1714,9 +1658,14 @@ window.handlePriceFormSubmit = function(event) {
     const btn = document.getElementById('btnSavePrice');
     const alertBox = document.getElementById('editPriceAlertContainer');
     const sp = parseFloat(document.getElementById('inputSellingPrice').value) || 0;
+    const mrp = parseFloat(document.getElementById('inputMrpPrice').value) || 0;
 
     if (sp < 0) {
         alertBox.innerHTML = `<div class="alert alert-danger py-2 small mb-3">Selling price cannot be negative.</div>`;
+        return;
+    }
+    if (mrp <= 0 || sp > mrp) {
+        alertBox.innerHTML = `<div class="alert alert-danger py-2 small mb-3">Selling/discount price must be less than or equal to the MRP/base price.</div>`;
         return;
     }
 

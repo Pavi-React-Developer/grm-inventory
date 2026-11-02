@@ -996,6 +996,7 @@ class WhatsappController {
         $chan = $this->getChannel();
         $channelId = (int)($chan['id'] ?? 3);
         $activeTab = $_GET['tab'] ?? 'stock';
+        $productType = strtolower(trim($_GET['product_type'] ?? 'normal'));
 
         $search = trim($_GET['search'] ?? '');
         $categoryId = (int)($_GET['category_id'] ?? 0);
@@ -1021,7 +1022,8 @@ class WhatsappController {
             SELECT pv.id as variant_id, pv.sku, pv.qr_code, pv.mrp, pv.selling_price, pv.purchase_price, pv.production_cost,
                    pv.image_url as variant_image,
                    p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
-                   p.category_code, p.min_stock, p.max_stock, p.description,
+                   p.category_code, p.min_stock, p.max_stock, p.description, p.is_complementary,
+                   pv.is_complementary as variant_is_complementary, pv.qr_type, pv.pack_quantity,
                    cat.id as category_id, cat.name as category_name,
                    subcat.name as subcategory_name,
                    s.name as size_name,
@@ -1077,6 +1079,7 @@ class WhatsappController {
             FROM product_variants pv
             JOIN products p ON pv.product_id = p.id
             LEFT JOIN categories cat ON p.category_id = cat.id
+            LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
             LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
             LEFT JOIN sizes s ON pv.size_id = s.id
             LEFT JOIN colors c ON pv.color_id = c.id
@@ -1177,6 +1180,15 @@ class WhatsappController {
             return true;
         });
 
+        $productBuckets = ['normal' => [], 'series' => [], 'complementary' => []];
+        foreach ($filteredStockItems as $it) {
+            $isComp = !empty($it['is_complementary']) || !empty($it['variant_is_complementary']);
+            $isSeries = (($it['qr_type'] ?? '') === 'SERIES_BATCH' || (int)($it['pack_quantity'] ?? 1) > 1);
+            $productBuckets[$isComp ? 'complementary' : ($isSeries ? 'series' : 'normal')][] = $it;
+        }
+        if (!array_key_exists($productType, $productBuckets)) $productType = 'normal';
+        $filteredStockItems = $productBuckets[$productType];
+
         // Sort stock items
         usort($filteredStockItems, function($a, $b) use ($sort) {
             return match($sort) {
@@ -1271,7 +1283,9 @@ class WhatsappController {
                 'alloc_status' => $allocStatus,
                 'date_from'    => $dateFrom,
                 'date_to'      => $dateTo,
+                'product_type' => $productType,
             ],
+            'productBuckets'        => $productBuckets,
             'allocations'           => $allocations,
             'totalAllocationsCount' => $totalAllocationsCount,
             'totalAllocatedQty'     => $totalAllocatedQty,
@@ -1300,6 +1314,8 @@ class WhatsappController {
                    p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
                    p.category_code, p.subcategory_code, p.sub_subcategory_code, p.qr_code_prefix,
                    p.description, p.material, p.hsn_code, p.gst_percentage, p.min_stock, p.max_stock, p.source_type,
+                   p.is_complementary as product_is_complementary,
+                   wc.category_type as warehouse_category_type,
                    s.name as size_name, c.name as color_name, 
                    cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name,
                    b.name as brand_name, sel.name as seller_name,
@@ -1314,6 +1330,7 @@ class WhatsappController {
             FROM product_variants pv
             JOIN products p ON pv.product_id = p.id
             LEFT JOIN categories cat ON p.category_id = cat.id
+            LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
             LEFT JOIN subcategories subcat ON p.subcategory_id = subcat.id
             LEFT JOIN sub_subcategories subsubcat ON p.sub_subcategory_id = subsubcat.id
             LEFT JOIN brands b ON p.brand_id = b.id
@@ -1330,6 +1347,16 @@ class WhatsappController {
             Response::redirect(url('warehouse/whatsapp-orders/allocations'));
             return;
         }
+
+        // Series/complementary products use a shared QR for a pack. Their
+        // piece status must follow the live channel balance, not one sale
+        // quantity being assigned to the shared QR as SOLD.
+        $isPackType = !empty($item['product_is_complementary'])
+            || !empty($item['is_complementary'])
+            || strtoupper((string)($item['warehouse_category_type'] ?? '')) === 'COMPLEMENTARY'
+            || strtoupper((string)($item['warehouse_category_type'] ?? '')) === 'SERIES'
+            || strtoupper((string)($item['qr_type'] ?? '')) === 'SERIES_BATCH'
+            || (int)($item['pack_quantity'] ?? 1) > 1;
 
         // 1. Stock Ledger / Transactions for this variant at WhatsApp Channel
         $transactions = Database::fetchAll(
@@ -1413,7 +1440,7 @@ class WhatsappController {
 
         // 7. Warehouse Returns History for this variant (dispatched back to Central Warehouse)
         $warehouseReturnsHistory = Database::fetchAll(
-            "SELECT wr.*, wri.returned_qty, wri.good_qty, wri.damaged_qty, wri.defective_qty, wri.classification,
+            "SELECT wr.*, wri.id as return_item_id, wri.variant_id, wri.returned_qty, wri.good_qty, wri.damaged_qty, wri.defective_qty, wri.classification,
                     w.name as destination_warehouse_name
              FROM warehouse_return_items wri
              JOIN warehouse_returns wr ON wri.warehouse_return_id = wr.id
@@ -1593,7 +1620,14 @@ class WhatsappController {
             ];
 
             $foundSpecificTags = false;
-            if (!empty($wrItem['notes'])) {
+            $notesJson = json_decode((string)($wrItem['notes'] ?? ''), true);
+            foreach (($notesJson['scanned_tags'] ?? []) as $scan) {
+                if ((int)($scan['variant_id'] ?? 0) === $variantId && !empty($scan['tag_code'])) {
+                    $warehouseReturnedTagsMap[trim($scan['tag_code'])] = $wrInfo;
+                    $foundSpecificTags = true;
+                }
+            }
+            if (!empty($wrItem['notes']) && !is_array($notesJson)) {
                 $notesStr = $wrItem['notes'];
                 if (str_starts_with($notesStr, 'QR: ')) {
                     $notesStr = substr($notesStr, 4);
@@ -1608,6 +1642,10 @@ class WhatsappController {
             }
 
             if (!$foundSpecificTags) {
+                $fallbackReturnedTag = $prefix
+                    . date('my', strtotime($wrItem['created_at'] ?? 'now'))
+                    . str_pad((string)($wrItem['return_item_id'] ?? 0), 3, '0', STR_PAD_LEFT);
+                $warehouseReturnedTagsMap[$fallbackReturnedTag] = $wrInfo;
                 if (($wrItem['classification'] ?? 'GOOD') === 'DAMAGED') {
                     $unassignedWarehouseReturnedDamagedCount += (int)($wrItem['returned_qty'] ?? 1);
                 } else {
@@ -1672,10 +1710,10 @@ class WhatsappController {
                             $status = 'DAMAGED';
                             $statusMeta = array_merge($rInfo, ['is_returned_damaged' => true, 'damage_reason' => 'Returned Damaged Stock']);
                         }
-                    } elseif (isset($exchangeDispatchedTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($exchangeDispatchedTagsMap[$tagCode])) {
                         $status = 'SOLD';
                         $statusMeta = array_merge($exchangeDispatchedTagsMap[$tagCode], ['is_exchange_dispatched' => true, 'dispatch_badge' => 'Dispatched in Exchange']);
-                    } elseif (isset($soldTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($soldTagsMap[$tagCode])) {
                         $status = 'SOLD';
                         $statusMeta = $soldTagsMap[$tagCode];
                     } elseif ($pSeq > $rec && $pSeq <= ($rec + $dmg)) {
@@ -1757,10 +1795,10 @@ class WhatsappController {
                             $status = 'DAMAGED';
                             $statusMeta = array_merge($rInfo, ['is_returned_damaged' => true, 'damage_reason' => 'Returned Damaged Stock']);
                         }
-                    } elseif (isset($exchangeDispatchedTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($exchangeDispatchedTagsMap[$tagCode])) {
                         $status = 'SOLD';
                         $statusMeta = array_merge($exchangeDispatchedTagsMap[$tagCode], ['is_exchange_dispatched' => true, 'dispatch_badge' => 'Dispatched in Exchange']);
-                    } elseif (isset($soldTagsMap[$tagCode])) {
+                    } elseif (!$isPackType && isset($soldTagsMap[$tagCode])) {
                         $status = 'SOLD';
                         $statusMeta = $soldTagsMap[$tagCode];
                     } elseif ($p > $rec && $p <= ($rec + $dmg)) {
@@ -1848,6 +1886,36 @@ class WhatsappController {
             }
         }
 
+        // A return QR can be created/scanned after the original allocation
+        // list was built. Add those exact scanned tags as returned pieces so
+        // the Returned tab can render them instead of showing only a count.
+        foreach ($warehouseReturnedTagsMap as $returnedTag => $returnedMeta) {
+            $alreadyPresent = false;
+            foreach ($pieceTags as $existingPiece) {
+                if (strcasecmp((string)($existingPiece['tag_code'] ?? ''), (string)$returnedTag) === 0) {
+                    $alreadyPresent = true;
+                    break;
+                }
+            }
+            if ($alreadyPresent) continue;
+            $pieceTags[] = [
+                'piece_no' => count($pieceTags) + 1,
+                'batch_piece_no' => count($pieceTags) + 1,
+                'tag_code' => $returnedTag,
+                'qr_payload' => $returnedTag,
+                'sku' => $item['sku'],
+                'mrp' => $fmtMrp,
+                'disc' => $fmtDisc,
+                'selling_price' => $costVal,
+                'allocation_id' => null,
+                'allocation_number' => 'WhatsApp Return to Warehouse',
+                'warehouse_name' => $returnedMeta['warehouse_name'] ?? 'Central Warehouse',
+                'inward_date' => $returnedMeta['date'] ?? date('Y-m-d H:i:s'),
+                'status' => 'RETURNED',
+                'meta' => $returnedMeta,
+            ];
+        }
+
         // Apply unassigned warehouse returns from the newest allocated pieces
         if ($unassignedWarehouseReturnedGoodCount > 0) {
             for ($idx = count($pieceTags) - 1; $idx >= 0; $idx--) {
@@ -1896,7 +1964,7 @@ class WhatsappController {
             unset($pt);
         }
 
-        if ($unassignedSoldCount > 0) {
+        if ($unassignedSoldCount > 0 && !$isPackType) {
             foreach ($pieceTags as &$pt) {
                 if ($unassignedSoldCount <= 0) break;
                 if ($pt['status'] === 'AVAILABLE' && empty($pt['meta']['is_restocked'])) {
@@ -1959,12 +2027,15 @@ class WhatsappController {
         $warehouses = function_exists('getScopedWarehouses') ? getScopedWarehouses() : Database::fetchAll("SELECT * FROM warehouses WHERE is_active = 1 ORDER BY name ASC");
         $variants = Database::fetchAll(
             "SELECT pv.id, pv.sku, pv.mrp, pv.selling_price, p.name as product_name,
+                    COALESCE(wc.name, c.name, 'General') as category_name,
                     COALESCE((
                         SELECT SUM(quantity) FROM stock_balances 
                         WHERE variant_id = pv.id AND stock_state = 'AVAILABLE' AND location_type = 'WAREHOUSE'
                     ), 0) as stock_qty
              FROM product_variants pv
              JOIN products p ON pv.product_id = p.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+             LEFT JOIN categories c ON p.category_id = c.id
              WHERE pv.is_active = 1
              ORDER BY p.name ASC, pv.sku ASC"
         );
@@ -2258,6 +2329,66 @@ class WhatsappController {
             return;
         }
 
+        // A phone lookup must show every matching WhatsApp invoice so the
+        // operator can choose the correct bill before selecting return items.
+        $phoneTerm = preg_replace('/[^0-9+]/', '', $term);
+        if (strlen(preg_replace('/[^0-9]/', '', $phoneTerm)) >= 7) {
+            $phoneSales = Database::fetchAll(
+                "SELECT s.*, COALESCE(c.name, s.customer_name, 'WhatsApp Customer') as customer_name,
+                        COALESCE(c.phone, s.customer_phone, '-') as customer_phone, c.email as customer_email
+                 FROM sales s LEFT JOIN customers c ON s.customer_id = c.id
+                 WHERE (c.phone LIKE ? OR s.customer_phone LIKE ?)
+                   AND (s.sales_channel = 'WHATSAPP' OR s.sale_type = 'WHATSAPP' OR s.notes LIKE '%WhatsApp%' OR s.invoice_number LIKE 'WA-%')
+                 ORDER BY s.id DESC LIMIT 50",
+                ["%{$phoneTerm}%", "%{$phoneTerm}%"]
+            );
+            $phoneOrders = [];
+            foreach ($phoneSales as $phoneSale) {
+                $phoneItems = Database::fetchAll(
+                    "SELECT si.*, p.id as product_id, p.name as product_name, p.code as product_code,
+                            pv.sku, pv.qr_code, pv.mrp,
+                            COALESCE(sz.name, 'Free Size') as size_name,
+                            COALESCE(clr.name, 'Standard') as color_name
+                     FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id
+                     JOIN products p ON pv.product_id = p.id
+                     LEFT JOIN sizes sz ON pv.size_id = sz.id LEFT JOIN colors clr ON pv.color_id = clr.id
+                     WHERE si.sale_id = ?",
+                    [(int)$phoneSale['id']]
+                );
+                foreach ($phoneItems as &$phoneItem) {
+                    $returned = Database::fetchOne(
+                        "SELECT COALESCE(SUM(quantity), 0) total FROM return_items WHERE sale_item_id = ?",
+                        [(int)$phoneItem['id']]
+                    );
+                    $phoneItem['returnable_quantity'] = max(0, (int)$phoneItem['quantity'] - (int)($returned['total'] ?? 0));
+                    $phoneItem['sibling_variants'] = Database::fetchAll(
+                        "SELECT pv2.id, pv2.sku, pv2.selling_price as price, pv2.mrp,
+                                sz2.name as size_name, clr2.name as color_name
+                         FROM product_variants pv2 LEFT JOIN sizes sz2 ON pv2.size_id = sz2.id
+                         LEFT JOIN colors clr2 ON pv2.color_id = clr2.id
+                         WHERE pv2.product_id = ? AND pv2.is_active = 1
+                         ORDER BY sz2.sort_order ASC, clr2.name ASC",
+                        [(int)$phoneItem['product_id']]
+                    );
+                }
+                unset($phoneItem);
+                $existingInvoiceReturn = Database::fetchOne(
+                    "SELECT id, return_number FROM returns WHERE sale_id = ? AND source_type = 'WHATSAPP' ORDER BY id DESC LIMIT 1",
+                    [(int)$phoneSale['id']]
+                );
+                $phoneOrders[] = [
+                    'sale' => $phoneSale,
+                    'items' => $phoneItems,
+                    'already_returned' => (bool)$existingInvoiceReturn,
+                    'return_number' => $existingInvoiceReturn['return_number'] ?? null,
+                ];
+            }
+            if (count($phoneOrders) > 1) {
+                Response::jsonSuccess('WhatsApp invoices found for this customer.', $phoneOrders);
+                return;
+            }
+        }
+
         // Search sales by invoice_number, customer phone/name, or piece tag in sale_items
         $sale = Database::fetchOne(
             "SELECT s.*, 
@@ -2371,10 +2502,17 @@ class WhatsappController {
         }
         unset($it);
 
+        $existingInvoiceReturn = Database::fetchOne(
+            "SELECT id, return_number FROM returns WHERE sale_id = ? AND source_type = 'WHATSAPP' ORDER BY id DESC LIMIT 1",
+            [(int)$sale['id']]
+        );
+
         Response::jsonSuccess("WhatsApp Sale record loaded successfully", [
             [
-                'sale'  => $sale,
-                'items' => $items
+                'sale'            => $sale,
+                'items'           => $items,
+                'already_returned' => (bool)$existingInvoiceReturn,
+                'return_number'   => $existingInvoiceReturn['return_number'] ?? null,
             ]
         ]);
     }
@@ -2402,8 +2540,68 @@ class WhatsappController {
             return;
         }
 
+        // Return eligibility is invoice-based: one invoice can be returned or
+        // exchanged only once, regardless of how many invoices share a phone.
+        $existingInvoiceReturn = Database::fetchOne(
+            "SELECT return_number FROM returns WHERE sale_id = ? AND source_type = 'WHATSAPP' ORDER BY id DESC LIMIT 1",
+            [$saleId]
+        );
+        if ($existingInvoiceReturn) {
+            Session::flash('error', "Invoice {$sale['invoice_number']} was already returned/exchanged under {$existingInvoiceReturn['return_number']}.");
+            Response::redirect(url('warehouse/whatsapp-orders/returns'));
+            return;
+        }
+
         $chan = $this->getChannel();
         $channelId = (int)$chan['id'];
+
+        // A same-product exchange must use a successfully scanned replacement
+        // QR/SKU and that replacement must exist in the WhatsApp channel stock.
+        if ($returnType === 'EXCHANGE_SAME') {
+            foreach ($items as $itm) {
+                $swapVarId = (int)($itm['exchange_variant_id'] ?? 0);
+                $swapQty = (int)($itm['qty'] ?? $itm['quantity'] ?? 0);
+                $swapTag = trim($itm['replacement_tag'] ?? '');
+                if ($swapQty <= 0) continue;
+                if ($swapVarId <= 0 || $swapTag === '') {
+                    Session::flash('error', 'Please scan and enter a valid replacement product QR/SKU for every exchange item.');
+                    Response::redirect(url('warehouse/whatsapp-orders/returns'));
+                    return;
+                }
+                $replacementAvailable = StockService::getBalance($swapVarId, 'CHANNEL', $channelId, 'AVAILABLE');
+                if ($replacementAvailable < $swapQty) {
+                    $replacement = Database::fetchOne("SELECT sku FROM product_variants WHERE id = ?", [$swapVarId]);
+                    Session::flash('error', "Replacement product " . ($replacement['sku'] ?? ('#' . $swapVarId)) . " has only {$replacementAvailable} available in WhatsApp stock; {$swapQty} requested.");
+                    Response::redirect(url('warehouse/whatsapp-orders/returns'));
+                    return;
+                }
+            }
+        }
+
+        // Enforce the one-time return rule on the server as well as in the UI.
+        // This prevents a second return through a replayed or manually edited request.
+        foreach ($items as $k => $itm) {
+            $saleItemId = is_numeric($k) ? (int)$k : (int)($itm['sale_item_id'] ?? 0);
+            $requestedQty = (int)($itm['qty'] ?? $itm['quantity'] ?? 0);
+            if ($saleItemId <= 0 || $requestedQty <= 0) continue;
+            $itemRow = Database::fetchOne("SELECT quantity FROM sale_items WHERE id = ? AND sale_id = ?", [$saleItemId, $saleId]);
+            if (!$itemRow) {
+                Session::flash('error', 'Invalid sale item selected for return.');
+                Response::redirect(url('warehouse/whatsapp-orders/returns'));
+                return;
+            }
+            $alreadyReturned = Database::fetchOne(
+                "SELECT COALESCE(SUM(quantity), 0) total FROM return_items WHERE sale_item_id = ?",
+                [$saleItemId]
+            );
+            $remainingQty = max(0, (int)$itemRow['quantity'] - (int)($alreadyReturned['total'] ?? 0));
+            if ($requestedQty > $remainingQty) {
+                $invoiceLabel = $sale['invoice_number'] ?? ('Sale #' . $saleId);
+                Session::flash('error', "This item from {$invoiceLabel} has already been returned in full. Only {$remainingQty} piece(s) remain returnable.");
+                Response::redirect(url('warehouse/whatsapp-orders/returns'));
+                return;
+            }
+        }
 
         $totalReturnVal = 0.0;
         foreach ($items as $k => $itm) {
@@ -2897,7 +3095,17 @@ class WhatsappController {
                     }
                 }
 
-                $existingSale = Database::fetchOne(
+                $variantType = Database::fetchOne(
+                    "SELECT COALESCE(wc.category_type, 'NORMAL') as category_type, COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary, pv.qr_type, pv.pack_quantity
+                     FROM product_variants pv JOIN products p ON p.id = pv.product_id
+                     LEFT JOIN warehouse_categories wc ON wc.id = p.warehouse_category_id WHERE pv.id = ? LIMIT 1",
+                    [$vId]
+                ) ?: [];
+                $isAggregateStock = in_array(strtoupper((string)($variantType['category_type'] ?? 'NORMAL')), ['SERIES', 'COMPLEMENTARY'], true)
+                    || !empty($variantType['is_complementary'])
+                    || strtoupper((string)($variantType['qr_type'] ?? '')) === 'SERIES_BATCH'
+                    || (int)($variantType['pack_quantity'] ?? 1) > 1;
+                $existingSale = $isAggregateStock ? null : Database::fetchOne(
                     "SELECT s.invoice_number 
                      FROM sale_items si 
                      JOIN sales s ON si.sale_id = s.id 
@@ -2913,7 +3121,10 @@ class WhatsappController {
                 }
             }
 
-            $avail = StockService::getBalance($vId, 'CHANNEL', $channelId, 'AVAILABLE');
+            $avail = 0;
+            foreach ($chanIds as $stockChannelId) {
+                $avail += StockService::getBalance($vId, 'CHANNEL', (int)$stockChannelId, 'AVAILABLE');
+            }
             if ($avail < $qty) {
                 $_SESSION['flash_error'] = "Insufficient available good stock in WhatsApp Channel for item #" . ($idx + 1) . " (Available: {$avail}, Requested: {$qty}).";
                 Response::redirect(url('warehouse/whatsapp-orders/damage/create'));
@@ -2968,10 +3179,18 @@ class WhatsappController {
             $damageRecord = Database::fetchOne("SELECT id FROM channel_damages WHERE damage_number = ?", [$dmgNum]);
             $damageRecordId = (int)($damageRecord['id'] ?? 0);
 
+            $stockLocation = Database::fetchOne(
+                "SELECT location_id FROM stock_balances
+                 WHERE variant_id = ? AND location_type = 'CHANNEL' AND stock_state = 'AVAILABLE' AND quantity >= ?
+                 ORDER BY quantity DESC LIMIT 1",
+                [$vId, (float)$qty]
+            );
+            $movementLocationId = (int)($stockLocation['location_id'] ?? $channelId);
+
             StockService::decrease(
                 variantId: $vId,
                 locationType: 'CHANNEL',
-                locationId: $channelId,
+                locationId: $movementLocationId,
                 stockState: 'AVAILABLE',
                 quantity: (float)$qty,
                 transactionType: 'DAMAGE_LOGGED',
@@ -2984,7 +3203,7 @@ class WhatsappController {
             StockService::increase(
                 variantId: $vId,
                 locationType: 'CHANNEL',
-                locationId: $channelId,
+                locationId: $movementLocationId,
                 stockState: 'DAMAGED',
                 quantity: (float)$qty,
                 transactionType: 'DAMAGE_LOGGED',
@@ -3556,8 +3775,18 @@ class WhatsappController {
                     return;
                 }
 
-                // Restriction 2: Check if piece tag has already been billed / sold
-                $existingSale = Database::fetchOne(
+                $variantType = Database::fetchOne(
+                    "SELECT COALESCE(wc.category_type, 'NORMAL') as category_type, COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary, pv.qr_type, pv.pack_quantity
+                     FROM product_variants pv JOIN products p ON p.id = pv.product_id
+                     LEFT JOIN warehouse_categories wc ON wc.id = p.warehouse_category_id WHERE pv.id = ? LIMIT 1",
+                    [(int)$foundVariant['id']]
+                ) ?: [];
+                $isAggregateStock = in_array(strtoupper((string)($variantType['category_type'] ?? 'NORMAL')), ['SERIES', 'COMPLEMENTARY'], true)
+                    || !empty($variantType['is_complementary'])
+                    || strtoupper((string)($variantType['qr_type'] ?? '')) === 'SERIES_BATCH'
+                    || (int)($variantType['pack_quantity'] ?? 1) > 1;
+                // Shared batch tags may be sold while aggregate stock remains.
+                $existingSale = $isAggregateStock ? null : Database::fetchOne(
                     "SELECT s.invoice_number, s.status, s.created_at 
                      FROM sale_items si 
                      JOIN sales s ON si.sale_id = s.id 
@@ -3576,7 +3805,10 @@ class WhatsappController {
                 }
             }
 
-            $avail = StockService::getBalance((int)$foundVariant['id'], 'CHANNEL', $channelId, 'AVAILABLE');
+            $avail = 0;
+            foreach ($chanIds as $stockChannelId) {
+                $avail += StockService::getBalance((int)$foundVariant['id'], 'CHANNEL', (int)$stockChannelId, 'AVAILABLE');
+            }
             if ($avail <= 0) {
                 echo json_encode([
                     'success' => false,
@@ -4311,7 +4543,10 @@ class WhatsappController {
                 'tracking_no'   => $trackingNo,
                 'carton_count'  => max(1, $cartonCount),
                 'dispatch_date' => $dispatchDate,
-                'remarks'       => $remarks
+                'remarks'       => $remarks,
+                'scanned_tags'  => array_values(array_filter(array_map(static function ($it) {
+                    return ['variant_id' => (int)($it['variant_id'] ?? 0), 'tag_code' => trim((string)($it['tag_code'] ?? ''))];
+                }, $items), static fn($it) => $it['variant_id'] > 0 && $it['tag_code'] !== '')),
             ];
             $serializedNotes = json_encode($notesData);
 
@@ -4355,9 +4590,18 @@ class WhatsappController {
                 }
                 $classification = $stockState === 'DAMAGED' ? 'DAMAGED' : 'GOOD';
 
+                // The inventory screen aggregates all configured WhatsApp
+                // channel locations. Use the actual channel balance that has
+                // stock instead of always deducting the default channel.
+                $stockChannelIds = $this->getWhatsappChannelIds();
+                $stockChannelPlaceholders = implode(',', array_fill(0, count($stockChannelIds), '?'));
                 $balanceRec = Database::fetchOne(
-                    "SELECT * FROM stock_balances WHERE variant_id = ? AND location_type = 'CHANNEL' AND location_id = ? AND stock_state = ?",
-                    [$variantId, $channelId, $stockState]
+                    "SELECT * FROM stock_balances
+                     WHERE variant_id = ? AND location_type = 'CHANNEL'
+                       AND location_id IN ($stockChannelPlaceholders)
+                       AND stock_state = ? AND quantity > 0
+                     ORDER BY quantity DESC LIMIT 1",
+                    array_merge([$variantId], $stockChannelIds, [$stockState])
                 );
                 $currentStock = (float)($balanceRec['quantity'] ?? 0);
                 if ($currentStock < $qty) {
@@ -4379,7 +4623,7 @@ class WhatsappController {
                 StockService::decrease(
                     variantId: $variantId,
                     locationType: 'CHANNEL',
-                    locationId: $channelId,
+                    locationId: (int)($balanceRec['location_id'] ?? $channelId),
                     stockState: $stockState,
                     quantity: (float)$qty,
                     transactionType: 'TRANSFER_OUT',
@@ -4658,9 +4902,15 @@ class WhatsappController {
 
         // 6. Returned to Warehouse piece tags
         $returnedRows = Database::fetchAll(
-            "SELECT wr.notes, wri.returned_qty, wri.classification
+            "SELECT wr.notes, wr.created_at, wri.id as return_item_id, wri.variant_id, wri.returned_qty, wri.classification,
+                    cat.name as category_name, subcat.name as subcategory_name, subsubcat.name as sub_subcategory_name
              FROM warehouse_return_items wri
              JOIN warehouse_returns wr ON wri.warehouse_return_id = wr.id
+             JOIN product_variants pv ON wri.variant_id = pv.id
+             JOIN products p ON pv.product_id = p.id
+             LEFT JOIN warehouse_categories cat ON p.warehouse_category_id = cat.id
+             LEFT JOIN warehouse_subcategories subcat ON p.warehouse_subcategory_id = subcat.id
+             LEFT JOIN warehouse_sub_subcategories subsubcat ON p.warehouse_sub_subcategory_id = subsubcat.id
              WHERE wri.variant_id = ?
                AND (wr.source_id IN ($placeholders) OR wr.source_type = ?)
                AND wr.status NOT IN ('CANCELLED')",
@@ -4672,7 +4922,15 @@ class WhatsappController {
 
         foreach ($returnedRows as $rr) {
             $hasQr = false;
-            if (!empty($rr['notes'])) {
+            $notesJson = json_decode((string)($rr['notes'] ?? ''), true);
+            foreach (($notesJson['scanned_tags'] ?? []) as $scan) {
+                if ((int)($scan['variant_id'] ?? 0) === $variantId && !empty($scan['tag_code'])) {
+                    $tag = trim($scan['tag_code']);
+                    if (!in_array($tag, $returnedTags, true)) $returnedTags[] = $tag;
+                    $hasQr = true;
+                }
+            }
+            if (!empty($rr['notes']) && !is_array($notesJson)) {
                 $notesStr = $rr['notes'];
                 if (str_starts_with($notesStr, 'QR: ')) {
                     $notesStr = substr($notesStr, 4);
@@ -4688,6 +4946,28 @@ class WhatsappController {
                 }
             }
             if (!$hasQr) {
+                // Backward-compatible tag for returns created before scanned
+                // QR values were persisted in warehouse return notes.
+                $initial = static function ($value): string {
+                    $clean = preg_replace('/[^A-Za-z0-9]/', '', trim((string)$value));
+                    return $clean !== '' ? strtoupper(substr($clean, 0, 1)) : 'X';
+                };
+                $fallbackTag = $initial($rr['category_name'] ?? '')
+                    . $initial($rr['subcategory_name'] ?? '')
+                    . $initial($rr['sub_subcategory_name'] ?? '')
+                    . date('my', strtotime($rr['created_at'] ?? 'now'))
+                    . str_pad((string)($rr['return_item_id'] ?? 0), 3, '0', STR_PAD_LEFT);
+                if (!in_array($fallbackTag, $returnedTags, true)) $returnedTags[] = $fallbackTag;
+                $warehouseReturnedTagsMap[$fallbackTag] = [
+                    'warehouse_return_id' => null,
+                    'return_number' => 'Warehouse Return',
+                    'warehouse_name' => 'Central Warehouse',
+                    'classification' => $rr['classification'] ?? 'GOOD',
+                    'reason' => 'Returned to Central Warehouse',
+                    'date' => $rr['created_at'] ?? date('Y-m-d H:i:s'),
+                    'status' => 'RECEIVED',
+                    'is_warehouse_returned' => true,
+                ];
                 if (($rr['classification'] ?? 'GOOD') === 'DAMAGED') {
                     $unassignedReturnedDamagedCount += (int)($rr['returned_qty'] ?? 1);
                 } else {

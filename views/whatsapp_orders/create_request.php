@@ -104,7 +104,7 @@ function addRequestRow() {
     
     let optionsHtml = '<option value="">-- Select Variant SKU / Product --</option>';
     availableVariants.forEach(v => {
-        optionsHtml += `<option value="${v.id}" data-stock="${v.stock_qty || 0}">${v.product_name} | SKU: ${v.sku} (Stock: ${v.stock_qty || 0} pcs)</option>`;
+        optionsHtml += `<option value="${v.id}" data-stock="${v.stock_qty || 0}">${v.product_name} | ${v.category_name || 'General'} | SKU: ${v.sku} (Stock: ${v.stock_qty || 0} pcs)</option>`;
     });
 
     const tr = document.createElement('tr');
@@ -128,6 +128,52 @@ function addRequestRow() {
         </td>
     `;
     container.appendChild(tr);
+}
+
+function refreshRequestProductRows() {
+    document.querySelectorAll('#itemsContainer .variant-select').forEach(select => {
+        const current = select.value;
+        const matches = availableVariants;
+        select.innerHTML = '<option value="">-- Select Variant SKU / Product --</option>' + matches.map(v => `<option value="${v.id}" data-stock="${v.stock_qty || 0}">${v.product_name} | ${v.category_name || 'General'} | SKU: ${v.sku} (Stock: ${v.stock_qty || 0} pcs)</option>`).join('');
+        if (matches.some(v => String(v.id) === String(current))) select.value = current;
+        updateStockDisplay(select);
+    });
+}
+
+function variantSearchText(v) {
+    return [v.product_name, v.sku, v.category_name, v.qr_code].filter(Boolean).join(' ').toLowerCase();
+}
+
+function renderProductMatches(query) {
+    const box = document.getElementById('warehouseProductMatches');
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) { box.classList.add('d-none'); box.innerHTML = ''; return; }
+    const matches = availableVariants.filter(v => variantSearchText(v).includes(q)).slice(0, 8);
+    box.innerHTML = matches.length ? matches.map(v => `
+        <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" onclick="selectRequestProduct(${Number(v.id)})">
+            <span><strong>${escapeRequestHtml(v.product_name || '')}</strong><small class="d-block text-muted">${escapeRequestHtml(v.sku || '')} · ${escapeRequestHtml(v.category_name || 'General')}</small></span>
+            <span class="badge bg-success-subtle text-success">${Number(v.stock_qty || 0)} pcs</span>
+        </button>`).join('') : '<div class="list-group-item text-muted small">No warehouse products found.</div>';
+    box.classList.remove('d-none');
+}
+
+function selectRequestProduct(variantId) {
+    const select = document.querySelector('#itemsContainer .variant-select');
+    if (!select) { addRequestRow(); return selectRequestProduct(variantId); }
+    select.value = String(variantId);
+    updateStockDisplay(select);
+    document.getElementById('requestProductSearch').value = '';
+    document.getElementById('warehouseProductMatches').classList.add('d-none');
+}
+
+function addMatchingRequestProduct() {
+    const query = document.getElementById('requestProductSearch').value;
+    const match = availableVariants.find(v => variantSearchText(v).includes(String(query).trim().toLowerCase()));
+    if (match) selectRequestProduct(match.id);
+}
+
+function escapeRequestHtml(value) {
+    return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
 }
 
 function updateStockDisplay(selectElem) {

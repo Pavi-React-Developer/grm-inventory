@@ -882,7 +882,7 @@ class WarehouseController {
         $stockState = $_GET['stock_state'] ?? 'AVAILABLE';
         $categoryId = $_GET['category_id'] ?? '';
         $search = $_GET['search'] ?? '';
-        $activeTab = $_GET['tab'] ?? 'production'; // Default to Production Inward tab
+        $activeTab = $_GET['tab'] ?? 'normal'; // Default to Normal Products tab
 
         $scopedWarehouseId = function_exists('currentWarehouseId') ? currentWarehouseId() : null;
         $warehouses = function_exists('getScopedWarehouses') ? getScopedWarehouses() : Warehouse::getAll(['is_active' => 1]);
@@ -945,9 +945,9 @@ class WarehouseController {
         }
 
         if (!empty($search)) {
-            $sql .= " AND (p.name LIKE ? OR pv.sku LIKE ? OR p.code LIKE ? OR sel.name LIKE ? OR b.name LIKE ? OR pv.qr_code LIKE ? OR p.qr_code_prefix LIKE ? OR s.name LIKE ? OR col.name LIKE ? OR p.material LIKE ?)";
+            $sql .= " AND (p.name LIKE ? OR pv.sku LIKE ? OR p.code LIKE ? OR sel.name LIKE ? OR b.name LIKE ? OR pv.qr_code LIKE ? OR p.qr_code_prefix LIKE ? OR s.name LIKE ? OR col.name LIKE ? OR p.material LIKE ? OR EXISTS (SELECT 1 FROM stock_transactions st_search WHERE st_search.variant_id = pv.id AND st_search.location_type = 'WAREHOUSE' AND st_search.location_id = sb.location_id AND st_search.notes LIKE ?))";
             $s = '%' . $search . '%';
-            $params = array_merge($params, [$s, $s, $s, $s, $s, $s, $s, $s, $s, $s]);
+            $params = array_merge($params, [$s, $s, $s, $s, $s, $s, $s, $s, $s, $s, $s]);
         }
 
         $sql .= " ORDER BY p.name ASC, pv.sku ASC";
@@ -970,17 +970,23 @@ class WarehouseController {
                          LEFT JOIN colors col ON pv.color_id = col.id
                          WHERE sb.location_type = 'WAREHOUSE'
                            AND sb.location_id != ?
-                           AND (p.name LIKE ? OR pv.sku LIKE ? OR p.code LIKE ? OR sel.name LIKE ? OR b.name LIKE ? OR pv.qr_code LIKE ? OR p.qr_code_prefix LIKE ? OR s.name LIKE ? OR col.name LIKE ? OR p.material LIKE ?)
+                           AND (p.name LIKE ? OR pv.sku LIKE ? OR p.code LIKE ? OR sel.name LIKE ? OR b.name LIKE ? OR pv.qr_code LIKE ? OR p.qr_code_prefix LIKE ? OR s.name LIKE ? OR col.name LIKE ? OR p.material LIKE ? OR EXISTS (SELECT 1 FROM stock_transactions st_search WHERE st_search.variant_id = pv.id AND st_search.location_type = 'WAREHOUSE' AND st_search.location_id = sb.location_id AND st_search.notes LIKE ?))
                          GROUP BY sb.location_id, w.name, w.code, p.id, p.name, p.code, pv.id, pv.sku, p.source_type, sb.stock_state
                          HAVING total_qty > 0
                          ORDER BY w.name ASC, p.name ASC";
-            $otherWarehouseMatches = Database::fetchAll($otherSql, [$selectedWarehouseId, $s, $s, $s, $s, $s, $s, $s, $s, $s, $s]);
+            $otherWarehouseMatches = Database::fetchAll($otherSql, [$selectedWarehouseId, $s, $s, $s, $s, $s, $s, $s, $s, $s, $s, $s]);
         }
 
         // Separate items by source: Production vs Third-Party vs Complementary
         $productionItems = [];
         $thirdPartyItems = [];
         $complementaryItems = [];
+        $normalItems = [];
+        $seriesItems = [];
+        $returnedItems = [];
+        $returnedVariantIds = array_fill_keys(array_map('intval', array_column(Database::fetchAll(
+            "SELECT DISTINCT variant_id FROM stock_transactions WHERE location_type = 'WAREHOUSE' AND transaction_type = 'RETURN_INWARD'"
+        ), 'variant_id')), true);
         $prodAvailableQty = 0;
         $prodValuation = 0.0;
         $tpAvailableQty = 0;
@@ -1025,6 +1031,13 @@ class WarehouseController {
             $item['cost_rate'] = $costRate;
             $item['valuation'] = $valuation;
 
+            // Add the fully calculated row to the Returned tab. Previously it
+            // was copied before display prices and valuation were assigned,
+            // which made returned rows show ₹0.00.
+            if (isset($returnedVariantIds[(int)$item['variant_id']])) {
+                $returnedItems[] = $item;
+            }
+
             if ($isComp) {
                 $complementaryItems[] = $item;
                 if ($item['stock_state'] === 'AVAILABLE') {
@@ -1033,17 +1046,52 @@ class WarehouseController {
                 }
             } elseif ($isProd) {
                 $productionItems[] = $item;
+                if ($item['category_type'] === 'SERIES') {
+                    $seriesItems[] = $item;
+                } else {
+                    $normalItems[] = $item;
+                }
                 if ($item['stock_state'] === 'AVAILABLE') {
                     $prodAvailableQty += $qty;
                     $prodValuation += $valuation;
                 }
             } else {
                 $thirdPartyItems[] = $item;
+                if ($item['category_type'] === 'SERIES') {
+                    $seriesItems[] = $item;
+                } else {
+                    $normalItems[] = $item;
+                }
                 if ($item['stock_state'] === 'AVAILABLE') {
                     $tpAvailableQty += $qty;
                     $tpValuation += $valuation;
                 }
             }
+        }
+
+        if ($activeTab === 'returned') {
+            $prodAvailableQty = 0;
+            $prodValuation = 0.0;
+            foreach ($returnedItems as $returnedItem) {
+                if (($returnedItem['stock_state'] ?? '') === 'AVAILABLE') {
+                    $prodAvailableQty += (float)($returnedItem['quantity'] ?? 0);
+                    $prodValuation += (float)($returnedItem['valuation'] ?? 0);
+                }
+            }
+        }
+
+        if ($activeTab === 'normal') {
+            $productionItems = $normalItems;
+            $thirdPartyItems = [];
+            $complementaryItems = [];
+        } elseif ($activeTab === 'series') {
+            $productionItems = $seriesItems;
+            $thirdPartyItems = [];
+            $complementaryItems = [];
+        } elseif ($activeTab === 'returned') {
+            $productionItems = $returnedItems;
+            $thirdPartyItems = [];
+            $complementaryItems = [];
         }
 
         // Complementary Sales (Realized sales from sale_items)
@@ -1086,6 +1134,9 @@ class WarehouseController {
             'productionItems'        => $productionItems,
             'thirdPartyItems'        => $thirdPartyItems,
             'complementaryItems'     => $complementaryItems,
+            'normalItems'            => $normalItems,
+            'seriesItems'            => $seriesItems,
+            'returnedItems'          => $returnedItems,
             'prodAvailableQty'       => $prodAvailableQty,
             'prodValuation'          => $prodValuation,
             'tpAvailableQty'         => $tpAvailableQty,
@@ -1601,7 +1652,7 @@ class WarehouseController {
         $stInwardRows = Database::fetchAll(
             "SELECT notes, reference_type, quantity, created_at
              FROM stock_transactions 
-             WHERE variant_id = ? AND transaction_type = 'PURCHASE_INWARD'
+             WHERE variant_id = ? AND transaction_type IN ('PURCHASE_INWARD', 'RETURN_INWARD')
              ORDER BY id ASC",
             [$variantId]
         );
@@ -8916,6 +8967,24 @@ class WarehouseController {
         $tagType = trim($_POST['tag_type'] ?? 'GOOD');
         $reason = urlencode(trim($_POST['reason'] ?? ''));
 
+        // A warehouse return must have one QR generation lifecycle. Once its
+        // generated QR has been inwarded, block creating another QR set for
+        // the same return item/variant.
+        if (in_array($sourceType, ['return', 'returns'], true) && $sourceId > 0 && $variantId > 0) {
+            $returnQrInwarded = Database::fetchOne(
+                "SELECT id FROM stock_transactions
+                 WHERE variant_id = ? AND reference_type = 'warehouse_returns'
+                   AND reference_id = ? AND transaction_type = 'RETURN_INWARD'
+                 LIMIT 1",
+                [$variantId, $sourceId]
+            );
+            if ($returnQrInwarded) {
+                Session::setFlash('warning', 'Return QR generation is already completed for this product. The generated return QR has already been inwarded into warehouse stock.');
+                Response::redirect(url('warehouse/labels?history_tab=returns'));
+                return;
+            }
+        }
+
         // One-time inward validation: prevent generating duplicate QR labels ONLY IF 100% already inwarded
         if ($variantId > 0 && empty($sourceId) && in_array($sourceType, ['po', 'tp_purchase'])) {
             $inwardedQty = (float)(Database::fetchOne(
@@ -9008,6 +9077,23 @@ class WarehouseController {
         $isSeries = (strtoupper($variant['qr_type'] ?? '') === 'SERIES_BATCH' || strtoupper($variant['qr_type'] ?? '') === 'SERIES' || $categoryType === 'SERIES');
         $isSeriesOrComp = $isSeries || $isComp;
 
+        // Return QR generation creates one aggregate sticker for a Series or
+        // Complementary return. Inwarding that one sticker must credit the
+        // complete returned quantity, not only the number of selected labels.
+        $returnItem = null;
+        if ($isReturnInward && $poId > 0) {
+            $returnItem = Database::fetchOne(
+                "SELECT id, returned_qty, good_qty, damaged_qty, classification
+                 FROM warehouse_return_items
+                 WHERE warehouse_return_id = ? AND variant_id = ?
+                 ORDER BY id DESC LIMIT 1",
+                [$poId, $variantId]
+            );
+            if ($returnItem && $isSeriesOrComp) {
+                $quantity = max($quantity, (float)($returnItem['returned_qty'] ?? 0));
+            }
+        }
+
         $packTransactionStarted = false;
         try {
         if ($isSeriesOrComp && !$isReturnInward) {
@@ -9095,8 +9181,8 @@ class WarehouseController {
                 $warehouseId,
                 'AVAILABLE',
                 $quantity,
-                'PURCHASE_INWARD',
-                'THIRD_PARTY_STICKERED',
+                $isReturnInward ? 'RETURN_INWARD' : 'PURCHASE_INWARD',
+                $isReturnInward ? 'warehouse_returns' : 'THIRD_PARTY_STICKERED',
                 $poId ?: $sellerId,
                 $userId,
                 $inwardNote

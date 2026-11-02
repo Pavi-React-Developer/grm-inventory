@@ -1,7 +1,7 @@
 <?php
 // views/warehouse/stock/index.php
 // Warehouse Stock Inventory — Dual Sections: Production Inward & Third-Party Vendor Inventory
-$currTab = $activeTab ?? ($_GET['tab'] ?? 'production');
+$currTab = $activeTab ?? ($_GET['tab'] ?? 'normal');
 
 if (!function_exists('renderCategoryTypeBadge')) {
     function renderCategoryTypeBadge(array $item): string {
@@ -300,33 +300,38 @@ if (!function_exists('renderCategoryTypeBadge')) {
     </div>
 <?php endif; ?>
 
-<!-- SECTION TABS NAVIGATION -->
+<!-- PRODUCT TYPE TABS -->
 <ul class="nav nav-pills mb-3 gap-2" id="inventorySectionTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <a class="nav-link fw-semibold px-4 py-2 <?= $currTab === 'production' ? 'active shadow-sm bg-success text-white' : 'bg-white text-dark border' ?>" href="<?= url('warehouse/stock?warehouse_id=' . ($selectedWarehouseId ?? '') . '&stock_state=' . ($stockState ?? '') . '&search=' . urlencode($search ?? '') . '&tab=production') ?>">
-            <i class="bi bi-gear-fill me-1"></i> 1. Production Inward Inventory <span class="badge <?= $currTab === 'production' ? 'bg-white text-success' : 'bg-success' ?> ms-1"><?= count($productionItems ?? []) ?></span>
+        <a class="nav-link fw-semibold px-4 py-2 <?= $currTab === 'normal' ? 'active shadow-sm bg-primary text-white' : 'bg-white text-dark border' ?>" href="<?= url('warehouse/stock?warehouse_id=' . ($selectedWarehouseId ?? '') . '&stock_state=' . ($stockState ?? '') . '&search=' . urlencode($search ?? '') . '&tab=normal') ?>">
+            <i class="bi bi-tag me-1"></i> Normal Products <span class="badge <?= $currTab === 'normal' ? 'bg-white text-primary' : 'bg-primary' ?> ms-1"><?= count($normalItems ?? []) ?></span>
         </a>
     </li>
     <li class="nav-item" role="presentation">
-        <a class="nav-link fw-semibold px-4 py-2 <?= $currTab === 'third_party' ? 'active shadow-sm bg-primary text-white' : 'bg-white text-dark border' ?>" href="<?= url('warehouse/stock?warehouse_id=' . ($selectedWarehouseId ?? '') . '&stock_state=' . ($stockState ?? '') . '&search=' . urlencode($search ?? '') . '&tab=third_party') ?>">
-            <i class="bi bi-shop me-1"></i> 2. Third-Party Product Inventory <span class="badge <?= $currTab === 'third_party' ? 'bg-white text-primary' : 'bg-primary' ?> ms-1"><?= count($thirdPartyItems ?? []) ?></span>
+        <a class="nav-link fw-semibold px-4 py-2 <?= $currTab === 'returned' ? 'active shadow-sm bg-danger text-white' : 'bg-white text-dark border' ?>" href="<?= url('warehouse/stock?warehouse_id=' . ($selectedWarehouseId ?? '') . '&stock_state=' . ($stockState ?? '') . '&search=' . urlencode($search ?? '') . '&tab=returned') ?>">
+            <i class="bi bi-arrow-return-left me-1"></i> Returned Products <span class="badge <?= $currTab === 'returned' ? 'bg-white text-danger' : 'bg-danger' ?> ms-1"><?= count($returnedItems ?? []) ?></span>
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link fw-semibold px-4 py-2 <?= $currTab === 'series' ? 'active shadow-sm bg-info text-white' : 'bg-white text-dark border' ?>" href="<?= url('warehouse/stock?warehouse_id=' . ($selectedWarehouseId ?? '') . '&stock_state=' . ($stockState ?? '') . '&search=' . urlencode($search ?? '') . '&tab=series') ?>">
+            <i class="bi bi-boxes me-1"></i> Series Products <span class="badge <?= $currTab === 'series' ? 'bg-white text-info' : 'bg-info' ?> ms-1"><?= count($seriesItems ?? []) ?></span>
         </a>
     </li>
     <li class="nav-item" role="presentation">
         <a class="nav-link fw-semibold px-4 py-2 <?= $currTab === 'complementary' ? 'active shadow-sm bg-warning text-dark' : 'bg-white text-dark border' ?>" href="<?= url('warehouse/stock?warehouse_id=' . ($selectedWarehouseId ?? '') . '&stock_state=' . ($stockState ?? '') . '&search=' . urlencode($search ?? '') . '&tab=complementary') ?>">
-            <i class="bi bi-gift-fill me-1 text-danger"></i> 3. Complementary Product Inventory <span class="badge bg-warning text-dark ms-1"><?= count($complementaryItems ?? []) ?></span>
+            <i class="bi bi-gift-fill me-1 text-danger"></i> Complementary Products <span class="badge bg-warning text-dark ms-1"><?= count($complementaryItems ?? []) ?></span>
         </a>
     </li>
 </ul>
 
 <!-- TAB CONTENT SECTIONS -->
-<?php if ($currTab === 'production'): ?>
+<?php if ($currTab === 'normal' || $currTab === 'series' || $currTab === 'returned' || $currTab === 'production'): ?>
     <!-- 1. PRODUCTION INWARD INVENTORY SECTION -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
                 <h5 class="card-title mb-0 fw-bold text-dark">
-                    <i class="bi bi-gear-fill text-success me-2"></i> Production Inward Inventory (In-House Production)
+                    <i class="bi bi-boxes text-primary me-2"></i> <?= $currTab === 'series' ? 'Series Products' : ($currTab === 'returned' ? 'Returned Products' : 'Normal Products') ?>
                 </h5>
                 
             </div>
@@ -417,8 +422,6 @@ if (!function_exists('renderCategoryTypeBadge')) {
                                                 if (!empty($catParts)):
                                             ?>
                                                 <span class="badge bg-light text-primary border small font-monospace"><i class="bi bi-diagram-3-fill me-1 text-warning"></i><?= e(implode(' › ', $catParts)) ?></span>
-                                            <?php else: ?>
-                                                <span class="badge bg-light text-secondary border small"><?= e($item['category_name'] ?? 'General') ?></span>
                                             <?php endif; ?>
                                         </div>
                                     </td>

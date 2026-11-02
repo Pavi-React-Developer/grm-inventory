@@ -2228,9 +2228,9 @@ class ShopService {
             $mrp = $oldMrp > $sellingPrice ? $oldMrp : $sellingPrice;
         }
 
-        // Enforce MRP >= Selling Price
+        // Never allow a discount price above the printed/base price.
         if ($mrp < $sellingPrice) {
-            $mrp = $sellingPrice;
+            throw new InvalidArgumentException("Selling price cannot be greater than MRP/base price.");
         }
 
         Database::execute(

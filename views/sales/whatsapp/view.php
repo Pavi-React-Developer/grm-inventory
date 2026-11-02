@@ -363,9 +363,8 @@
         </div>
     </div>
 
-    <!-- Scannable QR Codes (Hidden in Print) -->
-    <div class="invoice-card p-3 mb-3 no-print">
-        <h6 class="fw-bold mb-3 text-dark"><i class="bi bi-qr-code-scan me-2 text-success"></i>Order Action QR Codes</h6>
+    <!-- Scannable QR Codes removed from WhatsApp order details. -->
+    <?php /*
         <div class="row g-3 text-center">
             <!-- WhatsApp Chat QR -->
             <div class="col-md-6 col-12">
@@ -399,6 +398,7 @@
             </div>
         </div>
     </div>
+    */ ?>
 </div>
 
 <!-- QR Code Rendering Library -->

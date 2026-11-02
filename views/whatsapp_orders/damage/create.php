@@ -97,49 +97,9 @@
             <div class="card border-0 shadow-sm rounded-4 bg-white p-4">
                 <h5 class="fw-bold text-dark mb-3"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>2. Defect Details &amp; Reason</h5>
                 
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold text-muted text-uppercase">Defect Type <span class="text-danger">*</span></label>
-                        <select name="defect_type" class="form-select bg-light" required>
-                            <option value="TRANSIT_DAMAGE">Transit Damage (Inward Delivery)</option>
-                            <option value="FABRIC_DEFECT">Fabric Defect / Weaving Tear</option>
-                            <option value="COLOR_FADE">Color Fade / Bleed / Shade Variation</option>
-                            <option value="STITCHING_ERROR">Stitching Error / Open Seam</option>
-                            <option value="PACKAGING_DAMAGE">Packaging Torn / Damaged Polybag</option>
-                            <option value="WATER_STAIN">Water Stain / Dirt / Oil Mark</option>
-                            <option value="OTHER">Other Issue</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold text-muted text-uppercase">Source of Damage <span class="text-danger">*</span></label>
-                        <select name="source_type" class="form-select bg-light" required>
-                            <option value="STORAGE_HANDLING">Channel Storage &amp; Handling</option>
-                            <option value="INWARD_TRANSIT">Inward Transit Inspection</option>
-                            <option value="CUSTOMER_RETURN">Customer Return Defect</option>
-                            <option value="EXPIRED_SPOILED">Expired / Spoiled</option>
-                            <option value="OTHER">Other</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted text-uppercase">Damage Reason / Title <span class="text-danger">*</span></label>
-                    <input type="text" name="damage_reason" class="form-control bg-light" placeholder="e.g. Sleeve stitch unraveled during handling" required>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted text-uppercase">Detailed Defect Notes</label>
-                    <textarea name="defect_notes" rows="3" class="form-control bg-light" placeholder="Enter full observations or physical inspection notes..."></textarea>
-                </div>
-
                 <div>
-                    <label class="form-label small fw-bold text-muted text-uppercase"><i class="bi bi-camera me-1 text-primary"></i>Photo Evidence (Optional)</label>
-                    <div class="input-group">
-                        <input type="file" name="photo" id="photoInput" class="form-control bg-light" accept="image/*" onchange="previewDamagePhoto(this)">
-                    </div>
-                    <div id="photoPreviewContainer" class="mt-2" style="display: none;">
-                        <img id="photoPreviewImg" src="" class="rounded-3 border shadow-sm" style="max-height: 120px; max-width: 200px; object-fit: cover;">
-                    </div>
+                    <label class="form-label small fw-bold text-muted text-uppercase">Reason <span class="text-danger">*</span></label>
+                    <textarea name="damage_reason" rows="3" class="form-control bg-light" placeholder="Enter the damage reason..." required></textarea>
                 </div>
             </div>
         </div>
