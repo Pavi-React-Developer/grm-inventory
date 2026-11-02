@@ -3995,7 +3995,10 @@ class WebsiteController {
         $inventory = Database::fetchAll(
             "SELECT sb.variant_id, sb.stock_state, SUM(sb.quantity) as quantity,
                     pv.sku, pv.qr_code, pv.mrp, pv.selling_price, pv.image_url as variant_image,
+                    pv.qr_type, pv.pack_quantity,
                     p.id as product_id, p.name as product_name, p.code as product_code, p.image_url as product_image,
+                    COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                    COALESCE(wc.category_type, 'NORMAL') as category_type,
                     p.category_code, p.subcategory_code, p.sub_subcategory_code, p.material, p.hsn_code, p.description,
                     c.id as category_id, c.name as category_name,
                     sc.id as subcategory_id, sc.name as subcategory_name,
@@ -4005,6 +4008,7 @@ class WebsiteController {
              FROM stock_balances sb
              JOIN product_variants pv ON sb.variant_id = pv.id
              JOIN products p ON pv.product_id = p.id
+             LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
              LEFT JOIN categories c ON p.category_id = c.id
              LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
              LEFT JOIN sub_subcategories ssc ON p.sub_subcategory_id = ssc.id
@@ -4409,9 +4413,33 @@ class WebsiteController {
                 $variantId = (int)($it['variant_id'] ?? 0);
                 $qty = (int)($it['quantity'] ?? 0);
                 $stockState = strtoupper($it['stock_state'] ?? 'AVAILABLE');
-                $classification = strtoupper($it['classification'] ?? ($stockState === 'DAMAGED' ? 'DAMAGED' : 'GOOD'));
 
                 if ($variantId <= 0 || $qty <= 0) continue;
+                if (!in_array($stockState, ['AVAILABLE', 'DAMAGED'], true)) {
+                    throw new InvalidArgumentException('Return stock pool must be Available or Damaged.');
+                }
+
+                $variantType = Database::fetchOne(
+                    "SELECT COALESCE(wc.category_type, 'NORMAL') as category_type,
+                            COALESCE(pv.is_complementary, p.is_complementary, 0) as is_complementary,
+                            pv.qr_type, pv.pack_quantity
+                     FROM product_variants pv
+                     JOIN products p ON pv.product_id = p.id
+                     LEFT JOIN warehouse_categories wc ON p.warehouse_category_id = wc.id
+                     WHERE pv.id = ? LIMIT 1",
+                    [$variantId]
+                );
+                if (!$variantType) {
+                    throw new InvalidArgumentException("Product variant #{$variantId} was not found.");
+                }
+                $allowsMultiple = in_array(strtoupper((string)$variantType['category_type']), ['SERIES', 'COMPLEMENTARY'], true)
+                    || !empty($variantType['is_complementary'])
+                    || strtoupper((string)$variantType['qr_type']) === 'SERIES_BATCH'
+                    || (int)($variantType['pack_quantity'] ?? 1) > 1;
+                if (!$allowsMultiple && $qty !== 1) {
+                    throw new RuntimeException("Normal product returns must be selected one piece at a time for SKU #{$variantId}.");
+                }
+                $classification = $stockState === 'DAMAGED' ? 'DAMAGED' : 'GOOD';
 
                 $chanIds = $this->getWebsiteChannelIds();
                 $chanPlaceholders = implode(',', array_fill(0, count($chanIds), '?'));

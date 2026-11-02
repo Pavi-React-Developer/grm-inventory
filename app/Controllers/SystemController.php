@@ -149,12 +149,23 @@ class SystemController {
     }
 
     public function createBackup(): void {
+        CSRF::verify();
         $compress = isset($_POST['compress']) && $_POST['compress'] == '1';
         $notes = $_POST['notes'] ?? 'Manual backup from Admin Dashboard';
+        $recipient = trim((string)env('BACKUP_EMAIL', ''));
+        if ($recipient === '') {
+            $recipient = 'abiprasath6@gmail.com';
+        }
 
         try {
             $filename = BackupService::createBackup(null, $compress, $notes);
-            Session::setFlash('success', "Database snapshot created successfully: $filename");
+            $delivery = BackupService::sendBackupByEmail($recipient, $filename, false);
+            if ($delivery['success']) {
+                Session::setFlash('success', "Database snapshot created and emailed to {$delivery['email']}: {$filename}");
+            } else {
+                $mailError = MailService::getLastError() ?: 'Email delivery failed. Check SMTP configuration.';
+                Session::setFlash('warning', "Database snapshot {$filename} was created and saved, but email to {$recipient} failed: {$mailError}");
+            }
         } catch (Exception $e) {
             Session::setFlash('error', 'Backup creation failed: ' . $e->getMessage());
         }

@@ -18,7 +18,7 @@
             <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#importBackupModal" title="Upload and import backup file">
                 <i class="bi bi-upload me-1"></i> Import Backup File
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#createBackupModal" title="Create a local restore snapshot">
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#createBackupModal" title="Create and email a restore snapshot to abiprasath6@gmail.com">
                 <i class="bi bi-plus-lg me-1"></i> Create Snapshot
             </button>
         </div>
@@ -161,13 +161,16 @@
             <form method="POST" action="<?= url('system/backup/create') ?>">
                 <?= CSRF::field() ?>
                 <div class="modal-header border-bottom py-3">
-                    <h5 class="modal-title fw-bold text-dark"><i class="bi bi-plus-circle text-primary me-2"></i>Create New Database Backup</h5>
+                    <h5 class="modal-title fw-bold text-dark"><i class="bi bi-plus-circle text-primary me-2"></i>Create &amp; Email Database Backup</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Backup Title / Note</label>
                         <input type="text" name="notes" class="form-control" placeholder="e.g. Manual backup before testing" value="Manual backup">
+                    </div>
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="bi bi-envelope-check me-1"></i>The snapshot will also be emailed to <strong>abiprasath6@gmail.com</strong> after it is created.
                     </div>
                     <div class="form-check form-switch bg-light p-3 rounded-3 border ms-0">
                         <input class="form-check-input ms-0 me-2" type="checkbox" name="compress" id="compressSwitch" value="1" checked>
@@ -176,7 +179,7 @@
                 </div>
                 <div class="modal-footer bg-light border-0 py-2">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4"><i class="bi bi-save me-1"></i> Save Backup Snapshot</button>
+                    <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4"><i class="bi bi-envelope-arrow-up me-1"></i> Create &amp; Email Snapshot</button>
                 </div>
             </form>
         </div>

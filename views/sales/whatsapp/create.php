@@ -736,6 +736,8 @@ input[type=number] {
 const variantsList = <?= json_encode($variants ?? []) ?>;
 const cart = [];
 const scannedPieceTags = new Set();
+const scanValidationUrl = <?= json_encode(url('api/whatsapp/sales/validate-scan')) ?>;
+let scanValidationInProgress = false;
 
 const qrInput = document.getElementById('qrInput');
 const scanStatus = document.getElementById('scanStatus');
@@ -767,9 +769,9 @@ function focusQR() {
     if (qrInput) qrInput.focus();
 }
 
-function processManualScan() {
+async function processManualScan() {
     const rawCode = (qrInput.value || '').trim();
-    if (!rawCode) return;
+    if (!rawCode || scanValidationInProgress) return;
 
     // Billing accepts a piece QR/tag (or its full pipe-delimited payload), never a SKU.
     const pieceCode = rawCode.includes('|') ? rawCode.split('|')[0].trim() : rawCode;
@@ -801,14 +803,49 @@ function processManualScan() {
         return;
     }
 
-    // Do not reject scans using the page's initial stock snapshot. The checkout
-    // validates live channel stock transactionally on the server.
-    addItemToCart(matched, pieceTag);
-    showLastScanned(matched, pieceTag);
-    showScanToast(`Added: <strong>${escapeHtml(matched.product_name)}</strong> (${escapeHtml(matched.size_name || 'Free')}) [Tag: ${escapeHtml(pieceTag)}]`, 'success');
+    const cartQuantity = cart
+        .filter(item => Number(item.variant_id) === Number(matched.id))
+        .reduce((total, item) => total + Number(item.quantity || 0), 0);
+    const availableStock = Number(matched.available_stock || 0);
 
-    qrInput.value = '';
-    focusQR();
+    scanValidationInProgress = true;
+    const scanButton = document.getElementById('btnManualScan');
+    if (scanButton) scanButton.disabled = true;
+    if (qrInput) qrInput.disabled = true;
+    try {
+        const isKnownPieceTag = Array.isArray(matched.piece_tags)
+            && matched.piece_tags.some(tag => String(tag).toUpperCase() === pieceTag);
+        const payload = new URLSearchParams({
+            channel_type: 'WHATSAPP',
+            variant_id: String(matched.id),
+            piece_tag: isKnownPieceTag ? pieceTag : ''
+        });
+        const response = await fetch(scanValidationUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+            body: payload.toString()
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'This piece is not available in WhatsApp inventory.');
+
+        const liveAvailableStock = Number(result.data?.available_stock ?? availableStock);
+        matched.available_stock = liveAvailableStock;
+        if (cartQuantity >= liveAvailableStock) {
+            throw new Error(`No available WhatsApp stock for ${matched.sku || matched.product_name}. Available: ${liveAvailableStock}.`);
+        }
+
+        addItemToCart(matched, pieceTag);
+        showLastScanned(matched, pieceTag);
+        showScanToast(`Added: <strong>${escapeHtml(matched.product_name)}</strong> (${escapeHtml(matched.size_name || 'Free')}) [Tag: ${escapeHtml(pieceTag)}]`, 'success');
+    } catch (error) {
+        showScanToast(escapeHtml(error.message || 'This piece is not available in WhatsApp inventory.'), 'danger');
+    } finally {
+        scanValidationInProgress = false;
+        if (scanButton) scanButton.disabled = false;
+        if (qrInput) qrInput.disabled = false;
+        qrInput.value = '';
+        focusQR();
+    }
 }
 
 function addItemToCart(variant, pieceTag) {

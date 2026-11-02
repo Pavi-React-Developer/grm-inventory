@@ -8,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="<?= url('assets/js/qrcode.min.js') ?>"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -38,6 +38,11 @@
             border: 1px dashed #cbd5e1;
             padding: 12px;
             border-radius: 6px;
+        }
+        .return-item-qr canvas,
+        .return-item-qr img {
+            display: block;
+            margin: 0 auto;
         }
         @media print {
             body {
@@ -134,15 +139,20 @@
             <thead class="table-light text-uppercase" style="font-size: 10px;">
                 <tr>
                     <th class="ps-2">SKU Code</th>
+                    <th class="text-center">Product QR</th>
                     <th>Product &amp; Attributes</th>
                     <th class="text-center">Condition</th>
                     <th class="text-center" style="width: 80px;">Dispatched Qty</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($items as $item): ?>
+                <?php foreach ($items as $index => $item): ?>
                     <tr>
                         <td class="ps-2 font-monospace fw-bold text-primary"><?= e($item['sku']) ?></td>
+                        <td class="text-center">
+                            <div class="return-item-qr" id="returnItemQr<?= (int)$index ?>" data-qr-payload="<?= e($item['qr_code'] ?: $item['sku']) ?>"></div>
+                            <small class="font-monospace fw-bold"><?= e($item['sku']) ?></small>
+                        </td>
                         <td>
                             <strong class="text-dark"><?= e($item['product_name']) ?></strong>
                             <span class="text-muted">
@@ -159,7 +169,7 @@
             </tbody>
             <tfoot class="table-light fw-bold">
                 <tr>
-                    <td colspan="3" class="ps-2 text-uppercase">Total Units in this Carton:</td>
+                    <td colspan="4" class="ps-2 text-uppercase">Total Units in this Carton:</td>
                     <td class="text-center text-danger fs-6"><?= $totalReturnedQty ?> pcs</td>
                 </tr>
             </tfoot>
@@ -182,6 +192,18 @@ document.addEventListener('DOMContentLoaded', function() {
         colorDark: "#0f172a",
         colorLight: "#ffffff",
         correctLevel: QRCode.CorrectLevel.M
+    });
+    document.querySelectorAll('.return-item-qr').forEach(container => {
+        const payload = (container.dataset.qrPayload || '').trim();
+        if (!payload) return;
+        new QRCode(container, {
+            text: payload,
+            width: 52,
+            height: 52,
+            colorDark: '#0f172a',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+        });
     });
 });
 </script>

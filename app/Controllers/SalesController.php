@@ -291,6 +291,59 @@ class SalesController {
         return $preparedItems;
     }
 
+    /** Validate one scanned item against current channel stock before placing it in the billing cart. */
+    public function validateSalesScan(): void {
+        $channelType = strtoupper(trim((string)($_POST['channel_type'] ?? '')));
+        if (!in_array($channelType, ['WHATSAPP', 'WEBSITE'], true)) {
+            Response::jsonError('Invalid sales channel.', [], 400);
+            return;
+        }
+
+        $variantId = (int)($_POST['variant_id'] ?? 0);
+        $pieceTag = strtoupper(trim((string)($_POST['piece_tag'] ?? '')));
+        if ($variantId <= 0) {
+            Response::jsonError('Scan a valid product piece QR.', [], 422);
+            return;
+        }
+
+        try {
+            $channelIds = $this->getSalesChannelLocationIds($channelType);
+            $availableByVariant = $this->getSalesChannelAvailableStock($channelIds);
+            $available = (float)($availableByVariant[$variantId] ?? 0);
+            if ($available < 1) {
+                Response::jsonError("This product is not available in {$channelType} inventory.", ['available_stock' => $available], 422);
+                return;
+            }
+
+            $variant = Database::fetchOne(
+                "SELECT pv.selling_price, pv.mrp, COALESCE(p.gst_percentage, 0) AS gst_percentage
+                 FROM product_variants pv JOIN products p ON p.id = pv.product_id
+                 WHERE pv.id = ? AND pv.is_active = 1",
+                [$variantId]
+            );
+            if (!$variant) {
+                Response::jsonError('This product variant is no longer active.', [], 422);
+                return;
+            }
+
+            $this->validateSalesChannelItems([[
+                'variant_id'       => $variantId,
+                'quantity'         => 1,
+                'unit_price'       => (float)$variant['selling_price'],
+                'mrp'              => (float)$variant['mrp'],
+                'gst_percentage'   => (float)$variant['gst_percentage'],
+                'scanned_qr_codes' => $pieceTag,
+            ]], $channelType, $channelIds);
+
+            Response::jsonSuccess('Piece is available for billing.', ['available_stock' => $available]);
+        } catch (RuntimeException $e) {
+            Response::jsonError($e->getMessage(), [], 422);
+        } catch (Throwable $e) {
+            error_log("{$channelType} scan validation failed: " . $e->getMessage());
+            Response::jsonError('Unable to verify this piece against channel inventory. Please try again.', [], 500);
+        }
+    }
+
     private function deductSalesChannelStock(
         int $variantId,
         int $quantity,
@@ -639,6 +692,15 @@ class SalesController {
             return;
         }
 
+        foreach ($items as $itm) {
+            $itemGst = $itm['gst_percentage'] ?? 5.0;
+            if (!is_numeric($itemGst) || (float)$itemGst < 0 || (float)$itemGst > 100) {
+                Session::flash('error', 'Each product GST rate must be between 0% and 100%.');
+                Response::redirect(url('sales/website/create'));
+                return;
+            }
+        }
+
         if (!$customerId && !empty($customerName) && !empty($customerPhone)) {
             Database::execute(
                 "INSERT INTO customers (name, phone, address, state, pincode, source_channel, created_at) VALUES (?, ?, ?, ?, ?, 'WEBSITE', NOW())",
@@ -717,9 +779,13 @@ class SalesController {
                 if (!$isComp && $mrp <= 0) $mrp = $price;
                 $totalMrp += ($qty * $mrp);
 
-                // Line-level inclusive tax calculation
-                $lineTaxable = $isComp ? 0.00 : round($lineGross / (1 + ($gstPercentage / 100)), 2);
-                $lineTax = $isComp ? 0.00 : round($lineGross - $lineTaxable, 2);
+                $rawItemGst = $itm['gst_percentage'] ?? 5.0;
+                $itemGstPercentage = $isComp ? 0.0 : (float)$rawItemGst;
+
+                // Inclusive GST is calculated per item using its editable rate.
+                $unitTaxable = $isComp ? 0.00 : round($price / (1 + ($itemGstPercentage / 100)), 2);
+                $lineTaxable = $unitTaxable * $qty;
+                $lineTax = $isComp ? 0.00 : round(($price - $unitTaxable) * $qty, 2);
                 $lineCgst = $isComp ? 0.00 : round($lineTax / 2, 2);
                 $lineSgst = $isComp ? 0.00 : round($lineTax - $lineCgst, 2);
 
@@ -728,6 +794,7 @@ class SalesController {
                     'quantity'         => $qty,
                     'unit_price'       => $price,
                     'mrp'              => $mrp,
+                    'gst_percentage'   => $itemGstPercentage,
                     'is_series'        => $itm['is_series'],
                     'total'            => $lineGross,
                     'taxable_amount'   => $lineTaxable,
@@ -744,11 +811,11 @@ class SalesController {
             $discountAmount = $calcDiscount;
         }
 
-        // Inclusive GST Calculation matching Shop POS: Taxable Base = Billed Gross / (1 + GST%)
-        $taxableSubtotal = round($grossTotal / (1 + ($gstPercentage / 100)), 2);
-        $gstAmount = round($grossTotal - $taxableSubtotal, 2);
-        $cgstAmount = round($gstAmount / 2, 2);
-        $sgstAmount = round($gstAmount - $cgstAmount, 2);
+        $taxableSubtotal = array_sum(array_column($orderItems, 'taxable_amount'));
+        $gstAmount = array_sum(array_column($orderItems, 'cgst_amount')) + array_sum(array_column($orderItems, 'sgst_amount'));
+        $cgstAmount = array_sum(array_column($orderItems, 'cgst_amount'));
+        $sgstAmount = array_sum(array_column($orderItems, 'sgst_amount'));
+        $gstPercentage = $taxableSubtotal > 0 ? round(($gstAmount / $taxableSubtotal) * 100, 2) : 0.0;
         $grandTotalAmount = (float)ceil($grossTotal + $shippingCost);
 
         $shop = Database::fetchOne("SELECT id FROM shops LIMIT 1");
@@ -783,7 +850,7 @@ class SalesController {
                 );
                 Database::execute(
                     "INSERT INTO sale_items (sale_id, variant_id, quantity, unit_price, mrp, gst_percentage, cgst_amount, sgst_amount, total_amount, scanned_qr_codes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [$saleId, $oi['variant_id'], $oi['quantity'], $oi['unit_price'], $oi['mrp'], $gstPercentage, $oi['cgst_amount'], $oi['sgst_amount'], $oi['total'], $oi['scanned_qr_codes']]
+                    [$saleId, $oi['variant_id'], $oi['quantity'], $oi['unit_price'], $oi['mrp'], $oi['gst_percentage'], $oi['cgst_amount'], $oi['sgst_amount'], $oi['total'], $oi['scanned_qr_codes']]
                 );
             }
             Database::commit();

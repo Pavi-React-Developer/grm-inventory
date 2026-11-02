@@ -322,33 +322,6 @@ input[type=number] {
                     </div>
                 </div>
 
-                <!-- Last Scanned Product Details Card -->
-                <div class="card border-0 shadow-sm rounded-4 bg-white mb-3" id="lastScannedCard" style="display:none;">
-                    <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
-                        <h6 class="fw-bold text-primary mb-0"><i class="bi bi-check-circle-fill me-2"></i>Last Scanned Piece</h6>
-                        <span id="lastScanTagBadge"></span>
-                    </div>
-                    <div class="card-body pt-0">
-                        <div class="d-flex align-items-center">
-                            <div class="rounded-3 bg-light border me-3 d-flex align-items-center justify-content-center overflow-hidden" style="width:70px; height:70px; min-width:70px;">
-                                <i class="bi bi-bag-check text-primary fs-2"></i>
-                            </div>
-                            <div class="flex-grow-1">
-                                <h5 class="fw-bold text-dark mb-1" id="lastScanName">Product Name</h5>
-                                <div class="d-flex flex-wrap gap-2 small text-muted mb-1">
-                                    <span class="badge bg-light text-dark border">SKU: <span id="lastScanSku"></span></span>
-                                    <span class="badge bg-light text-dark border">Size: <span id="lastScanSize"></span></span>
-                                    <span class="badge bg-light text-dark border">Color: <span id="lastScanColor"></span></span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div class="fs-5 fw-bold text-primary">₹<span id="lastScanPrice">0.00</span></div>
-                                    <span class="badge bg-primary-subtle text-primary" id="lastScanStock">Stock Available</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Shortcuts Card -->
                 <div class="card border-0 bg-light rounded-4 p-3">
                     <div class="d-flex align-items-center text-muted small">
@@ -573,7 +546,7 @@ input[type=number] {
                                         <span>SGST: <strong id="displaySgst" class="text-dark font-monospace">₹0.00</strong></span>
                                     </div>
                                     <div class="text-muted mt-1 px-1" style="font-size: 10px;">
-                                        <i class="bi bi-info-circle me-1"></i>Auto-calculated from product GST %
+                                        <i class="bi bi-info-circle me-1"></i>GST rates are editable per product and totals recalculate automatically
                                     </div>
                                 </div>
                             <!-- 2. Total Discount Applied Summary -->
@@ -745,6 +718,8 @@ input[type=number] {
 const variantsList = <?= json_encode($variants ?? []) ?>;
 const cart = [];
 const scannedPieceTags = new Set();
+const scanValidationUrl = <?= json_encode(url('api/website/sales/validate-scan')) ?>;
+let scanValidationInProgress = false;
 
 const qrInput = document.getElementById('qrInput');
 const scanStatus = document.getElementById('scanStatus');
@@ -776,9 +751,9 @@ function focusQR() {
     if (qrInput) qrInput.focus();
 }
 
-function processManualScan() {
+async function processManualScan() {
     const rawCode = (qrInput.value || '').trim();
-    if (!rawCode) return;
+    if (!rawCode || scanValidationInProgress) return;
 
     const matched = findVariantFromCode(rawCode);
     if (!matched) {
@@ -800,22 +775,47 @@ function processManualScan() {
         return;
     }
 
-    const availableStock = Number(matched.available_stock);
+    const availableStock = Number(matched.available_stock || 0);
     const cartQuantity = cart
         .filter(item => Number(item.variant_id) === Number(matched.id))
         .reduce((total, item) => total + Number(item.quantity || 0), 0);
-    if (Number.isFinite(availableStock) && cartQuantity >= availableStock) {
-        showScanToast(`No more stock available for <strong>${escapeHtml(matched.sku || matched.product_name)}</strong>. Available: ${availableStock}.`, 'danger');
+
+    scanValidationInProgress = true;
+    const scanButton = document.getElementById('btnManualScan');
+    if (scanButton) scanButton.disabled = true;
+    if (qrInput) qrInput.disabled = true;
+    try {
+        const isKnownPieceTag = Array.isArray(matched.piece_tags)
+            && matched.piece_tags.some(tag => String(tag).toUpperCase() === pieceTag);
+        const payload = new URLSearchParams({
+            channel_type: 'WEBSITE',
+            variant_id: String(matched.id),
+            piece_tag: isKnownPieceTag ? pieceTag : ''
+        });
+        const response = await fetch(scanValidationUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+            body: payload.toString()
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'This product is not available in Website inventory.');
+
+        const liveAvailableStock = Number(result.data?.available_stock ?? availableStock);
+        matched.available_stock = liveAvailableStock;
+        if (cartQuantity >= liveAvailableStock) {
+            throw new Error(`No available Website stock for ${matched.sku || matched.product_name}. Available: ${liveAvailableStock}.`);
+        }
+        addItemToCart(matched, pieceTag);
+        showScanToast(`Added: <strong>${escapeHtml(matched.product_name)}</strong> (${escapeHtml(matched.size_name || 'Free')}) [Tag: ${escapeHtml(pieceTag)}]`, 'success');
+    } catch (error) {
+        showScanToast(escapeHtml(error.message || 'This product is not available in Website inventory.'), 'danger');
+    } finally {
+        scanValidationInProgress = false;
+        if (scanButton) scanButton.disabled = false;
+        if (qrInput) qrInput.disabled = false;
         qrInput.value = '';
-        return;
+        focusQR();
     }
-
-    addItemToCart(matched, pieceTag);
-    showLastScanned(matched, pieceTag);
-    showScanToast(`Added: <strong>${escapeHtml(matched.product_name)}</strong> (${escapeHtml(matched.size_name || 'Free')}) [Tag: ${escapeHtml(pieceTag)}]`, 'success');
-
-    qrInput.value = '';
-    focusQR();
 }
 
 function addItemToCart(variant, pieceTag) {
@@ -829,7 +829,8 @@ function addItemToCart(variant, pieceTag) {
     const cartItemId = 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     let retailPrice = parseFloat(variant.selling_price) || 0;
     let mrp = parseFloat(variant.mrp) || retailPrice;
-    let gstRate = parseFloat(variant.gst_percentage) || 5.0;
+    const parsedGstRate = Number(variant.gst_percentage);
+    let gstRate = Number.isFinite(parsedGstRate) ? Math.min(100, Math.max(0, parsedGstRate)) : 5.0;
 
     if (isComp) {
         retailPrice = 0.00;
@@ -875,28 +876,6 @@ function flashCartItemRow(pieceTag) {
     }
 }
 
-function showLastScanned(variant, pieceTag) {
-    const card = document.getElementById('lastScannedCard');
-    if (!card) return;
-    card.style.display = 'block';
-    document.getElementById('lastScanName').innerText = variant.product_name;
-    document.getElementById('lastScanSku').innerText = variant.sku || '';
-    document.getElementById('lastScanSize').innerText = variant.size_name || 'N/A';
-    document.getElementById('lastScanColor').innerText = variant.color_name || 'N/A';
-    const isComp = (variant.is_complementary == 1 || variant.category_type === 'COMPLEMENTARY' || variant.p_is_comp == 1 || variant.pv_is_comp == 1);
-    const pVal = isComp ? 0 : parseFloat(variant.selling_price > 0 ? variant.selling_price : (variant.mrp || 0));
-    document.getElementById('lastScanPrice').innerText = pVal.toFixed(2);
-    let tagBadges = pieceTag ? `<span class="piece-tag-badge"><i class="bi bi-qr-code"></i>Piece Tag: ${escapeHtml(pieceTag)}</span>` : '';
-    if (isComp) {
-        tagBadges += ` <span class="badge bg-warning-subtle text-dark border border-warning"><i class="bi bi-gift me-1"></i>Complementary (₹0.00)</span>`;
-    }
-    const isSeries = (variant.is_series == 1 || variant.category_type === 'SERIES' || variant.qr_type === 'SERIES_BATCH' || (variant.pack_quantity && parseInt(variant.pack_quantity) > 1));
-    if (isSeries) {
-        tagBadges += ` <span class="badge bg-info-subtle text-info border border-info font-monospace"><i class="bi bi-layers me-1"></i>Series Batch</span>`;
-    }
-    document.getElementById('lastScanTagBadge').innerHTML = tagBadges;
-}
-
 function showScanToast(msg, type = 'success') {
     const toast = document.getElementById('scanFeedbackToast');
     const msgDiv = document.getElementById('scanFeedbackMsg');
@@ -939,13 +918,13 @@ function updateSummaryTotals() {
     let totalGst = 0;
     let totalDiscount = 0;
     let totalBilled = 0;
-    let mainGstPct = 5.0;
+    let mainGstPct = 0.0;
 
     cart.forEach(item => {
         const orig = parseFloat(item.original_price) || 0;
         const billed = parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig;
-        const gstPct = parseFloat(item.gst_percentage) || 5.0;
-        mainGstPct = gstPct;
+        const parsedGstPct = Number(item.gst_percentage);
+        const gstPct = item.is_complementary == 1 ? 0 : (Number.isFinite(parsedGstPct) ? Math.min(100, Math.max(0, parsedGstPct)) : 5.0);
 
         const lineTaxable = Math.round((billed / (1 + (gstPct / 100))) * 100) / 100;
         const lineGst = Math.round((billed - lineTaxable) * 100) / 100;
@@ -960,6 +939,7 @@ function updateSummaryTotals() {
     const shipping = parseFloat(document.getElementById('shippingCostInput')?.value) || 0;
     const cgstTotal = Math.round((totalGst / 2) * 100) / 100;
     const sgstTotal = Math.round((totalGst - cgstTotal) * 100) / 100;
+    mainGstPct = subtotalTaxable > 0 ? Math.round((totalGst / subtotalTaxable) * 10000) / 100 : 0;
     const netTotal = Math.ceil(totalBilled + shipping);
 
     if (displaySubtotal) displaySubtotal.innerText = `₹${subtotalTaxable.toFixed(2)}`;
@@ -1037,7 +1017,8 @@ function renderCart() {
         const isSeries = (item.is_series == 1 || item.category_type === 'SERIES' || item.qr_type === 'SERIES_BATCH');
         const orig = isComp ? 0.00 : (parseFloat(item.original_price) || 0);
         const billed = isComp ? 0.00 : (parseFloat(item.billed_price) >= 0 ? parseFloat(item.billed_price) : orig);
-        const gstPercentage = isComp ? 0.00 : (parseFloat(item.gst_percentage) || 5.0);
+        const parsedGstPct = Number(item.gst_percentage);
+        const gstPercentage = isComp ? 0.00 : (Number.isFinite(parsedGstPct) ? Math.min(100, Math.max(0, parsedGstPct)) : 5.0);
 
         const lineTaxable = isComp ? 0.00 : (Math.round((billed / (1 + (gstPercentage / 100))) * 100) / 100);
         const lineGst = isComp ? 0.00 : (Math.round((billed - lineTaxable) * 100) / 100);
@@ -1091,14 +1072,14 @@ function renderCart() {
                     <input type="hidden" name="items[${index}][quantity]" value="1">
                     <input type="hidden" name="items[${index}][unit_price]" class="item-hidden-price" value="${billed.toFixed(2)}">
                     <input type="hidden" name="items[${index}][mrp]" value="${orig.toFixed(2)}">
-                    <input type="hidden" name="items[${index}][gst_percentage]" value="${gstPercentage}">
+                    <input type="hidden" name="items[${index}][gst_percentage]" class="item-hidden-gst" value="${gstPercentage}">
                     <input type="hidden" name="items[${index}][scanned_qr_codes]" value="${escapeHtml(item.scanned_tag || '')}">
                 </td>
                 <td class="text-end fw-semibold text-secondary font-monospace item-base-price-cell" style="font-size: 12.5px;">
                     ₹${lineTaxable.toFixed(2)}
                 </td>
                 <td class="text-end item-gst-cell">
-                    <span class="badge bg-info-subtle text-info-emphasis font-monospace" style="font-size: 10px;">${gstPercentage}%</span>
+                    <input type="number" min="0" max="100" step="0.01" class="form-control form-control-sm text-end font-monospace item-gst-input" data-cart-id="${item.cart_id}" value="${gstPercentage}" style="width:68px;display:inline-block;" ${isComp ? 'readonly title="Complementary item GST is fixed at 0%"' : 'title="Edit GST percentage"'}>
                     <div class="text-muted font-monospace mt-0.5 item-gst-val" style="font-size: 10px;">+₹${lineGst.toFixed(2)}</div>
                 </td>
                 <td class="text-end item-discount-cell" style="width: 105px;">
@@ -1128,6 +1109,26 @@ function renderCart() {
 }
 
 function attachCartRowEvents() {
+    document.querySelectorAll('.item-gst-input').forEach(inp => {
+        inp.addEventListener('input', function() {
+            const item = cart.find(it => it.cart_id === this.dataset.cartId);
+            if (!item || item.is_complementary == 1) return;
+            const rate = parseFloat(this.value);
+            item.gst_percentage = Number.isFinite(rate) ? Math.min(100, Math.max(0, rate)) : 0;
+            const billed = Math.max(0, parseFloat(item.billed_price) || 0);
+            const taxable = Math.round((billed / (1 + item.gst_percentage / 100)) * 100) / 100;
+            const tax = Math.round((billed - taxable) * 100) / 100;
+            const row = this.closest('tr');
+            if (row) {
+                row.querySelector('.item-base-price-cell').innerText = `₹${taxable.toFixed(2)}`;
+                row.querySelector('.item-gst-val').innerText = `+₹${tax.toFixed(2)}`;
+                const hiddenRate = row.querySelector('.item-hidden-gst');
+                if (hiddenRate) hiddenRate.value = item.gst_percentage.toFixed(2);
+            }
+            updateSummaryTotals();
+        });
+    });
+
     // Live Input on Item Billed Price (Row-level)
     document.querySelectorAll('.item-billed-price-input').forEach(inp => {
         inp.addEventListener('input', function() {
@@ -1163,7 +1164,8 @@ function attachCartRowEvents() {
                 item.discount_percent = 0;
             }
 
-            const gstPct = parseFloat(item.gst_percentage) || 5.0;
+            const parsedGstPct = Number(item.gst_percentage);
+            const gstPct = Number.isFinite(parsedGstPct) ? Math.min(100, Math.max(0, parsedGstPct)) : 5.0;
             const lineTaxable = Math.round((enteredVal / (1 + (gstPct / 100))) * 100) / 100;
             const lineGst = Math.round((enteredVal - lineTaxable) * 100) / 100;
 
@@ -1510,7 +1512,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const matched = findVariantFromCode(lookupKey);
         if (matched) {
             addItemToCart(matched, preTag || matched.sku);
-            showLastScanned(matched, preTag || matched.sku);
         }
     }
 });

@@ -164,13 +164,14 @@
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-light small text-uppercase">
                             <tr>
-                                <th class="ps-4" style="width: 5%;">#</th>
-                                <th style="width: 35%;">Product & Variant</th>
-                                <th style="width: 15%;">Classification</th>
-                                <th class="text-center" style="width: 12%;">Dispatched Qty</th>
-                                <th style="width: 15%;">QC Breakdown</th>
-                                <th class="text-end" style="width: 15%;">Est. Line Value</th>
-                                <th class="text-end pe-4" style="width: 10%;">Action</th>
+                                <th class="ps-4" style="width: 4%;">#</th>
+                                <th style="width: 27%;">Product & Variant</th>
+                                <th class="text-center" style="width: 10%;">Product QR</th>
+                                <th style="width: 13%;">Classification</th>
+                                <th class="text-center" style="width: 10%;">Dispatched Qty</th>
+                                <th style="width: 13%;">QC Breakdown</th>
+                                <th class="text-end" style="width: 14%;">Est. Line Value</th>
+                                <th class="text-end pe-4" style="width: 9%;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -195,6 +196,10 @@
                                                 </div>
                                             </div>
                                         </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="manifest-item-qr d-flex justify-content-center mx-auto mb-1" data-qr-payload="<?= e($it['qr_code'] ?: $it['sku']) ?>" aria-label="Product QR for <?= e($it['sku']) ?>"></div>
+                                        <small class="font-monospace fw-bold text-primary"><?= e($it['sku']) ?></small>
                                     </td>
                                     <td>
                                         <?php
@@ -242,7 +247,7 @@
                         </tbody>
                         <tfoot class="table-light">
                             <tr>
-                                <th colspan="3" class="ps-4 fw-bold text-dark">Consignment Totals</th>
+                                <th colspan="4" class="ps-4 fw-bold text-dark">Consignment Totals</th>
                                 <th class="text-center fw-bold text-danger"><?= $totalReturnedQty ?> pcs</th>
                                 <th></th>
                                 <th class="text-end fw-bold text-success font-monospace">₹<?= number_format((float)$totalEstimatedValue, 2) ?></th>
@@ -453,7 +458,7 @@
 </div>
 
 <!-- QRCode Library -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="<?= url('assets/js/qrcode.min.js') ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const qrContainer = document.getElementById('consignmentQrCanvas');
@@ -467,6 +472,18 @@ document.addEventListener('DOMContentLoaded', function() {
             correctLevel: QRCode.CorrectLevel.H
         });
     }
+    document.querySelectorAll('.manifest-item-qr').forEach(container => {
+        const payload = (container.dataset.qrPayload || '').trim();
+        if (!payload || typeof QRCode === 'undefined') return;
+        new QRCode(container, {
+            text: payload,
+            width: 64,
+            height: 64,
+            colorDark: '#111827',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    });
 });
 
 let currentModalPieces = [];

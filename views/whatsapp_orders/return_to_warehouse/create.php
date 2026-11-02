@@ -250,6 +250,23 @@ thead th.sticky-col-select {
                     </div>
                 </div>
 
+                <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
+                    <div class="card-body p-3">
+                        <label for="returnScanInput" class="form-label fw-bold small text-dark mb-2"><i class="bi bi-qr-code-scan text-success me-1"></i>Scan Product for Warehouse Return</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-success text-white border-0"><i class="bi bi-upc-scan"></i></span>
+                            <input type="text" id="returnScanInput" class="form-control font-monospace" placeholder="Scan a piece QR or product code and press Enter" autocomplete="off">
+                            <button type="button" class="btn btn-success" id="btnReturnScan">Add to Return</button>
+                        </div>
+                        <div class="d-flex align-items-center gap-3 mt-2 small flex-wrap">
+                            <span class="text-muted fw-semibold">Scan as:</span>
+                            <label class="form-check mb-0"><input class="form-check-input" type="radio" name="returnScanPool" value="AVAILABLE" checked><span class="form-check-label text-success fw-semibold">Good / Available Stock</span></label>
+                            <label class="form-check mb-0"><input class="form-check-input" type="radio" name="returnScanPool" value="DAMAGED"><span class="form-check-label text-danger fw-semibold">Bad / Damaged Stock</span></label>
+                        </div>
+                        <small id="returnScanStatus" class="text-muted d-block mt-2">Good scans select only available WhatsApp stock. Bad scans select only the damaged stock pool.</small>
+                    </div>
+                </div>
+
                 <!-- 💥 SECTION 2: LIVE SELECTED RETURN PRODUCTS CONSIGNMENT SECTION -->
                 <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white" id="selectedProductsCard">
                     <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -402,6 +419,12 @@ thead th.sticky-col-select {
                                             data-color="<?= e($item['color_name'] ?? 'Std') ?>"
                                             data-image="<?= e($imgUrl) ?>"
                                             data-stock-state="<?= e($item['stock_state']) ?>"
+                                            data-qr-code="<?= e(strtolower($item['qr_code'] ?? '')) ?>"
+                                            data-piece-tags="<?= e(strtolower(implode('|', array_map('strval', $item['piece_tags'] ?? [])))) ?>"
+                                            data-category-type="<?= e(strtoupper($item['category_type'] ?? 'NORMAL')) ?>"
+                                            data-complementary="<?= !empty($item['is_complementary']) ? '1' : '0' ?>"
+                                            data-qr-type="<?= e(strtoupper($item['qr_type'] ?? '')) ?>"
+                                            data-pack-quantity="<?= (int)($item['pack_quantity'] ?? 1) ?>"
                                             data-price="<?= (float)($item['selling_price'] ?? $item['mrp'] ?? 0) ?>"
                                             data-max-stock="<?= (int)$qty ?>">
                                             
@@ -623,7 +646,7 @@ thead th.sticky-col-select {
                                             <!-- Condition Dropdown -->
                                             <div class="col-sm-4">
                                                 <label class="form-label fw-bold text-dark mb-1 small">Return Condition</label>
-                                                <select id="modalClassificationSelect" class="form-select form-select-sm shadow-sm">
+                                                <select id="modalClassificationSelect" class="form-select form-select-sm shadow-sm" disabled>
                                                     <option value="DAMAGED">Damaged (Defect)</option>
                                                     <option value="GOOD">Good (Restock)</option>
                                                     <option value="DEFECTIVE">Defective Quality</option>
@@ -898,9 +921,19 @@ let currentModalVariantId = null;
 let currentModalStockState = 'AVAILABLE';
 let currentModalRowIdx = null;
 let currentModalMaxStock = 1;
+let currentModalMaxReturnQty = 1;
 let currentModalPieces = [];
 let calculateConsignment;
 const selectedPiecesByVariant = {}; // Keyed by `${variantId}_${stockState}`
+
+function returnFlowAllowsMultiple(row) {
+    const categoryType = (row?.getAttribute('data-category-type') || 'NORMAL').toUpperCase();
+    return categoryType === 'SERIES'
+        || categoryType === 'COMPLEMENTARY'
+        || row?.getAttribute('data-complementary') === '1'
+        || (row?.getAttribute('data-qr-type') || '').toUpperCase() === 'SERIES_BATCH'
+        || parseInt(row?.getAttribute('data-pack-quantity') || '1', 10) > 1;
+}
 
 // Open and populate Product Detail Modal dynamically
 function openProductDetailModal(variantId, stockState = 'AVAILABLE', rowIdx = null) {
@@ -945,6 +978,10 @@ function openProductDetailModal(variantId, stockState = 'AVAILABLE', rowIdx = nu
             const cost = parseFloat(item.production_cost > 0 ? item.production_cost : (item.purchase_price || 0));
 
             currentModalMaxStock = Math.max(1, parseInt(qty) || 1);
+            const modalSourceRow = currentModalRowIdx !== null
+                ? document.querySelector(`.inv-row[data-idx="${currentModalRowIdx}"]`)
+                : document.querySelector(`.inv-row[data-variant-id="${variantId}"][data-stock-state="${currentModalStockState}"]`);
+            currentModalMaxReturnQty = returnFlowAllowsMultiple(modalSourceRow) ? currentModalMaxStock : 1;
             document.getElementById('modalMaxQtyText').textContent = currentModalMaxStock;
 
             // Populate Metadata
@@ -1077,8 +1114,11 @@ function openProductDetailModal(variantId, stockState = 'AVAILABLE', rowIdx = nu
             const selectBtnText = document.getElementById('modalSelectBtnText');
 
             modalQtyInput.value = curQty;
-            modalQtyInput.max = currentModalMaxStock;
-            modalClassSelect.value = curClass;
+            modalQtyInput.max = currentModalMaxReturnQty;
+            if (curQty > currentModalMaxReturnQty) curQty = currentModalMaxReturnQty;
+            modalQtyInput.value = curQty;
+            modalClassSelect.value = currentModalStockState === 'DAMAGED' ? 'DAMAGED' : 'GOOD';
+            modalClassSelect.disabled = true;
             modalMinusBtn.disabled = (curQty <= 0);
 
             if (isChecked && curQty > 0) {
@@ -1224,6 +1264,7 @@ function togglePieceSelectionFromCard(pieceIndex) {
     if (pSet.has(pieceNum)) {
         pSet.delete(pieceNum);
     } else {
+        if (pSet.size >= currentModalMaxReturnQty) pSet.clear();
         pSet.add(pieceNum);
     }
 
@@ -1507,6 +1548,66 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectedProductsTableBody = document.getElementById('selectedProductsTableBody');
     const selectedTableTotalQty = document.getElementById('selectedTableTotalQty');
     const selectedTableTotalValue = document.getElementById('selectedTableTotalValue');
+    const returnScanInput = document.getElementById('returnScanInput');
+    const returnScanStatus = document.getElementById('returnScanStatus');
+
+    function returnRowAllowsMultiple(row) {
+        return returnFlowAllowsMultiple(row);
+    }
+
+    function scanReturnProduct() {
+        const rawCode = (returnScanInput?.value || '').trim();
+        if (!rawCode) return;
+        const code = (rawCode.includes('|') ? rawCode.split('|')[0] : rawCode).trim().toLowerCase();
+        const stockPool = document.querySelector('input[name="returnScanPool"]:checked')?.value || 'AVAILABLE';
+        const candidates = Array.from(document.querySelectorAll('.inv-row')).filter(row =>
+            (row.getAttribute('data-stock-state') || 'AVAILABLE').toUpperCase() === stockPool
+        );
+        const row = candidates.find(candidate => {
+            const exactValues = [candidate.getAttribute('data-qr-code'), candidate.getAttribute('data-sku'), candidate.getAttribute('data-code')]
+                .filter(Boolean).map(value => value.trim().toLowerCase());
+            const pieceTags = (candidate.getAttribute('data-piece-tags') || '').split('|').map(value => value.trim().toLowerCase()).filter(Boolean);
+            return exactValues.includes(code) || pieceTags.includes(code);
+        });
+        if (!row) {
+            if (returnScanStatus) returnScanStatus.innerHTML = `<span class="text-danger fw-semibold"><i class="bi bi-x-circle me-1"></i>No ${stockPool === 'DAMAGED' ? 'damaged' : 'available'} WhatsApp stock matches this QR.</span>`;
+            returnScanInput.select();
+            return;
+        }
+
+        const idx = row.getAttribute('data-idx');
+        const checkbox = document.querySelector(`.item-select[data-idx="${idx}"]`);
+        const qtyInput = document.querySelector(`.return-qty[data-idx="${idx}"]`);
+        const classSelect = document.querySelector(`.return-classification[data-idx="${idx}"]`);
+        const maxQty = parseInt(row.getAttribute('data-max-stock') || '0', 10);
+        if (!checkbox || !qtyInput) return;
+        const allowsMultiple = returnRowAllowsMultiple(row);
+        if (!checkbox.checked) {
+            checkbox.checked = true;
+            qtyInput.value = '1';
+        } else if (allowsMultiple && (parseInt(qtyInput.value, 10) || 0) < maxQty) {
+            qtyInput.value = String((parseInt(qtyInput.value, 10) || 0) + 1);
+        } else if (!allowsMultiple) {
+            if (returnScanStatus) returnScanStatus.innerHTML = '<span class="text-warning fw-semibold">Normal products are returned one QR piece at a time. Use View to choose the exact piece.</span>';
+            returnScanInput.value = '';
+            returnScanInput.focus();
+            return;
+        }
+        if (classSelect) classSelect.value = stockPool === 'DAMAGED' ? 'DAMAGED' : 'GOOD';
+        calculateConsignment();
+        if (returnScanStatus) returnScanStatus.innerHTML = `<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>Added ${escapeHtml(row.getAttribute('data-name-raw') || code)} from ${stockPool === 'DAMAGED' ? 'damaged' : 'available'} WhatsApp stock.</span>`;
+        returnScanInput.value = '';
+        returnScanInput.focus();
+    }
+
+    document.getElementById('btnReturnScan')?.addEventListener('click', scanReturnProduct);
+    returnScanInput?.addEventListener('keydown', event => {
+        if (event.key === 'Enter') { event.preventDefault(); scanReturnProduct(); }
+    });
+    document.querySelectorAll('input[name="returnScanPool"]').forEach(radio => radio.addEventListener('change', function() {
+        if (returnScanStatus) returnScanStatus.textContent = `Scanner is ready for ${this.value === 'DAMAGED' ? 'Bad / Damaged' : 'Good / Available'} WhatsApp stock.`;
+        returnScanInput?.focus();
+    }));
 
     // Main calculation & row activation function
     calculateConsignment = function() {
@@ -1526,6 +1627,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const selectedBadge = row?.querySelector('.selected-row-badge');
             const selectLabel = row?.querySelector('.select-label');
             const minusBtn = row?.querySelector('.row-qty-minus');
+            const plusBtn = row?.querySelector('.row-qty-plus');
 
             if (chk.checked) {
                 selectedCount++;
@@ -1539,15 +1641,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Enable inputs
                 if (hiddenVarId) hiddenVarId.disabled = false;
                 if (hiddenStockState) hiddenStockState.disabled = false;
-                qtyInput.disabled = false;
-                classSelect.disabled = false;
+                const allowsMultiple = returnRowAllowsMultiple(row);
+                qtyInput.readOnly = !allowsMultiple;
+                classSelect.value = (row?.getAttribute('data-stock-state') || 'AVAILABLE').toUpperCase() === 'DAMAGED' ? 'DAMAGED' : 'GOOD';
+                classSelect.disabled = true;
 
                 let q = parseInt(qtyInput.value) || 0;
                 if (q <= 0) {
                     q = 1;
                     qtyInput.value = 1;
                 }
-                if (minusBtn) minusBtn.disabled = (q <= 1);
+                if (!allowsMultiple && q > 1) { q = 1; qtyInput.value = 1; }
+                if (minusBtn) minusBtn.disabled = (!allowsMultiple || q <= 1);
+                if (plusBtn) plusBtn.disabled = !allowsMultiple;
 
                 const price = parseFloat(row?.getAttribute('data-price')) || 0;
                 const maxStock = parseInt(row?.getAttribute('data-max-stock')) || 1;
@@ -1593,19 +1699,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         </td>
                         <td>
                             <div class="input-group input-group-sm" style="width: 110px; margin: 0 auto;">
-                                <button type="button" class="btn btn-outline-secondary px-2 sec-qty-minus" data-idx="${idx}" title="Decrease"><i class="bi bi-dash"></i></button>
-                                <input type="number" class="form-control form-control-sm text-center font-monospace fw-bold sec-qty-input" value="${q}" min="1" max="${maxStock}" data-idx="${idx}">
-                                <button type="button" class="btn btn-outline-secondary px-2 sec-qty-plus" data-idx="${idx}" title="Increase"><i class="bi bi-plus"></i></button>
+                                <button type="button" class="btn btn-outline-secondary px-2 sec-qty-minus" data-idx="${idx}" title="Decrease" ${allowsMultiple ? '' : 'disabled'}><i class="bi bi-dash"></i></button>
+                                <input type="number" class="form-control form-control-sm text-center font-monospace fw-bold sec-qty-input" value="${q}" min="1" max="${maxStock}" data-idx="${idx}" ${allowsMultiple ? '' : 'readonly'}>
+                                <button type="button" class="btn btn-outline-secondary px-2 sec-qty-plus" data-idx="${idx}" title="Increase" ${allowsMultiple ? '' : 'disabled'}><i class="bi bi-plus"></i></button>
                             </div>
                         </td>
-                        <td>
-                            <select class="form-select form-select-sm sec-condition-select" data-idx="${idx}" style="font-size: 11px;">
-                                <option value="DAMAGED" ${classSelect.value === 'DAMAGED' ? 'selected' : ''}>Damaged (Defect)</option>
-                                <option value="GOOD" ${classSelect.value === 'GOOD' ? 'selected' : ''}>Good (Restock)</option>
-                                <option value="DEFECTIVE" ${classSelect.value === 'DEFECTIVE' ? 'selected' : ''}>Defective Quality</option>
-                                <option value="WRONG_SIZE" ${classSelect.value === 'WRONG_SIZE' ? 'selected' : ''}>Wrong Size / Style</option>
-                            </select>
-                        </td>
+                        <td><span class="badge ${classSelect.value === 'DAMAGED' ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'}">${classSelect.value === 'DAMAGED' ? 'Bad / Damaged' : 'Good / Available'}</span></td>
                         <td class="text-end font-monospace text-dark">₹${price.toFixed(2)}</td>
                         <td class="text-end font-monospace fw-bold text-success">₹${lineTotal.toFixed(2)}</td>
                         <td class="text-end pe-4">
@@ -1629,6 +1728,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 qtyInput.disabled = true;
                 qtyInput.value = 0;
                 if (minusBtn) minusBtn.disabled = true;
+                if (plusBtn) plusBtn.disabled = false;
                 classSelect.disabled = true;
             }
         });
@@ -1702,6 +1802,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const idx = this.getAttribute('data-idx');
                 const mainQtyInput = document.querySelector(`.return-qty[data-idx="${idx}"]`);
                 const row = document.querySelector(`.inv-row[data-idx="${idx}"]`);
+                if (!returnRowAllowsMultiple(row)) return;
                 const maxStock = parseInt(row?.getAttribute('data-max-stock')) || 1;
                 let val = parseInt(mainQtyInput?.value) || 0;
                 if (val < maxStock) {
@@ -1718,6 +1819,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 const chk = document.querySelector(`.item-select[data-idx="${idx}"]`);
                 const row = document.querySelector(`.inv-row[data-idx="${idx}"]`);
                 const maxStock = parseInt(row?.getAttribute('data-max-stock')) || 1;
+                if (!returnRowAllowsMultiple(row)) {
+                    this.value = mainQtyInput?.value || '1';
+                    return;
+                }
 
                 let val = parseInt(this.value) || 0;
                 if (val > maxStock) val = maxStock;
@@ -1792,13 +1897,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const chk = document.querySelector(`.item-select[data-idx="${idx}"]`);
             const qtyInput = document.querySelector(`.return-qty[data-idx="${idx}"]`);
             const row = document.querySelector(`.inv-row[data-idx="${idx}"]`);
+            const allowsMultiple = returnRowAllowsMultiple(row);
             const maxStock = parseInt(row?.getAttribute('data-max-stock')) || 1;
 
             let val = parseInt(qtyInput.value) || 0;
             if (!chk.checked || val === 0) {
                 chk.checked = true;
                 qtyInput.value = 1;
-            } else if (val < maxStock) {
+            } else if (allowsMultiple && val < maxStock) {
                 qtyInput.value = val + 1;
             }
             calculateConsignment();
@@ -1810,7 +1916,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const idx = this.getAttribute('data-idx');
             const chk = document.querySelector(`.item-select[data-idx="${idx}"]`);
             const row = document.querySelector(`.inv-row[data-idx="${idx}"]`);
-            const maxStock = parseInt(row?.getAttribute('data-max-stock')) || 1;
+            const maxStock = returnRowAllowsMultiple(row) ? (parseInt(row?.getAttribute('data-max-stock')) || 1) : 1;
 
             let val = parseInt(this.value) || 0;
             if (val > maxStock) {
@@ -1850,7 +1956,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnQtyPlus && modalQtyInput) {
         btnQtyPlus.addEventListener('click', function() {
             let val = parseInt(modalQtyInput.value) || 0;
-            if (val < currentModalMaxStock) {
+            if (val < currentModalMaxReturnQty) {
                 val = val + 1;
                 modalQtyInput.value = val;
                 syncPieceSetWithQty(val);
@@ -1862,8 +1968,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (modalQtyInput) {
         modalQtyInput.addEventListener('input', function() {
             let val = parseInt(this.value) || 0;
-            if (val > currentModalMaxStock) {
-                val = currentModalMaxStock;
+            if (val > currentModalMaxReturnQty) {
+                val = currentModalMaxReturnQty;
                 this.value = val;
             }
             syncPieceSetWithQty(val);

@@ -139,7 +139,8 @@ class BackupService {
      * Direct streaming download of complete SQL database export with automatic email dispatch.
      */
     public static function streamInstantSqlExport(?string $email = null): void {
-        $targetEmail = trim($email ?: env('BACKUP_EMAIL', 'abiprasath6@gmail.com'));
+        $targetEmail = trim((string)($email ?: env('BACKUP_EMAIL', '')));
+        if ($targetEmail === '') $targetEmail = 'abiprasath6@gmail.com';
         $tempSql = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'grm_export_' . date('Ymd_His') . '_' . uniqid() . '.sql';
         
         $success = self::exportMysqldump($tempSql, null);
@@ -180,12 +181,18 @@ class BackupService {
                 </div>
             </div>";
 
-            MailService::sendWithAttachment($targetEmail, $subject, $htmlBody, $tempSql, $downloadFilename);
+            $emailSent = MailService::sendWithAttachment($targetEmail, $subject, $htmlBody, $tempSql, $downloadFilename);
 
             AuditService::log('system_backup', 'EXPORT_AUTO_EMAIL', 'file', null, null, [
                 'recipient' => $targetEmail,
                 'filename'  => $downloadFilename,
+                'sent'      => $emailSent ? 'YES' : 'NO',
             ]);
+            if (!$emailSent) {
+                $mailError = MailService::getLastError() ?: 'Email delivery failed. Check SMTP settings.';
+                @unlink($tempSql);
+                throw new RuntimeException("Database export could not be emailed to {$targetEmail}: {$mailError}");
+            }
         }
         
         header('Content-Description: File Transfer');
@@ -209,7 +216,8 @@ class BackupService {
      * Direct streaming download of complete ZIP compressed database export with automatic email dispatch.
      */
     public static function streamInstantZipExport(?string $email = null): void {
-        $targetEmail = trim($email ?: env('BACKUP_EMAIL', 'abiprasath6@gmail.com'));
+        $targetEmail = trim((string)($email ?: env('BACKUP_EMAIL', '')));
+        if ($targetEmail === '') $targetEmail = 'abiprasath6@gmail.com';
         $tempSql = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'grm_export_' . date('Ymd_His') . '_' . uniqid() . '.sql';
         $tempZip = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'grm_export_' . date('Ymd_His') . '_' . uniqid() . '.zip';
 
@@ -271,12 +279,18 @@ class BackupService {
                 </div>
             </div>";
 
-            MailService::sendWithAttachment($targetEmail, $subject, $htmlBody, $finalZip, $downloadFilename);
+            $emailSent = MailService::sendWithAttachment($targetEmail, $subject, $htmlBody, $finalZip, $downloadFilename);
 
             AuditService::log('system_backup', 'EXPORT_AUTO_EMAIL', 'file', null, null, [
                 'recipient' => $targetEmail,
                 'filename'  => $downloadFilename,
+                'sent'      => $emailSent ? 'YES' : 'NO',
             ]);
+            if (!$emailSent) {
+                $mailError = MailService::getLastError() ?: 'Email delivery failed. Check SMTP settings.';
+                @unlink($finalZip);
+                throw new RuntimeException("Database export could not be emailed to {$targetEmail}: {$mailError}");
+            }
         }
 
         header('Content-Description: File Transfer');
@@ -410,10 +424,10 @@ class BackupService {
             'recipient'    => $targetEmail,
             'filename'     => basename($filePath),
             'sent'         => $sent ? 'YES' : 'NO',
-            'delete_local' => $deleteLocal ? 'YES' : 'NO'
+            'delete_local' => ($sent && $deleteLocal) ? 'YES' : 'NO'
         ]);
 
-        if ($deleteLocal && file_exists($filePath)) {
+        if ($sent && $deleteLocal && file_exists($filePath)) {
             @unlink($filePath);
         }
 
@@ -422,7 +436,7 @@ class BackupService {
             'email'         => $targetEmail,
             'filename'      => basename($filePath),
             'size'          => $filesizeFormatted,
-            'deleted_local' => $deleteLocal,
+            'deleted_local' => $sent && $deleteLocal,
         ];
     }
 

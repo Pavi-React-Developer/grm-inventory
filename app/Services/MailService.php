@@ -40,7 +40,14 @@ class MailService {
             return false;
         }
 
+        $smtpHost = env('SMTP_HOST');
+        $smtpUser = trim((string)env('SMTP_USER', ''));
         $fromEmail = env('MAIL_FROM_ADDRESS', 'backup@grminventory.com');
+        // Gmail requires the From address to be the authenticated account (or an explicitly
+        // authorized alias). Use the SMTP login by default to avoid sender rejection.
+        if (!empty($smtpHost) && filter_var($smtpUser, FILTER_VALIDATE_EMAIL)) {
+            $fromEmail = $smtpUser;
+        }
         $fromName  = env('MAIL_FROM_NAME', 'GRM Inventory Cloud');
         $filename  = $attachmentName ?: basename($attachmentPath);
 
@@ -78,7 +85,6 @@ class MailService {
         $body .= "--{$boundary}--";
 
         // Check if SMTP configuration is present in .env
-        $smtpHost = env('SMTP_HOST');
         if (!empty($smtpHost)) {
             return self::sendViaSmtp($to, $subject, $body, $headers);
         }
@@ -104,11 +110,10 @@ class MailService {
         $pass = trim(str_replace(' ', '', (string)env('SMTP_PASS', ''))); // Remove spaces from Google App Password
         $encryption = strtolower((string)env('SMTP_ENCRYPTION', 'tls'));
         
-        // If sender address is default placeholder or empty, use SMTP_USER if it is a valid email
-        $fromEmail = env('MAIL_FROM_ADDRESS', '');
-        if (empty($fromEmail) || $fromEmail === 'backup@grminventory.com') {
-            $fromEmail = !empty($user) && filter_var($user, FILTER_VALIDATE_EMAIL) ? $user : 'backup@grminventory.com';
-        }
+        // Keep the envelope sender consistent with the From header and SMTP login.
+        $fromEmail = filter_var($user, FILTER_VALIDATE_EMAIL)
+            ? $user
+            : env('MAIL_FROM_ADDRESS', 'backup@grminventory.com');
 
         // Validate that SMTP credentials are provided when connecting to external SMTP (like Gmail)
         if (empty($user) || empty($pass)) {

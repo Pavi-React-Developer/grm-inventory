@@ -808,6 +808,7 @@ class Router {
         // ==========================================
         $this->get('sales/website', 'SalesController', 'websiteOrderList', ['AuthMiddleware', ['PermissionMiddleware', 'website_orders', 'view']]);
         $this->get('sales/website/create', 'SalesController', 'createWebsiteOrder', ['AuthMiddleware', ['PermissionMiddleware', 'website_orders', 'create']]);
+        $this->post('api/website/sales/validate-scan', 'SalesController', 'validateSalesScan', ['AuthMiddleware', ['PermissionMiddleware', 'website_orders', 'create']]);
         $this->get('api/website/customers/lookup', 'SalesController', 'lookupWebsiteCustomer', ['AuthMiddleware', ['PermissionMiddleware', 'website_orders', 'create']]);
         $this->post('sales/website/store', 'SalesController', 'storeWebsiteOrder', ['AuthMiddleware', ['PermissionMiddleware', 'website_orders', 'create']]);
         $this->get('sales/website/view/{id}', 'SalesController', 'viewWebsiteOrder', ['AuthMiddleware', ['PermissionMiddleware', 'website_orders', 'view']]);
@@ -815,6 +816,7 @@ class Router {
 
         $this->get('sales/whatsapp', 'SalesController', 'whatsappOrderList', ['AuthMiddleware', ['PermissionMiddleware', 'whatsapp_orders', 'view']]);
         $this->get('sales/whatsapp/create', 'SalesController', 'createWhatsappOrder', ['AuthMiddleware', ['PermissionMiddleware', 'whatsapp_orders', 'create']]);
+        $this->post('api/whatsapp/sales/validate-scan', 'SalesController', 'validateSalesScan', ['AuthMiddleware', ['PermissionMiddleware', 'whatsapp_orders', 'create']]);
         $this->get('api/whatsapp/customers/lookup', 'SalesController', 'lookupWhatsappCustomer', ['AuthMiddleware', ['PermissionMiddleware', 'whatsapp_orders', 'create']]);
         $this->post('sales/whatsapp/store', 'SalesController', 'storeWhatsappOrder', ['AuthMiddleware', ['PermissionMiddleware', 'whatsapp_orders', 'create']]);
         $this->get('sales/whatsapp/view/{id}', 'SalesController', 'viewWhatsappOrder', ['AuthMiddleware', ['PermissionMiddleware', 'whatsapp_orders', 'view']]);
