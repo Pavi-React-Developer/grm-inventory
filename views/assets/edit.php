@@ -196,6 +196,34 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
+                    <div class="card-header bg-white py-3 border-0">
+                        <h5 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                            <i class="bi bi-paperclip text-primary"></i> Asset Attachments
+                        </h5>
+                    </div>
+                    <div class="card-body p-4 pt-0">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small">Asset / Product Image</label>
+                                <input type="file" name="photo" class="form-control" accept="image/jpeg,image/png,image/webp">
+                                <div class="form-text">Optional JPG, PNG, or WebP image, up to 10 MB. Uploading a new image replaces the current one.</div>
+                                <?php if (!empty($asset['photo_url'])): ?>
+                                    <a class="small d-inline-block mt-2" href="<?= e($asset['photo_url']) ?>" target="_blank" rel="noopener">View current asset image</a>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small">Purchase Invoice / Bill</label>
+                                <input type="file" name="invoice_file" class="form-control" accept="application/pdf,image/jpeg,image/png,image/webp">
+                                <div class="form-text">Optional PDF or image, up to 10 MB. Uploading a new file replaces the current attachment.</div>
+                                <?php if (!empty($asset['invoice_file_url'])): ?>
+                                    <a class="small d-inline-block mt-2" href="<?= e($asset['invoice_file_url']) ?>" target="_blank" rel="noopener">View current invoice / bill</a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Right Column: Status, Custodian & Photo -->
@@ -231,17 +259,10 @@
                         </div>
 
                         <details class="asset-form-details">
-                            <summary class="small text-primary mb-3">Custodian, photo, and notes <i class="bi bi-chevron-down ms-1"></i></summary>
+                            <summary class="small text-primary mb-3">Custodian and notes <i class="bi bi-chevron-down ms-1"></i></summary>
                             <div class="mb-3">
                                 <label class="form-label fw-semibold small">Assigned Custodian / Operator</label>
                                 <input type="text" name="custodian_name" class="form-control" value="<?= e($asset['custodian_name']) ?>">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label fw-semibold small">Update Photo</label>
-                                <input type="file" name="photo" class="form-control" accept="image/*">
-                                <?php if (!empty($asset['photo_url'])): ?>
-                                    <div class="mt-2 small text-muted">Current photo on file. Uploading new file will replace it.</div>
-                                <?php endif; ?>
                             </div>
                             <div class="mb-0">
                                 <label class="form-label fw-semibold small">Internal Remarks / Notes</label>

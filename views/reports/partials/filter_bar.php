@@ -8,6 +8,13 @@ $curMonth      = (int)($filter['month'] ?? date('m'));
 $curFromDate   = $filter['from_date'] ?? date('Y-m-01');
 $curToDate     = $filter['to_date'] ?? date('Y-m-d');
 $currentReportType = $reportType ?? 'overview';
+$reportFilters = $_GET;
+unset($reportFilters['url']);
+$reportQuery = http_build_query($reportFilters);
+$reportPageUrl = url("reports/{$currentReportType}");
+$exportUrl = url("reports/export/{$currentReportType}") . ($reportQuery !== '' ? '?' . $reportQuery : '');
+$printUrl = url("reports/print/{$currentReportType}") . ($reportQuery !== '' ? '?' . $reportQuery : '');
+$pdfUrl = url("reports/pdf/{$currentReportType}") . ($reportQuery !== '' ? '?' . $reportQuery : '');
 
 $yearsList = [date('Y') + 1, date('Y'), date('Y') - 1, date('Y') - 2];
 $monthsList = [
@@ -19,7 +26,7 @@ $monthsList = [
 
 <div class="card border-0 shadow-sm rounded-3 mb-4 bg-white">
     <div class="card-body p-3">
-        <form method="GET" action="" id="reportFilterForm" class="row g-2 align-items-end">
+        <form method="GET" action="<?= e($reportPageUrl) ?>" id="reportFilterForm" class="row g-2 align-items-end">
             <!-- Filter Type Selector -->
             <div class="col-xl-2 col-md-3 col-sm-6">
                 <label class="form-label text-muted small fw-semibold mb-1" for="filterTypeSelect">
@@ -76,14 +83,14 @@ $monthsList = [
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>Download PDF
                 </button>
 
-                <!-- Export CSV Button -->
-                <a href="<?= url("reports/export/{$currentReportType}?" . http_build_query($_GET)) ?>" 
-                   class="btn btn-sm btn-outline-success fw-semibold shadow-xs" title="Export this report to Excel/CSV">
-                    <i class="bi bi-file-earmark-excel me-1"></i>Export CSV
+                <!-- Export formatted Excel workbook -->
+                <a href="<?= e($exportUrl) ?>"
+                   class="btn btn-sm btn-outline-success fw-semibold shadow-xs" title="Download a formatted Excel workbook">
+                    <i class="bi bi-file-earmark-excel me-1"></i>Export Excel (.xlsx)
                 </a>
 
                 <!-- Print Document Button -->
-                <a href="<?= url("reports/print/{$currentReportType}?" . http_build_query($_GET)) ?>" 
+                <a href="<?= e($printUrl) ?>"
                    target="_blank" class="btn btn-sm btn-outline-secondary fw-semibold shadow-xs" title="Open printable document view">
                     <i class="bi bi-printer me-1"></i>Print
                 </a>
@@ -97,19 +104,19 @@ $monthsList = [
                     <i class="bi bi-lightning-charge-fill text-warning me-1"></i>Quick Presets:
                 </span>
                 
-                <a href="?period=this_month" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'monthly' && $curMonth === (int)date('m') && $curYear === (int)date('Y') ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=this_month" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'monthly' && $curMonth === (int)date('m') && $curYear === (int)date('Y') ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     This Month
                 </a>
-                <a href="?period=last_month" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'last_month' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=last_month" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'last_month' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     Last Month
                 </a>
-                <a href="?period=this_quarter" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'this_quarter' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=this_quarter" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'this_quarter' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     This Quarter
                 </a>
-                <a href="?period=yearly&year=<?= date('Y') ?>" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'yearly' && $curYear === (int)date('Y') ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=yearly&amp;year=<?= date('Y') ?>" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'yearly' && $curYear === (int)date('Y') ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     Year <?= date('Y') ?>
                 </a>
-                <a href="?period=all" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'all' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=all" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'all' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     All Time
                 </a>
             </div>
@@ -182,65 +189,17 @@ function autoSubmitCustomDate() {
     }
 }
 
-let currentPdfBtn = null;
-let currentBtnHtml = '';
-
-// Preload the iframe silently so it's ready when the user clicks
-document.addEventListener('DOMContentLoaded', function() {
-    let iframe = document.getElementById('pdfHiddenIframe');
-    if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'pdfHiddenIframe';
-        iframe.style.position = 'absolute';
-        iframe.style.left = '-9999px';
-        iframe.style.top = '-9999px';
-        iframe.style.width = '1200px';
-        iframe.style.height = '1200px';
-        iframe.src = '<?= url("reports/print/{$currentReportType}?" . http_build_query(array_merge($_GET, ['pdf' => '0']))) ?>';
-        document.body.appendChild(iframe);
-    }
-    
-    // Listen for completion
-    window.addEventListener('message', function(e) {
-        if (e.data === 'PDF_GENERATED' || e.data === 'PDF_FAILED') {
-            const btn = currentPdfBtn || document.getElementById('btnDownloadPdfFilter');
-            if (btn) {
-                btn.innerHTML = currentPdfBtn ? currentBtnHtml : '<i class="bi bi-file-earmark-pdf-fill me-1"></i>Download PDF';
-                btn.disabled = false;
-                btn.classList.remove('disabled');
-            }
-            if(e.data === 'PDF_FAILED') {
-                alert('Failed to generate PDF. Please try the Print Document option.');
-            }
-        }
-    });
-});
-
 function triggerPdfDownload(url = null, btnElement = null) {
-    currentPdfBtn = btnElement || document.getElementById('btnDownloadPdfFilter');
-    if (!currentPdfBtn) return;
-    
-    currentBtnHtml = currentPdfBtn.innerHTML;
-    currentPdfBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
-    currentPdfBtn.disabled = true;
-    currentPdfBtn.classList.add('disabled');
-    
-    const iframe = document.getElementById('pdfHiddenIframe');
-    if (url && iframe) {
-        // Load the new url. The url contains pdf=1 so it will auto-trigger inside the iframe.
-        iframe.src = url;
-    } else if (iframe && iframe.contentWindow) {
-        // Trigger the already preloaded main report
-        iframe.contentWindow.postMessage('START_PDF', '*');
+    window.location.assign(url || <?= json_encode($pdfUrl, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>);
+    const button = btnElement || document.getElementById('btnDownloadPdfFilter');
+    if (button) {
+        const originalContent = button.innerHTML;
+        button.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Preparing PDF...';
+        button.disabled = true;
+        setTimeout(() => {
+            button.innerHTML = originalContent;
+            button.disabled = false;
+        }, 2500);
     }
-    
-    // Failsafe timeout
-    setTimeout(() => {
-        if (currentPdfBtn && currentPdfBtn.disabled) {
-            currentPdfBtn.innerHTML = currentBtnHtml;
-            currentPdfBtn.disabled = false;
-            currentPdfBtn.classList.remove('disabled');
-        }
-    }, 10000);
 }
 </script>

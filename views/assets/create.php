@@ -208,6 +208,28 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
+                    <div class="card-header bg-white py-3 border-0">
+                        <h5 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                            <i class="bi bi-paperclip text-primary"></i> Asset Attachments
+                        </h5>
+                    </div>
+                    <div class="card-body p-4 pt-0">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small">Asset / Product Image</label>
+                                <input type="file" name="photo" class="form-control" accept="image/jpeg,image/png,image/webp">
+                                <div class="form-text">Optional JPG, PNG, or WebP image, up to 10 MB.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small">Purchase Invoice / Bill</label>
+                                <input type="file" name="invoice_file" class="form-control" accept="application/pdf,image/jpeg,image/png,image/webp">
+                                <div class="form-text">Optional PDF or image, up to 10 MB.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Right Column: Status, Custodian & Photo -->
@@ -242,14 +264,10 @@
                         </div>
 
                         <details class="asset-form-details">
-                            <summary class="small text-primary mb-3">Custodian, photo, and notes <i class="bi bi-chevron-down ms-1"></i></summary>
+                            <summary class="small text-primary mb-3">Custodian and notes <i class="bi bi-chevron-down ms-1"></i></summary>
                             <div class="mb-3">
                                 <label class="form-label fw-semibold small">Assigned Custodian / Operator</label>
                                 <input type="text" name="custodian_name" class="form-control" placeholder="e.g. M. Ramasamy (Line Lead)">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label fw-semibold small">Asset Photo</label>
-                                <input type="file" name="photo" class="form-control" accept="image/*">
                             </div>
                             <div class="mb-0">
                                 <label class="form-label fw-semibold small">Internal Remarks / Notes</label>
