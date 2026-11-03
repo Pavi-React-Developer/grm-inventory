@@ -13,6 +13,38 @@ require_once BASE_PATH . '/app/Helpers/CSRF.php';
 
 class AssetController {
 
+    private function uploadOptionalAssetFile(string $field, array $allowedMimeTypes, string $resourceType): ?string {
+        $file = $_FILES[$field] ?? null;
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+
+        if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+            throw new RuntimeException("The selected {$field} file could not be uploaded.");
+        }
+
+        if (($file['size'] ?? 0) > 10 * 1024 * 1024) {
+            throw new RuntimeException("The selected {$field} file must be 10 MB or smaller.");
+        }
+
+        $tmpPath = $file['tmp_name'] ?? '';
+        if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
+            throw new RuntimeException("The selected {$field} file is invalid.");
+        }
+
+        $mimeType = (new finfo(FILEINFO_MIME_TYPE))->file($tmpPath);
+        if (!in_array($mimeType, $allowedMimeTypes, true)) {
+            throw new RuntimeException("The selected {$field} file type is not supported.");
+        }
+
+        $url = CloudinaryService::upload($file, 'grm_inventory/assets', $resourceType);
+        if (empty($url)) {
+            throw new RuntimeException("The selected {$field} file could not be saved. Check the Cloudinary configuration and try again.");
+        }
+
+        return $url;
+    }
+
     /**
      * Parse unit filter from query string.
      */
@@ -195,17 +227,21 @@ class AssetController {
             'custodian_name'    => trim($_POST['custodian_name'] ?? ''),
             'notes'             => trim($_POST['notes'] ?? ''),
             'photo_url'         => null,
+            'invoice_file_url'  => null,
         ];
 
-        // Handle Photo Upload (Cloudinary Cloud Storage)
-        if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
-            $uploadedUrl = CloudinaryService::upload($_FILES['photo'], 'grm_inventory/assets', 'image');
-            if (!empty($uploadedUrl)) {
-                $data['photo_url'] = $uploadedUrl;
-            }
-        }
-
         try {
+            $data['photo_url'] = $this->uploadOptionalAssetFile(
+                'photo',
+                ['image/jpeg', 'image/png', 'image/webp'],
+                'image'
+            );
+            $data['invoice_file_url'] = $this->uploadOptionalAssetFile(
+                'invoice_file',
+                ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+                'auto'
+            );
+
             $assetId = AssetService::createAsset($data, $userId);
             Session::flash('success', "Asset registered successfully with tag {$data['name']}!");
             Response::redirect(url('asset/view/' . $assetId));
@@ -303,17 +339,21 @@ class AssetController {
             'custodian_name'    => trim($_POST['custodian_name'] ?? ''),
             'notes'             => trim($_POST['notes'] ?? ''),
             'photo_url'         => null,
+            'invoice_file_url'  => null,
         ];
 
-        // Handle Photo Upload (Cloudinary Cloud Storage)
-        if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
-            $uploadedUrl = CloudinaryService::upload($_FILES['photo'], 'grm_inventory/assets', 'image');
-            if (!empty($uploadedUrl)) {
-                $data['photo_url'] = $uploadedUrl;
-            }
-        }
-
         try {
+            $data['photo_url'] = $this->uploadOptionalAssetFile(
+                'photo',
+                ['image/jpeg', 'image/png', 'image/webp'],
+                'image'
+            );
+            $data['invoice_file_url'] = $this->uploadOptionalAssetFile(
+                'invoice_file',
+                ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+                'auto'
+            );
+
             AssetService::updateAsset($assetId, $data, $userId);
             Session::flash('success', "Asset {$assetId} updated successfully!");
             Response::redirect(url('asset/view/' . $assetId));
@@ -502,6 +542,7 @@ class AssetController {
         $unitFilter = $this->parseUnitFilter();
         $categoryId = !empty($_GET['category_id']) ? (int)$_GET['category_id'] : null;
         $status = !empty($_GET['status']) ? trim($_GET['status']) : null;
+        $search = !empty($_GET['search']) ? trim($_GET['search']) : null;
         $columns = !empty($_GET['columns']) ? (int)$_GET['columns'] : 3;
 
         $filters = [
@@ -509,19 +550,39 @@ class AssetController {
             'location_id'   => $unitFilter['locationId'],
             'category_id'   => $categoryId,
             'status'        => $status,
+            'search'        => $search,
         ];
 
         $assets = AssetService::getAssetsList($filters);
         $categories = AssetService::getCategories();
         $unitsMap = AssetService::getLocationUnitsMap();
 
-        Response::viewOnly('assets.bulk_labels', [
+        if (($_GET['mode'] ?? '') === 'print') {
+            Response::viewOnly('assets.bulk_labels', [
+                'assets'      => $assets,
+                'categories'  => $categories,
+                'unitsMap'    => $unitsMap,
+                'currentUnit' => $unitFilter['unitKey'],
+                'filters'     => $filters,
+                'columns'     => $columns,
+            ]);
+            return;
+        }
+
+        Response::view('assets.qr_list', [
+            'pageTitle'   => 'Asset QR Register',
+            'activeModule'=> 'assets',
+            'activeMenu'  => 'asset-bulk-labels',
             'assets'      => $assets,
             'categories'  => $categories,
             'unitsMap'    => $unitsMap,
             'currentUnit' => $unitFilter['unitKey'],
             'filters'     => $filters,
             'columns'     => $columns,
+            'breadcrumb'  => [
+                ['label' => 'Assets', 'url' => url('asset/list')],
+                ['label' => 'QR Register'],
+            ],
         ]);
     }
 

@@ -143,6 +143,9 @@ $condBadge = match($asset['condition_state']) {
                         <div class="col-sm-4">
                             <span class="text-muted small d-block">Invoice Number</span>
                             <span class="fw-semibold text-dark"><?= e($asset['invoice_number'] ?: 'N/A') ?></span>
+                            <?php if (!empty($asset['invoice_file_url'])): ?>
+                                <a class="small d-block mt-1" href="<?= e($asset['invoice_file_url']) ?>" target="_blank" rel="noopener">View invoice / bill</a>
+                            <?php endif; ?>
                         </div>
                         <div class="col-sm-4">
                             <span class="text-muted small d-block">Warranty Expiry</span>
@@ -205,6 +208,19 @@ $condBadge = match($asset['condition_state']) {
 
         <!-- Right Column: QR Tag Canvas & Service Tickets -->
         <div class="col-lg-5">
+            <?php if (!empty($asset['photo_url'])): ?>
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-header bg-white py-3 border-0">
+                        <h5 class="fw-bold mb-0 text-dark">
+                            <i class="bi bi-image text-primary me-2"></i> Asset / Product Image
+                        </h5>
+                    </div>
+                    <div class="card-body p-3 text-center">
+                        <img src="<?= e($asset['photo_url']) ?>" alt="<?= e($asset['name']) ?>" class="img-fluid rounded-3" style="max-height: 320px;">
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <!-- QR Tag Sticker Card -->
             <div class="card border-0 shadow-sm rounded-4 mb-4 text-center">
                 <div class="card-header bg-white py-3 border-0">

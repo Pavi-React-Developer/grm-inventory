@@ -577,14 +577,14 @@ class AssetService {
                 purchase_date, purchase_cost, vendor_name, vendor_contact, invoice_number,
                 warranty_expiry, useful_life_years, salvage_value, current_book_value,
                 last_depreciation_date, status, condition_state, custodian_name,
-                photo_url, notes, created_by, created_at, updated_at
+                photo_url, invoice_file_url, notes, created_by, created_at, updated_at
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 CURDATE(), ?, ?, ?,
-                ?, ?, ?, NOW(), NOW()
+                ?, ?, ?, ?, NOW(), NOW()
             )
         ";
 
@@ -613,6 +613,7 @@ class AssetService {
             $data['condition_state'] ?? 'GOOD',
             trim($data['custodian_name'] ?? ''),
             trim($data['photo_url'] ?? ''),
+            trim($data['invoice_file_url'] ?? ''),
             trim($data['notes'] ?? ''),
             $userId
         ]);
@@ -661,6 +662,7 @@ class AssetService {
                 condition_state = ?,
                 custodian_name = ?,
                 photo_url = COALESCE(NULLIF(?, ''), photo_url),
+                invoice_file_url = COALESCE(NULLIF(?, ''), invoice_file_url),
                 notes = ?,
                 updated_at = NOW()
             WHERE id = ?
@@ -689,6 +691,7 @@ class AssetService {
             $data['condition_state'] ?? $asset['condition_state'],
             trim($data['custodian_name'] ?? $asset['custodian_name']),
             trim($data['photo_url'] ?? ''),
+            trim($data['invoice_file_url'] ?? ''),
             trim($data['notes'] ?? $asset['notes']),
             $id
         ]);

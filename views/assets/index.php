@@ -92,6 +92,13 @@ $utilizationRate = $totalAssets > 0 ? round(($inUseCount / $totalAssets) * 100, 
     color: #0d6efd;
     font-weight: 600;
 }
+.asset-action-floating-menu {
+    position: fixed !important;
+    inset: auto !important;
+    transform: none !important;
+    z-index: 1085 !important;
+    margin: 0 !important;
+}
 .dropdown-header-custom {
     font-size: 0.72rem;
     font-weight: 700;
@@ -562,8 +569,8 @@ $utilizationRate = $totalAssets > 0 ? round(($inUseCount / $totalAssets) * 100, 
                             </span>
                         </td>
                         <td class="text-end pe-4">
-                            <div class="dropdown">
-                                <button class="btn btn-sm btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            <div class="dropdown asset-action-dropdown">
+                                <button class="btn btn-sm btn-light border dropdown-toggle" type="button" aria-expanded="false">
                                     Actions
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end shadow-sm">
@@ -1049,5 +1056,88 @@ function openMaintenanceModal(asset) {
 // Initial check on DOM load
 document.addEventListener('DOMContentLoaded', () => {
     applyAssetLiveFilters();
+
+    let activeActionDropdown = null;
+
+    const closeActionMenu = () => {
+        if (!activeActionDropdown) return;
+
+        const { toggle, menu, placeholder } = activeActionDropdown;
+        menu.classList.remove('show', 'asset-action-floating-menu');
+        menu.style.removeProperty('top');
+        menu.style.removeProperty('left');
+        placeholder.parentNode.insertBefore(menu, placeholder);
+        placeholder.remove();
+        toggle.setAttribute('aria-expanded', 'false');
+        activeActionDropdown = null;
+    };
+
+    const positionActionMenu = () => {
+        if (!activeActionDropdown) return;
+
+        const { toggle, menu } = activeActionDropdown;
+        const toggleRect = toggle.getBoundingClientRect();
+        const viewportPadding = 8;
+        const menuHeight = menu.offsetHeight;
+        const menuWidth = menu.offsetWidth;
+        const spaceBelow = window.innerHeight - toggleRect.bottom;
+        const placeAbove = spaceBelow < menuHeight && toggleRect.top > spaceBelow;
+        const top = Math.max(
+            viewportPadding,
+            Math.min(
+                placeAbove ? toggleRect.top - menuHeight : toggleRect.bottom,
+                window.innerHeight - menuHeight - viewportPadding
+            )
+        );
+        const left = Math.max(
+            viewportPadding,
+            Math.min(toggleRect.right - menuWidth, window.innerWidth - menuWidth - viewportPadding)
+        );
+
+        menu.style.setProperty('top', `${top}px`, 'important');
+        menu.style.setProperty('left', `${left}px`, 'important');
+    };
+
+    document.querySelectorAll('.asset-action-dropdown').forEach(dropdown => {
+        const toggle = dropdown.querySelector('.dropdown-toggle');
+        const menu = dropdown.querySelector('.dropdown-menu');
+        if (!toggle || !menu) return;
+
+        menu.addEventListener('click', event => {
+            if (event.target.closest('button.dropdown-item')) closeActionMenu();
+        });
+
+        toggle.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (activeActionDropdown && activeActionDropdown.toggle === toggle) {
+                closeActionMenu();
+                return;
+            }
+
+            closeActionMenu();
+            const placeholder = document.createComment('asset-action-menu');
+            menu.parentNode.insertBefore(placeholder, menu);
+            document.body.appendChild(menu);
+            menu.classList.add('asset-action-floating-menu', 'show');
+            toggle.setAttribute('aria-expanded', 'true');
+            activeActionDropdown = { toggle, menu, placeholder };
+            positionActionMenu();
+        });
+    });
+
+    document.addEventListener('click', event => {
+        if (!activeActionDropdown) return;
+        if (activeActionDropdown.menu.contains(event.target) || activeActionDropdown.toggle.contains(event.target)) return;
+        closeActionMenu();
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeActionMenu();
+    });
+
+    window.addEventListener('resize', positionActionMenu);
+    document.addEventListener('scroll', positionActionMenu, true);
 });
 </script>

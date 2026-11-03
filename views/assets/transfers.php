@@ -138,10 +138,10 @@
                             <!-- Origin Location Dropdown -->
                             <div class="col-md-5">
                                 <label class="form-label fw-bold small text-dark d-flex align-items-center gap-1">
-                                    <i class="bi bi-geo-alt-fill text-danger"></i> 1. Origin Facility (From) <span class="text-danger">*</span>
+                                    <i class="bi bi-geo-alt-fill text-danger"></i> 1. Origin Unit (From) <span class="text-danger">*</span>
                                 </label>
-                                <select id="trf_origin_location_filter" class="form-select" onchange="filterTrfAssetsByLocation()">
-                                    <option value="ALL">🌐 -- All Facilities --</option>
+                                <select id="trf_origin_location_filter" class="form-select" required onchange="filterTrfAssetsByLocation()">
+                                    <option value="">-- Select a unit first --</option>
                                     <optgroup label="🏭 Production Units">
                                         <?php foreach (($unitsMap['production'] ?? []) as $pu): ?>
                                             <option value="PRODUCTION_<?= $pu['id'] ?>">PU: <?= e($pu['name']) ?> (<?= e($pu['code'] ?: 'PU'.$pu['id']) ?>)</option>
@@ -161,18 +161,18 @@
                                         <option value="OFFICE_1">Head Office &amp; Central Logistics</option>
                                     </optgroup>
                                 </select>
-                                <div class="form-text small" id="trf_loc_asset_count">Filter products inside facility</div>
+                                <div class="form-text small">Choose the facility that currently holds the asset.</div>
                             </div>
 
-                            <!-- Filtered Asset Dropdown -->
+                            <!-- Assets currently assigned to the selected unit -->
                             <div class="col-md-7">
                                 <label class="form-label fw-bold small text-dark d-flex align-items-center gap-1">
-                                    <i class="bi bi-cpu-fill text-primary"></i> 2. Select Equipment to Transfer <span class="text-danger">*</span>
+                                    <i class="bi bi-cpu-fill text-primary"></i> 2. Contents of Selected Unit <span class="text-danger">*</span>
                                 </label>
-                                <select name="asset_id" id="trf_asset_select" class="form-select" required onchange="onTrfAssetSelected()">
-                                    <option value="">-- Choose Asset / Product --</option>
+                                <select name="asset_id" id="trf_asset_select" class="form-select" required disabled onchange="onTrfAssetSelected()">
+                                    <option value="">Select an origin unit to load its assets</option>
                                 </select>
-                                <div class="form-text small">Lists only assets located in origin facility</div>
+                                <div class="form-text small" id="trf_loc_asset_count" aria-live="polite">Assets assigned to the selected unit will appear here.</div>
                             </div>
                         </div>
 
@@ -245,7 +245,7 @@
 
 <script>
 // All assets registry for client-side live cascading filter
-const allTrfAssetsData = <?= json_encode($allAssets ?? []) ?>;
+const allTrfAssetsData = <?= json_encode($allAssets ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 
 /**
  * Filter Transfer Assets by Selected Origin Location
@@ -256,34 +256,42 @@ function filterTrfAssetsByLocation() {
     const countLabel = document.getElementById('trf_loc_asset_count');
     const previewBox = document.getElementById('trf_selected_asset_preview');
     
-    // Clear current options
-    assetSelect.innerHTML = '<option value="">-- Choose Asset / Product --</option>';
+    // Reset the contents field whenever the origin changes so stale assets cannot be submitted.
+    assetSelect.innerHTML = '';
+    assetSelect.disabled = !locFilter;
     previewBox.classList.add('d-none');
 
-    let filtered = allTrfAssetsData;
-    if (locFilter !== 'ALL') {
-        const parts = locFilter.split('_');
-        const locType = parts[0];
-        const locId = parseInt(parts[1] || '1', 10);
-        filtered = allTrfAssetsData.filter(a => a.location_type === locType && parseInt(a.location_id, 10) === locId);
-    }
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = locFilter ? '-- Choose an asset in this unit --' : 'Select an origin unit to load its assets';
+    assetSelect.appendChild(placeholder);
 
-    countLabel.innerHTML = `Showing <strong>${filtered.length}</strong> asset(s) in origin facility`;
-
-    if (filtered.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = "";
-        opt.textContent = "No assets located in this facility";
-        opt.disabled = true;
-        assetSelect.appendChild(opt);
+    if (!locFilter) {
+        countLabel.textContent = 'Assets assigned to the selected unit will appear here.';
         return;
     }
+
+    const separatorIndex = locFilter.lastIndexOf('_');
+    const locType = locFilter.slice(0, separatorIndex);
+    const locId = Number(locFilter.slice(separatorIndex + 1));
+    const filtered = allTrfAssetsData
+        .filter(asset => asset.location_type === locType && Number(asset.location_id) === locId)
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+
+    countLabel.textContent = `${filtered.length} asset${filtered.length === 1 ? '' : 's'} currently assigned to this unit.`;
+
+    if (filtered.length === 0) {
+        placeholder.textContent = 'No assets currently assigned to this unit';
+        return;
+    }
+
+    assetSelect.disabled = false;
 
     // Populate dropdown with filtered assets
     filtered.forEach(a => {
         const opt = document.createElement('option');
         opt.value = a.id;
-        opt.textContent = `${a.asset_code} - ${a.name} (${a.location_display || 'Assigned'})`;
+        opt.textContent = `${a.asset_code} - ${a.name}${a.floor_area ? ` (${a.floor_area})` : ''}`;
         opt.dataset.code = a.asset_code;
         opt.dataset.name = a.name;
         opt.dataset.cat = a.category_name || 'General';
@@ -315,8 +323,5 @@ function onTrfAssetSelected() {
     previewBox.classList.remove('d-none');
 }
 
-// Initial populate on load
-document.addEventListener('DOMContentLoaded', () => {
-    filterTrfAssetsByLocation();
-});
+// Keep the dependent contents field empty until the user chooses an origin unit.
 </script>

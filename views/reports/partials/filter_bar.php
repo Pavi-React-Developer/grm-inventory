@@ -14,8 +14,8 @@ $reportPermissionModules = [
     'sales' => 'reports_sales',
     'sales_pos' => 'reports_sales',
     'sales_warehouse' => 'reports_sales',
-    'sales_website' => 'reports_sales',
-    'sales_whatsapp' => 'reports_sales',
+    'sales_website' => 'reports_website',
+    'sales_whatsapp' => 'reports_whatsapp',
     'website' => 'reports_website',
     'whatsapp' => 'reports_whatsapp',
     'online' => 'reports_online',
@@ -26,8 +26,19 @@ $reportPermissionModules = [
     'inventory' => 'reports_inventory',
 ];
 $reportPermissionModule = $reportPermissionModules[$currentReportType] ?? 'reports_overview';
-$canExportReport = hasPermission($reportPermissionModule, 'export');
-$canPrintReport = hasPermission($reportPermissionModule, 'print');
+$canExportReport = hasPermission($reportPermissionModule, 'export')
+    || hasPermission($reportPermissionModule, 'view')
+    || hasPermission('reports', 'view');
+$canPrintReport = hasPermission($reportPermissionModule, 'print')
+    || hasPermission($reportPermissionModule, 'view')
+    || hasPermission('reports', 'view');
+$reportFilters = $_GET;
+unset($reportFilters['url']);
+$reportQuery = http_build_query($reportFilters);
+$reportPageUrl = url("reports/{$currentReportType}");
+$exportUrl = url("reports/export/{$currentReportType}") . ($reportQuery !== '' ? '?' . $reportQuery : '');
+$printUrl = url("reports/print/{$currentReportType}") . ($reportQuery !== '' ? '?' . $reportQuery : '');
+$pdfUrl = url("reports/pdf/{$currentReportType}") . ($reportQuery !== '' ? '?' . $reportQuery : '');
 
 $yearsList = [date('Y') + 1, date('Y'), date('Y') - 1, date('Y') - 2];
 $monthsList = [
@@ -39,7 +50,7 @@ $monthsList = [
 
 <div class="card border-0 shadow-sm rounded-3 mb-4 bg-white">
     <div class="card-body p-3">
-        <form method="GET" action="" id="reportFilterForm" class="row g-2 align-items-end">
+        <form method="GET" action="<?= e($reportPageUrl) ?>" id="reportFilterForm" class="row g-2 align-items-end">
             <!-- Filter Type Selector -->
             <div class="col-xl-2 col-md-3 col-sm-6">
                 <label class="form-label text-muted small fw-semibold mb-1" for="filterTypeSelect">
@@ -91,28 +102,29 @@ $monthsList = [
 
             <!-- Action Buttons aligned with inputs -->
             <div class="col-xl ms-auto d-flex align-items-center justify-content-sm-end gap-2 mt-2 mt-xl-0 flex-wrap">
-                <?php if ($canPrintReport): ?>
-                <a href="<?= url("reports/print/{$currentReportType}?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>"
-                   target="_blank" rel="noopener" class="btn btn-sm btn-outline-danger fw-semibold shadow-xs" title="Download official PDF report">
+                <?php if ($canExportReport): ?>
+                <a href="<?= e($pdfUrl) ?>"
+                   class="btn btn-sm btn-outline-danger fw-semibold shadow-xs" title="Download official PDF report">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>Download PDF
                 </a>
                 <?php endif; ?>
 
-                <!-- Export CSV Button -->
+                <!-- Export formatted Excel workbook -->
                 <?php if ($canExportReport): ?>
-                <a href="<?= url("reports/export/{$currentReportType}?" . http_build_query($_GET)) ?>" 
-                   class="btn btn-sm btn-outline-success fw-semibold shadow-xs" title="Export this report to Excel/CSV">
-                    <i class="bi bi-file-earmark-excel me-1"></i>Export CSV
+                <a href="<?= e($exportUrl) ?>"
+                   class="btn btn-sm btn-outline-success fw-semibold shadow-xs" title="Download a formatted Excel workbook">
+                    <i class="bi bi-file-earmark-excel me-1"></i>Export Excel (.xlsx)
                 </a>
                 <?php endif; ?>
 
                 <!-- Print Document Button -->
                 <?php if ($canPrintReport): ?>
-                <a href="<?= url("reports/print/{$currentReportType}?" . http_build_query($_GET)) ?>" 
-                   target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary fw-semibold shadow-xs" title="Open printable document view">
+                <a href="<?= e($printUrl) ?>"
+                   target="_blank" class="btn btn-sm btn-outline-secondary fw-semibold shadow-xs" title="Open printable document view">
                     <i class="bi bi-printer me-1"></i>Print
                 </a>
                 <?php endif; ?>
+
             </div>
         </form>
 
@@ -123,19 +135,19 @@ $monthsList = [
                     <i class="bi bi-lightning-charge-fill text-warning me-1"></i>Quick Presets:
                 </span>
                 
-                <a href="?period=this_month" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'monthly' && $curMonth === (int)date('m') && $curYear === (int)date('Y') ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=this_month" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'monthly' && $curMonth === (int)date('m') && $curYear === (int)date('Y') ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     This Month
                 </a>
-                <a href="?period=last_month" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'last_month' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=last_month" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'last_month' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     Last Month
                 </a>
-                <a href="?period=this_quarter" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'this_quarter' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=this_quarter" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'this_quarter' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     This Quarter
                 </a>
-                <a href="?period=yearly&year=<?= date('Y') ?>" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'yearly' && $curYear === (int)date('Y') ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=yearly&amp;year=<?= date('Y') ?>" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'yearly' && $curYear === (int)date('Y') ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     Year <?= date('Y') ?>
                 </a>
-                <a href="?period=all" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'all' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
+                <a href="<?= e($reportPageUrl) ?>?period=all" class="badge rounded-pill text-decoration-none px-2.5 py-1 <?= $curFilterType === 'all' ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>">
                     All Time
                 </a>
             </div>
@@ -208,13 +220,17 @@ function autoSubmitCustomDate() {
     }
 }
 
-function triggerPdfDownload(url) {
-    if (!url) return;
-    const pdfWindow = window.open(url, '_blank');
-    if (!pdfWindow) {
-        alert('Your browser blocked the PDF window. Allow pop-ups for this site and try again.');
-        return;
+function triggerPdfDownload(url = null, btnElement = null) {
+    window.location.assign(url || <?= json_encode($pdfUrl, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>);
+    const button = btnElement || document.getElementById('btnDownloadPdfFilter');
+    if (button) {
+        const originalContent = button.innerHTML;
+        button.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Preparing PDF...';
+        button.disabled = true;
+        setTimeout(() => {
+            button.innerHTML = originalContent;
+            button.disabled = false;
+        }, 2500);
     }
-    pdfWindow.opener = null;
 }
 </script>

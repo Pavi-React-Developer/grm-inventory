@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <!-- Local System Fonts to prevent html2canvas CORS Taint -->
     <!-- html2pdf.js for Client-side direct PDF generation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js';"></script>
 
     <style>
         body {
@@ -166,6 +166,7 @@
             <span class="text-muted small">Period: <strong><?= e($filter['label']) ?></strong></span>
         </div>
         <div class="d-flex align-items-center gap-2">
+            <div id="pdfDownloadError" class="alert alert-danger py-1 px-2 mb-0 small d-none" role="alert"></div>
             <button id="btnDownloadPdf" onclick="downloadAsPDF()" class="btn btn-danger btn-sm px-3 shadow-sm fw-semibold">
                 <i class="bi bi-file-earmark-pdf-fill me-1.5"></i>Download PDF Format
             </button>
@@ -313,15 +314,14 @@
     function downloadAsPDF() {
         const btn = document.getElementById('btnDownloadPdf');
         const origContent = btn ? btn.innerHTML : '';
-        if (typeof window.html2pdf !== 'function') {
-            if (btn) {
-                btn.innerHTML = origContent;
-                btn.disabled = false;
+        if (typeof html2pdf !== 'function') {
+            const error = document.getElementById('pdfDownloadError');
+            if (error) {
+                error.textContent = 'PDF generator could not load. Check your internet connection, then reload this report.';
+                error.classList.remove('d-none');
             }
-            window.print();
             return;
         }
-
         if (btn) {
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1.5" role="status"></span> Generating PDF...';
             btn.disabled = true;
@@ -355,7 +355,11 @@
             if (window.parent && window.parent !== window) {
                 window.parent.postMessage('PDF_FAILED', '*');
             } else {
-                window.print();
+                const error = document.getElementById('pdfDownloadError');
+                if (error) {
+                    error.textContent = 'PDF generation failed. Use Print Document and choose “Save as PDF”.';
+                    error.classList.remove('d-none');
+                }
             }
         });
     }

@@ -2,6 +2,9 @@
 // views/reports/sales.php
 // Multi-Channel Sales & Invoice Register Report — Full Channel Breakdown
 $reportType = 'sales';
+$salesReportFilters = $_GET;
+unset($salesReportFilters['url']);
+$salesReportQuery = http_build_query($salesReportFilters);
 
 // Extract channel data
 $channels = $salesData['channels'] ?? [];
@@ -278,8 +281,7 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
                 <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1 font-monospace">
                     <?= $whPOS['count'] ?> Orders &bull; ₹<?= number_format($whPOS['total_amount'], 2) ?>
                 </span>
-                <?php if ($canPrintReport): ?>
-                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_warehouse?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
+                <button type="button" onclick="triggerPdfDownload(<?= e(json_encode(url('reports/pdf/sales_warehouse') . ($salesReportQuery !== '' ? '?' . $salesReportQuery : ''))) ?>, this)"
                    class="btn btn-xs btn-outline-danger shadow-xs py-0.5 px-2" title="Download Warehouse Sales PDF">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF
                 </button>
@@ -325,8 +327,7 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
                 <span class="badge bg-success-subtle text-success border border-success-subtle px-2.5 py-1 font-monospace">
                     <?= $shopPOS['count'] ?> Orders &bull; ₹<?= number_format($shopPOS['total_amount'], 2) ?>
                 </span>
-                <?php if ($canPrintReport): ?>
-                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_pos?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
+                <button type="button" onclick="triggerPdfDownload(<?= e(json_encode(url('reports/pdf/sales_pos') . ($salesReportQuery !== '' ? '?' . $salesReportQuery : ''))) ?>, this)"
                    class="btn btn-xs btn-outline-danger shadow-xs py-0.5 px-2" title="Download Shop POS Sales PDF">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF
                 </button>
@@ -372,11 +373,10 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
                 <span class="badge border px-2.5 py-1 font-monospace" style="background: rgba(37, 211, 102, 0.1); color: #25D366; border-color: rgba(37, 211, 102, 0.3) !important;">
                     <?= $whatsapp['count'] ?> Orders &bull; ₹<?= number_format($whatsapp['total_amount'], 2) ?>
                 </span>
-                <a href="<?= url('reports/whatsapp') ?>?<?= http_build_query($_GET) ?>" class="btn btn-xs btn-outline-success shadow-xs py-0.5 px-2">
+                <a href="<?= url('reports/whatsapp') ?><?= $salesReportQuery !== '' ? '?' . e($salesReportQuery) : '' ?>" class="btn btn-xs btn-outline-success shadow-xs py-0.5 px-2">
                     <i class="bi bi-whatsapp me-1"></i>Full Report &rarr;
                 </a>
-                <?php if ($canPrintReport): ?>
-                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_whatsapp?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
+                <button type="button" onclick="triggerPdfDownload(<?= e(json_encode(url('reports/pdf/sales_whatsapp') . ($salesReportQuery !== '' ? '?' . $salesReportQuery : ''))) ?>, this)"
                    class="btn btn-xs btn-outline-danger shadow-xs py-0.5 px-2" title="Download WhatsApp Orders PDF">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF
                 </button>
@@ -407,11 +407,10 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
                 <span class="badge bg-info-subtle text-info border border-info-subtle px-2.5 py-1 font-monospace">
                     <?= $website['count'] ?> Orders &bull; ₹<?= number_format($website['total_amount'], 2) ?>
                 </span>
-                <a href="<?= url('reports/website') ?>?<?= http_build_query($_GET) ?>" class="btn btn-xs btn-outline-info shadow-xs py-0.5 px-2">
+                <a href="<?= url('reports/website') ?><?= $salesReportQuery !== '' ? '?' . e($salesReportQuery) : '' ?>" class="btn btn-xs btn-outline-info shadow-xs py-0.5 px-2">
                     <i class="bi bi-globe2 me-1"></i>Full Report &rarr;
                 </a>
-                <?php if ($canPrintReport): ?>
-                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_website?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
+                <button type="button" onclick="triggerPdfDownload(<?= e(json_encode(url('reports/pdf/sales_website') . ($salesReportQuery !== '' ? '?' . $salesReportQuery : ''))) ?>, this)"
                    class="btn btn-xs btn-outline-danger shadow-xs py-0.5 px-2" title="Download Website Orders PDF">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF
                 </button>
@@ -476,20 +475,21 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
             <div class="small text-muted">Showing <?= count($salesData['invoices']) ?> transactions across all channels for <?= e($filter['label']) ?></div>
         </div>
         <div class="d-flex flex-wrap gap-2">
-            <?php if ($canPrintReport): ?>
-            <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
+            <button type="button" onclick="triggerPdfDownload(<?= e(json_encode(url('reports/pdf/sales') . ($salesReportQuery !== '' ? '?' . $salesReportQuery : ''))) ?>, this)"
                class="btn btn-sm btn-outline-danger">
                 <i class="bi bi-file-earmark-pdf-fill me-1"></i>Download PDF
             </button>
-            <?php endif; ?>
-            <?php if ($canExportReport): ?>
-            <a href="<?= url('reports/export/sales') ?>?<?= http_build_query($_GET) ?>" 
+            <a href="<?= url('reports/export/sales') ?><?= $salesReportQuery !== '' ? '?' . e($salesReportQuery) : '' ?>"
                class="btn btn-sm btn-outline-success">
-                <i class="bi bi-file-earmark-excel me-1"></i>Export CSV
+                <i class="bi bi-file-earmark-excel me-1"></i>Export Excel (.xlsx)
             </a>
+<<<<<<< HEAD
             <?php endif; ?>
             <?php if ($canPrintReport): ?>
             <a href="<?= url('reports/print/sales') ?>?<?= http_build_query($_GET) ?>" 
+=======
+            <a href="<?= url('reports/print/sales') ?><?= $salesReportQuery !== '' ? '?' . e($salesReportQuery) : '' ?>"
+>>>>>>> 19a3ab52f7a487ea2aca99268cbe8704f75e528e
                target="_blank" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-printer me-1"></i>Print Register
             </a>

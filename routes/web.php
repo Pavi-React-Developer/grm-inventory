@@ -842,6 +842,7 @@ class Router {
         $this->get('reports/shop', 'ReportController', 'shopReports', ['AuthMiddleware', ['PermissionMiddleware', 'reports_shop', 'view']]);
         $this->get('reports/inventory', 'ReportController', 'inventoryReports', ['AuthMiddleware', ['PermissionMiddleware', 'reports_inventory', 'view']]);
         $this->get('reports/export/{type}', 'ReportController', 'exportReport', ['AuthMiddleware']);
+        $this->get('reports/pdf/{type}', 'ReportController', 'downloadReportPdf', ['AuthMiddleware']);
         $this->get('reports/print/{type}', 'ReportController', 'printReport', ['AuthMiddleware']);
 
         // ==========================================

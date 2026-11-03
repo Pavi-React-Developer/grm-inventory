@@ -153,7 +153,7 @@ $columns = $columns ?? 3;
                 </div>
             </div>
             <div class="d-flex gap-2">
-                <a href="<?= url('asset/list') ?>" class="btn btn-outline-light btn-sm rounded-pill px-3">
+                <a href="<?= url('asset/bulk-labels') ?>" class="btn btn-outline-light btn-sm rounded-pill px-3">
                     <i class="bi bi-arrow-left me-1"></i> Back to Asset List
                 </a>
                 <button onclick="window.print()" class="btn btn-primary btn-sm rounded-pill px-4 fw-bold shadow">
@@ -163,6 +163,10 @@ $columns = $columns ?? 3;
         </div>
 
         <form method="GET" action="<?= url('asset/bulk-labels') ?>" class="row g-2 align-items-end">
+            <input type="hidden" name="mode" value="print">
+            <?php if (!empty($filters['search'])): ?>
+                <input type="hidden" name="search" value="<?= e($filters['search']) ?>">
+            <?php endif; ?>
             <!-- Facility / Unit Selector -->
             <div class="col-md-4">
                 <label class="form-label small text-secondary fw-semibold mb-1">
