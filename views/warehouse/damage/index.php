@@ -3,7 +3,7 @@
         <h2 class="mb-1 text-dark fw-bold"><i class="bi bi-exclamation-octagon me-2 text-danger"></i>Warehouse Damage &amp; Factory Rework</h2>
     </div>
     <div class="d-flex gap-2">
-        <?php if (hasPermission('damage', 'create') || hasPermission('damages', 'create')): ?>
+        <?php if (hasPermission('damage', 'create')): ?>
         <a href="<?= url('warehouse/damage/create') ?>" class="btn btn-danger shadow-sm px-3 py-2 fw-semibold d-inline-flex align-items-center gap-2">
             <i class="bi bi-qr-code-scan fs-6"></i>
             <span>Scan &amp; Log Damage / Rework</span>
@@ -153,7 +153,6 @@
             <thead class="table-light">
                 <tr>
                     <th class="ps-3 text-nowrap py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 140px;">Case</th>
-                    <th class="text-nowrap py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 130px;">Scanned QR Tag</th>
                     <th class="text-nowrap py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 250px;">Product &amp; Variant</th>
                     <th class="text-nowrap py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 160px;">Warehouse</th>
                     <th class="text-nowrap py-3 text-uppercase fs-7 fw-bold text-muted" style="min-width: 220px;">Source &amp; Origin Batch</th>
@@ -167,7 +166,7 @@
             <tbody>
                 <?php if (empty($damages)): ?>
                     <tr>
-                        <td colspan="10" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <i class="bi bi-check-circle fs-1 d-block mb-3 text-success"></i>
                             <h6 class="fw-semibold mb-1">No Damage or Rework Records Found</h6>
                             <p class="small text-muted mb-0">All inventory items are healthy and accounted for.</p>
@@ -278,7 +277,7 @@
                                         <span class="badge bg-danger-subtle text-danger border border-danger-subtle small px-2 py-0.5">
                                             <i class="bi bi-box-arrow-in-down me-1"></i>Inward GRN
                                         </span>
-                                        <?php if (!empty($d['batch_id'])): ?>
+                                        <?php if (!empty($d['batch_id']) && hasPermission('inward', 'view')): ?>
                                             <a href="<?= url('warehouse/inward/view/' . $d['batch_id']) ?>" class="badge bg-info-subtle text-info-emphasis border border-info-subtle text-decoration-none font-monospace small px-2 py-0.5" title="View Inward Batch Verification">
                                                 <i class="bi bi-box-seam me-1"></i><?= e($d['batch_number']) ?>
                                             </a>

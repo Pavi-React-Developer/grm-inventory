@@ -1,5 +1,7 @@
 <?php
 // views/website_orders/return_to_warehouse/view.php — Return to Warehouse Consignment Manifest & Inspection View for Website Channel
+$canPrintGatePass = hasPermission('website_return_to_wh', 'gatepass');
+$canPrintReturnLabel = hasPermission('website_return_to_wh', 'print');
 ?>
 <div class="container-fluid py-4">
     <!-- Top Action Bar -->
@@ -30,15 +32,21 @@
             </div>
         </div>
         <div class="d-flex gap-2">
+            <?php if ($canPrintGatePass): ?>
             <a href="<?= url('warehouse/website-orders/return-to-warehouse/gatepass/' . $return['id']) ?>" target="_blank" class="btn btn-outline-primary rounded-pill px-3 btn-sm fw-semibold">
                 <i class="bi bi-file-earmark-text me-1"></i> Print Delivery Gate Pass
             </a>
+            <?php endif; ?>
+            <?php if ($canPrintReturnLabel): ?>
             <a href="<?= url('warehouse/website-orders/return-to-warehouse/label/' . $return['id']) ?>" target="_blank" class="btn btn-outline-secondary rounded-pill px-3 btn-sm fw-semibold">
                 <i class="bi bi-qr-code me-1"></i> Print Carton QR Sticker
             </a>
+            <?php endif; ?>
+            <?php if ($canPrintGatePass || $canPrintReturnLabel): ?>
             <button onclick="window.print()" class="btn btn-primary rounded-pill px-4 btn-sm shadow-sm fw-semibold">
                 <i class="bi bi-printer-fill me-1"></i> Print Manifest
             </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -900,18 +908,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 <!-- Action Prompts -->
                 <div class="row g-3">
+                    <?php if ($canPrintGatePass): ?>
                     <div class="col-md-6">
                         <a href="<?= url('warehouse/website-orders/return-to-warehouse/gatepass/' . $return['id']) ?>" target="_blank" class="btn btn-primary w-100 py-2 rounded-4 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2">
                             <i class="bi bi-file-earmark-text fs-5"></i>
                             <span>Print Delivery Gate Pass</span>
                         </a>
                     </div>
+                    <?php endif; ?>
+                    <?php if ($canPrintReturnLabel): ?>
                     <div class="col-md-6">
                         <a href="<?= url('warehouse/website-orders/return-to-warehouse/label/' . $return['id']) ?>" target="_blank" class="btn btn-outline-secondary w-100 py-2 rounded-4 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2">
                             <i class="bi bi-qr-code fs-5"></i>
                             <span>Print Carton QR Sticker</span>
                         </a>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
             <div class="modal-footer bg-white py-3 px-4 border-top d-flex justify-content-between">

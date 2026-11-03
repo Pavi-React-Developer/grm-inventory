@@ -2338,7 +2338,7 @@ class WarehouseController {
     public function ajaxUpdateProductPrice(): void {
         header('Content-Type: application/json');
 
-        if (!hasPermission('stock', 'adjust') && !hasPermission('catalog', 'edit') && !hasPermission('stock', 'edit') && !hasPermission('warehouse', 'edit') && (Session::get('role') !== 'ADMIN')) {
+        if (!hasPermission('stock', 'edit')) {
             echo json_encode(['success' => false, 'message' => 'Access denied: Only administrators or authorized staff can edit product prices.']);
             exit;
         }
@@ -4812,7 +4812,14 @@ class WarehouseController {
         $isAdjustmentScan = ($_REQUEST['purpose'] ?? '') === 'stock_adjustment';
         $hasScanPermission = $isAdjustmentScan
             ? hasPermission('stock', 'adjust')
-            : (hasPermission('purchases', 'receive') || hasPermission('purchases', 'view'));
+            : (
+                hasPermission('purchases', 'receive')
+                || hasPermission('purchases', 'view')
+                || hasPermission('purchases', 'create')
+                || hasPermission('purchases', 'edit')
+                || hasPermission('purchases_returns', 'view')
+                || hasPermission('purchases_returns', 'process')
+            );
         if (!$hasScanPermission) {
             Response::jsonError('Access denied.', [], 403);
             return;
@@ -5351,6 +5358,14 @@ class WarehouseController {
     }
 
     public function ajaxSearchCustomers(): void {
+        if (
+            !hasPermission('purchases', 'view')
+            && !hasPermission('purchases', 'create')
+            && !hasPermission('purchases', 'edit')
+        ) {
+            Response::jsonError('Access denied.', [], 403);
+            return;
+        }
         header('Content-Type: application/json');
         $q = trim($_REQUEST['q'] ?? $_REQUEST['query'] ?? $_REQUEST['search'] ?? '');
         if ($q === '') {
@@ -5376,6 +5391,14 @@ class WarehouseController {
     }
 
     public function ajaxCustomerPurchaseHistory(int|string $id = 0): void {
+        if (
+            !hasPermission('purchases', 'view')
+            && !hasPermission('purchases', 'create')
+            && !hasPermission('purchases', 'edit')
+        ) {
+            Response::jsonError('Access denied.', [], 403);
+            return;
+        }
         header('Content-Type: application/json');
         
         $customerId = (int)($id ?: ($_REQUEST['customer_id'] ?? $_REQUEST['id'] ?? 0));
@@ -5591,6 +5614,15 @@ class WarehouseController {
     }
 
     public function ajaxGetWarehouseStock(): void {
+        if (
+            !hasPermission('stock', 'view')
+            && !hasPermission('purchases', 'view')
+            && !hasPermission('purchases', 'create')
+            && !hasPermission('purchases', 'edit')
+        ) {
+            Response::jsonError('Access denied.', [], 403);
+            return;
+        }
         header('Content-Type: application/json');
         $warehouseId = (int)($_REQUEST['warehouse_id'] ?? 0);
         if ($warehouseId > 0) {
@@ -8419,14 +8451,14 @@ class WarehouseController {
         }
 
         Response::view('warehouse.returns.inspect', [
-            'pageTitle'    => 'Inspect Return #' . $return['return_number'],
+            'pageTitle'    => (hasPermission('returns', 'classify') ? 'Inspect Return #' : 'View Return #') . $return['return_number'],
             'activeModule' => 'warehouse',
             'activeMenu'   => 'wh-returns',
             'return'       => $return,
             'breadcrumb'   => [
                 ['label' => 'Warehouse', 'url' => url('warehouse/dashboard')],
                 ['label' => 'Returns', 'url' => url('warehouse/returns')],
-                ['label' => 'Inspect ' . $return['return_number']],
+                ['label' => (hasPermission('returns', 'classify') ? 'Inspect ' : 'View ') . $return['return_number']],
             ],
         ]);
     }
@@ -8438,7 +8470,7 @@ class WarehouseController {
             return;
         }
 
-        if (!hasPermission('returns', 'classify') && !hasPermission('returns', 'inspect')) {
+        if (!hasPermission('returns', 'classify')) {
             Session::flash('error', 'Access denied.');
             Response::redirect(url('warehouse/returns'));
             return;
@@ -8956,7 +8988,7 @@ class WarehouseController {
     }
 
     public function generateLabels(): void {
-        if (!hasPermission('wh_labels', 'create') && !hasPermission('wh_labels', 'print') && !hasPermission('wh_labels', 'view')) {
+        if (!hasPermission('wh_labels', 'create')) {
             Session::flash('error', 'Access denied.');
             Response::redirect(url('warehouse/labels'));
             return;
@@ -9015,7 +9047,9 @@ class WarehouseController {
      * Confirm Stickered Third-Party Products & Inward to Warehouse Inventory (Stock Update)
      */
     public function confirmStickeredInward(): void {
-        if (!hasPermission('inward', 'verify') && !hasPermission('inward', 'create') && !hasPermission('wh_labels', 'create') && !hasPermission('purchases', 'receive')) {
+        $isReturnInward = ($_POST['return_inward'] ?? '0') === '1';
+        $canInwardStock = hasPermission('inward', 'verify') || hasPermission('inward', 'create') || hasPermission('purchases', 'receive');
+        if ($isReturnInward ? !hasPermission('returns', 'classify') : !$canInwardStock) {
             Response::json(['success' => false, 'message' => 'Access denied.'], 403);
             return;
         }
@@ -9024,7 +9058,6 @@ class WarehouseController {
         $quantity    = (float)($_POST['quantity'] ?? 0);
         $sellerId    = !empty($_POST['seller_id']) ? (int)$_POST['seller_id'] : null;
         $poId        = !empty($_POST['source_id']) ? (int)$_POST['source_id'] : (!empty($_POST['po_id']) ? (int)$_POST['po_id'] : null);
-        $isReturnInward = ($_POST['return_inward'] ?? '0') === '1';
         $tagCodes    = !empty($_POST['tag_codes']) ? (is_array($_POST['tag_codes']) ? $_POST['tag_codes'] : json_decode($_POST['tag_codes'], true)) : [];
         $notes       = trim($_POST['notes'] ?? '');
 

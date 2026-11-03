@@ -1,5 +1,6 @@
 <?php
 // views/whatsapp_orders/damage/index.php — WhatsApp Channel Damage Management
+$canCreateDamage = hasPermission('whatsapp_damage', 'create');
 ?>
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
@@ -12,9 +13,11 @@
         <span class="text-muted small">Manage transit-damaged inward garments, defective stock quarantine, and batch outwards back to central warehouse.</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <?php if ($canCreateDamage): ?>
         <a href="<?= url('warehouse/whatsapp-orders/damage/create') ?>" class="btn btn-danger rounded-pill px-3 shadow-sm fw-semibold">
             <i class="bi bi-plus-lg me-1"></i> Log Damaged Stock
         </a>
+        <?php endif; ?>
     </div>
 </div>
 

@@ -313,6 +313,15 @@
     function downloadAsPDF() {
         const btn = document.getElementById('btnDownloadPdf');
         const origContent = btn ? btn.innerHTML : '';
+        if (typeof window.html2pdf !== 'function') {
+            if (btn) {
+                btn.innerHTML = origContent;
+                btn.disabled = false;
+            }
+            window.print();
+            return;
+        }
+
         if (btn) {
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1.5" role="status"></span> Generating PDF...';
             btn.disabled = true;

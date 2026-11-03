@@ -6,6 +6,9 @@ $categories = $categories ?? [];
 $filters = $filters ?? [];
 $startDate = $startDate ?? date('Y-m-01');
 $endDate = $endDate ?? date('Y-m-d');
+$canCreateExpense = hasPermission('website_expenses', 'create');
+$canDeleteExpense = hasPermission('website_expenses', 'delete');
+$canPrintVoucher = hasPermission('website_expenses', 'voucher') || hasPermission('website_expenses', 'print');
 
 ?>
 
@@ -22,7 +25,7 @@ $endDate = $endDate ?? date('Y-m-d');
             <a href="<?= url('warehouse/website-orders') ?>" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
                 <i class="bi bi-arrow-left me-1"></i> Orders Hub
             </a>
-            <?php if (hasPermission('website_expenses.create')): ?>
+            <?php if ($canCreateExpense): ?>
             <button type="button" class="btn btn-primary btn-sm rounded-pill px-3 shadow-sm" style="font-weight: 600;" data-bs-toggle="modal" data-bs-target="#recordWebExpenseModal">
                 <i class="bi bi-plus-circle me-1"></i> Record E-Commerce Expense
             </button>
@@ -218,13 +221,18 @@ $endDate = $endDate ?? date('Y-m-d');
                                                 <i class="bi bi-paperclip"></i>
                                             </a>
                                         <?php endif; ?>
-                                        <a href="<?= url('warehouse/website-orders/expenses/voucher/' . $exp['id']) ?>" target="_blank" class="btn btn-outline-primary" title="Print E-Commerce Voucher">
-                                            <i class="bi bi-printer"></i>
-                                        </a>
-                                        <?php if (hasPermission('website_expenses.delete')): ?>
-                                        <button type="button" class="btn btn-outline-danger" onclick="deleteWebExpense(<?= $exp['id'] ?>, '<?= e($exp['expense_number']) ?>')" title="Delete Expense">
+                                        <?php if ($canPrintVoucher): ?>
+                                            <a href="<?= url('warehouse/website-orders/expenses/voucher/' . $exp['id']) ?>" target="_blank" class="btn btn-outline-primary" title="Print E-Commerce Voucher">
+                                                <i class="bi bi-printer"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                        <?php if ($canDeleteExpense): ?>
+                                        <form method="POST" action="<?= url('warehouse/website-orders/expenses/delete/' . (int)$exp['id']) ?>" class="d-inline js-delete-web-expense" data-expense-number="<?= e($exp['expense_number']) ?>">
+                                            <?= csrf_field() ?>
+                                            <button type="submit" class="btn btn-outline-danger" title="Delete Expense">
                                             <i class="bi bi-trash"></i>
-                                        </button>
+                                            </button>
+                                        </form>
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -238,6 +246,7 @@ $endDate = $endDate ?? date('Y-m-d');
 </div>
 
 <!-- Quick Record Website Operating Expense Modal -->
+<?php if ($canCreateExpense): ?>
 <div class="modal fade" id="recordWebExpenseModal" tabindex="-1" aria-labelledby="recordWebExpenseModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content rounded-4 border-0 shadow">
@@ -349,15 +358,19 @@ $endDate = $endDate ?? date('Y-m-d');
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <script>
-function deleteWebExpense(id, number) {
-    if (confirm(`Are you sure you want to delete expense voucher ${number}? This will remove it permanently.`)) {
-        window.location.href = `<?= url('warehouse/website-orders/expenses/delete/') ?>${id}`;
-    }
-}
-
 document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.js-delete-web-expense').forEach(function(form) {
+        form.addEventListener('submit', function(event) {
+            const number = form.dataset.expenseNumber;
+            if (!confirm(`Are you sure you want to delete expense voucher ${number}? This will remove it permanently.`)) {
+                event.preventDefault();
+            }
+        });
+    });
+
     const form = document.getElementById('webExpenseForm');
     const phoneInput = document.getElementById('webVendorPhone');
     const amountInput = document.getElementById('webAmount');

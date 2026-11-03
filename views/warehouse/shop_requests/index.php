@@ -1,6 +1,10 @@
 <?php
 // views/warehouse/shop_requests/index.php
 $activeTab = $activeTab ?? 'shop';
+$canCreateShopRequest = hasPermission('shop_requests', 'create');
+$canCreateWhatsappRequest = hasPermission('whatsapp_orders', 'create');
+$canViewAllocations = hasPermission('allocation', 'view');
+$canPrintGatepass = hasPermission('allocation_outward', 'gatepass');
 ?>
 
 <!-- Header -->
@@ -14,27 +18,35 @@ $activeTab = $activeTab ?? 'shop';
         </p>
     </div>
     <div class="d-flex gap-2 align-items-center">
-        <a href="<?= url('warehouse/allocation') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-boxes me-1"></i> All Allocations
-        </a>
+        <?php if ($canViewAllocations): ?>
+            <a href="<?= url('warehouse/allocation') ?>" class="btn btn-outline-secondary">
+                <i class="bi bi-boxes me-1"></i> All Allocations
+            </a>
+        <?php endif; ?>
         
+        <?php if ($canCreateShopRequest || $canCreateWhatsappRequest): ?>
         <div class="dropdown">
             <button class="btn btn-primary dropdown-toggle shadow-sm fw-semibold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="bi bi-plus-lg me-1"></i> New Stock Request
             </button>
             <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-                <li>
-                    <a class="dropdown-item py-2" href="<?= url('warehouse/shop-requests/create') ?>">
-                        <i class="bi bi-shop text-primary me-2"></i> New Shop Stock Request
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item py-2" href="<?= url('warehouse/whatsapp-orders/requests/create') ?>">
-                        <i class="bi bi-whatsapp text-success me-2"></i> New WhatsApp Request
-                    </a>
-                </li>
+                <?php if ($canCreateShopRequest): ?>
+                    <li>
+                        <a class="dropdown-item py-2" href="<?= url('warehouse/shop-requests/create') ?>">
+                            <i class="bi bi-shop text-primary me-2"></i> New Shop Stock Request
+                        </a>
+                    </li>
+                <?php endif; ?>
+                <?php if ($canCreateWhatsappRequest): ?>
+                    <li>
+                        <a class="dropdown-item py-2" href="<?= url('warehouse/whatsapp-orders/requests/create') ?>">
+                            <i class="bi bi-whatsapp text-success me-2"></i> New WhatsApp Request
+                        </a>
+                    </li>
+                <?php endif; ?>
             </ul>
         </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -300,9 +312,11 @@ $activeTab = $activeTab ?? 'shop';
                                     <i class="bi bi-shop fs-1 d-block mb-2 text-secondary opacity-50"></i>
                                     <h6 class="fw-semibold text-dark">No Shop Requests Found</h6>
                                     <p class="small text-muted mb-3">No store stock requisitions match the selected criteria.</p>
-                                    <a href="<?= url('warehouse/shop-requests/create') ?>" class="btn btn-primary btn-sm px-3">
-                                        <i class="bi bi-plus-lg me-1"></i> Create First Shop Request
-                                    </a>
+                                    <?php if ($canCreateShopRequest): ?>
+                                        <a href="<?= url('warehouse/shop-requests/create') ?>" class="btn btn-primary btn-sm px-3">
+                                            <i class="bi bi-plus-lg me-1"></i> Create First Shop Request
+                                        </a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php else: foreach ($shopRequests as $r): ?>
@@ -412,9 +426,11 @@ $activeTab = $activeTab ?? 'shop';
                                     <i class="bi bi-whatsapp fs-1 d-block mb-2 text-success opacity-50"></i>
                                     <h6 class="fw-semibold text-dark">No WhatsApp Requests Found</h6>
                                     <p class="small text-muted mb-3">No WhatsApp channel stock requisitions match the selected criteria.</p>
-                                    <a href="<?= url('warehouse/whatsapp-orders/requests/create') ?>" class="btn btn-success btn-sm px-3">
-                                        <i class="bi bi-plus-lg me-1"></i> Create WhatsApp Request
-                                    </a>
+                                    <?php if ($canCreateWhatsappRequest): ?>
+                                        <a href="<?= url('warehouse/whatsapp-orders/requests/create') ?>" class="btn btn-success btn-sm px-3">
+                                            <i class="bi bi-plus-lg me-1"></i> Create WhatsApp Request
+                                        </a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php else: foreach ($whatsappRequests as $r): ?>
@@ -429,9 +445,13 @@ $activeTab = $activeTab ?? 'shop';
                             ?>
                             <tr>
                                 <td class="ps-4 fw-bold font-monospace">
-                                    <a href="<?= url('warehouse/allocation/view/' . $r['id'] . '?from=requests') ?>" class="text-decoration-none text-success">
+                                    <?php if ($canViewAllocations): ?>
+                                        <a href="<?= url('warehouse/allocation/view/' . $r['id'] . '?from=requests') ?>" class="text-decoration-none text-success">
+                                            <?= htmlspecialchars($r['allocation_number']) ?>
+                                        </a>
+                                    <?php else: ?>
                                         <?= htmlspecialchars($r['allocation_number']) ?>
-                                    </a>
+                                    <?php endif; ?>
                                     <?php if (!empty($r['created_at'])): ?>
                                         <div class="text-muted fw-normal small" style="font-size: 0.72rem;"><?= date('d M Y, h:i A', strtotime($r['created_at'])) ?></div>
                                     <?php endif; ?>
@@ -479,10 +499,12 @@ $activeTab = $activeTab ?? 'shop';
                                 </td>
                                 <td class="pe-4 text-end text-nowrap">
                                     <div class="btn-group btn-group-sm">
-                                        <a href="<?= url('warehouse/allocation/view/' . $r['id'] . '?from=requests') ?>" class="btn btn-outline-success px-2.5 py-1" title="View Requisition Details">
-                                            <i class="bi bi-eye me-1"></i> View
-                                        </a>
-                                        <?php if (in_array($r['status'], ['DISPATCHED', 'COMPLETED', 'DELIVERED', 'RECEIVED'])): ?>
+                                        <?php if ($canViewAllocations): ?>
+                                            <a href="<?= url('warehouse/allocation/view/' . $r['id'] . '?from=requests') ?>" class="btn btn-outline-success px-2.5 py-1" title="View Requisition Details">
+                                                <i class="bi bi-eye me-1"></i> View
+                                            </a>
+                                        <?php endif; ?>
+                                        <?php if ($canPrintGatepass && in_array($r['status'], ['DISPATCHED', 'COMPLETED', 'DELIVERED', 'RECEIVED'])): ?>
                                             <a href="<?= url('warehouse/allocation/gatepass/' . $r['id']) ?>" target="_blank" class="btn btn-outline-secondary px-2 py-1" title="Print Gate Pass">
                                                 <i class="bi bi-printer"></i>
                                             </a>
@@ -545,9 +567,13 @@ $activeTab = $activeTab ?? 'shop';
                             ?>
                             <tr>
                                 <td class="ps-4 fw-bold font-monospace">
-                                    <a href="<?= url('warehouse/allocation/view/' . $r['id'] . '?from=requests') ?>" class="text-decoration-none text-info-emphasis">
+                                    <?php if ($canViewAllocations): ?>
+                                        <a href="<?= url('warehouse/allocation/view/' . $r['id'] . '?from=requests') ?>" class="text-decoration-none text-info-emphasis">
+                                            <?= htmlspecialchars($r['allocation_number']) ?>
+                                        </a>
+                                    <?php else: ?>
                                         <?= htmlspecialchars($r['allocation_number']) ?>
-                                    </a>
+                                    <?php endif; ?>
                                     <?php if (!empty($r['created_at'])): ?>
                                         <div class="text-muted fw-normal small" style="font-size: 0.72rem;"><?= date('d M Y, h:i A', strtotime($r['created_at'])) ?></div>
                                     <?php endif; ?>
@@ -595,10 +621,12 @@ $activeTab = $activeTab ?? 'shop';
                                 </td>
                                 <td class="pe-4 text-end text-nowrap">
                                     <div class="btn-group btn-group-sm">
-                                        <a href="<?= url('warehouse/allocation/view/' . $r['id'] . '?from=requests') ?>" class="btn btn-outline-info px-2.5 py-1 text-dark" title="View Requisition Details">
-                                            <i class="bi bi-eye me-1"></i> View
-                                        </a>
-                                        <?php if (in_array($r['status'], ['DISPATCHED', 'COMPLETED', 'DELIVERED', 'RECEIVED'])): ?>
+                                        <?php if ($canViewAllocations): ?>
+                                            <a href="<?= url('warehouse/allocation/view/' . $r['id'] . '?from=requests') ?>" class="btn btn-outline-info px-2.5 py-1 text-dark" title="View Requisition Details">
+                                                <i class="bi bi-eye me-1"></i> View
+                                            </a>
+                                        <?php endif; ?>
+                                        <?php if ($canPrintGatepass && in_array($r['status'], ['DISPATCHED', 'COMPLETED', 'DELIVERED', 'RECEIVED'])): ?>
                                             <a href="<?= url('warehouse/allocation/gatepass/' . $r['id']) ?>" target="_blank" class="btn btn-outline-secondary px-2 py-1" title="Print Gate Pass">
                                                 <i class="bi bi-printer"></i>
                                             </a>

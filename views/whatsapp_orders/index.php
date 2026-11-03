@@ -1,3 +1,4 @@
+<?php $canCreateOrder = hasPermission('whatsapp_orders', 'create'); ?>
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
         <h2 class="mb-1"><i class="bi bi-whatsapp me-2 text-success"></i>WhatsApp Channel Dashboard</h2>
@@ -10,9 +11,11 @@
         <a href="<?= url('warehouse/whatsapp-orders/damage') ?>" class="btn btn-outline-danger">
             <i class="bi bi-exclamation-octagon me-1"></i> Damage Management
         </a>
+        <?php if ($canCreateOrder): ?>
         <a href="<?= url('sales/whatsapp/create') ?>" class="btn btn-success">
             <i class="bi bi-cart-plus me-1"></i> Create WhatsApp Order
         </a>
+        <?php endif; ?>
     </div>
 </div>
 

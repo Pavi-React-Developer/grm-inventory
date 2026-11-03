@@ -24,6 +24,14 @@
                 <?php if (empty($deliveries)): ?>
                     <tr><td colspan="8" class="text-center text-muted py-4">No active deliveries in transit.</td></tr>
                 <?php else: foreach ($deliveries as $del): ?>
+                    <?php
+                    $canTrackDelivery = match ($del['type']) {
+                        'Shop Allocation' => hasPermission('allocation', 'view'),
+                        'Production Outward' => hasPermission('inward', 'view'),
+                        'Inter-Warehouse Transfer' => hasPermission('warehouse', 'view'),
+                        default => false,
+                    };
+                    ?>
                     <tr>
                         <td><span class="badge bg-light text-dark border"><?= htmlspecialchars($del['type']) ?></span></td>
                         <td class="fw-bold text-primary"><?= htmlspecialchars($del['reference_number']) ?></td>
@@ -44,9 +52,11 @@
                         </td>
                         <td><small class="text-muted"><?= date('d M Y, h:i A', strtotime($del['created_at'])) ?></small></td>
                         <td class="text-end">
+                            <?php if ($canTrackDelivery): ?>
                             <a href="<?= url($del['action_url']) ?>" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-arrow-right-circle me-1"></i> Track
                             </a>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; endif; ?>

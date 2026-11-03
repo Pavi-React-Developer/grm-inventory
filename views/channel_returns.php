@@ -5,7 +5,7 @@ $returnBasePath = $isWebsiteReturns ? 'warehouse/website-orders/returns' : 'ware
 $returnApiPath = $isWebsiteReturns ? 'api/website/returns/lookup-piece' : 'api/whatsapp/returns/lookup-piece';
 $returnHistoryPath = $isWebsiteReturns ? 'warehouse/website-orders/history' : 'sales/whatsapp';
 $returnTheme = $isWebsiteReturns ? 'primary' : 'success';
-$canProcessReturns = !$isWebsiteReturns || hasPermission('website_returns', 'create');
+$canProcessReturns = !$isWebsiteReturns || hasPermission('website_returns', 'create') || hasPermission('website_returns', 'process');
 ?>
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>

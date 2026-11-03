@@ -376,7 +376,7 @@
                     </div>
 
                     <!-- Checkout Button -->
-                    <button type="button" class="btn btn-pos-checkout btn-lg w-100 rounded-pill py-3 fw-bold shadow-lg position-relative overflow-hidden" id="btnCheckout" disabled>
+                    <button type="button" class="btn btn-pos-checkout btn-lg w-100 rounded-pill py-3 fw-bold shadow-lg position-relative overflow-hidden <?= hasPermission('pos', 'create') ? '' : 'd-none' ?>" id="btnCheckout" disabled>
                         <span class="d-flex align-items-center justify-content-center gap-2">
                             <i class="bi bi-printer-fill fs-5"></i>
                             <span>Complete Sale & Print Invoice</span>
@@ -395,6 +395,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     let cart = [];
+    const canCreateSale = <?= hasPermission('pos', 'create') ? 'true' : 'false' ?>;
     const scannedPieceTags = new Set();
     const qrInput = document.getElementById('qrInput');
     const scanStatus = document.getElementById('scanStatus');
@@ -726,7 +727,7 @@ document.addEventListener('DOMContentLoaded', function() {
             cartItemCountBadge.innerHTML = `<i class="bi bi-bag-check-fill"></i> ${cart.length} ${cart.length === 1 ? 'Item' : 'Items'} Scanned`;
         }
 
-        btnCheckout.disabled = cart.length === 0;
+        btnCheckout.disabled = cart.length === 0 || !canCreateSale;
 
         // Update split payment if selected
         const payMode = document.querySelector('input[name="paymentMode"]:checked');
@@ -1082,7 +1083,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Checkout execution with Mandatory Customer Details & Per-Item Calculations
     function executeCheckout() {
-        if (cart.length === 0) return;
+        if (!canCreateSale || cart.length === 0) return;
 
         const phoneVal = custPhoneInput ? custPhoneInput.value.trim() : '';
         const nameVal = custNameInput ? custNameInput.value.trim() : '';

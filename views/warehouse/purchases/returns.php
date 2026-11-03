@@ -141,7 +141,7 @@ $recentReturns = $recentReturns ?? [];
         </div>
     </div>
 
-    <?php if (hasPermission('purchases_returns', 'create') || hasPermission('purchases', 'create') || hasPermission('returns', 'receive') || hasPermission('returns', 'create')): ?>
+    <?php if (hasPermission('purchases_returns', 'view')): ?>
     <!-- SEARCH & LOOKUP SECTION -->
     <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden border-top border-4 border-primary">
         <div class="card-body p-4 bg-white">
@@ -637,10 +637,12 @@ $recentReturns = $recentReturns ?? [];
             <!-- Modal Footer -->
             <div class="modal-footer bg-white py-3 px-4 border-top">
                 <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary rounded-pill px-5 fw-bold shadow-sm" id="btnConfirmSubmit" onclick="submitReturnProcess()">
-                    <span id="submitSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
-                    <i class="bi bi-check2-circle me-1"></i> Confirm &amp; Generate Tax Slip
-                </button>
+                <?php if (hasPermission('purchases_returns', 'process')): ?>
+                    <button type="button" class="btn btn-primary rounded-pill px-5 fw-bold shadow-sm" id="btnConfirmSubmit" onclick="submitReturnProcess()">
+                        <span id="submitSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
+                        <i class="bi bi-check2-circle me-1"></i> Confirm &amp; Generate Tax Slip
+                    </button>
+                <?php endif; ?>
             </div>
 
         </div><!-- /modal-content -->

@@ -548,7 +548,7 @@ class SalesController {
     }
 
     public function createWebsiteOrder(): void {
-        if (!hasPermission('website_orders', 'create') && !hasPermission('website', 'create')) {
+        if (!hasPermission('website_orders', 'create')) {
             Session::flash('error', 'Access denied: You do not have permission to create website orders.');
             Response::redirect(url('warehouse/website-orders/history'));
             return;
@@ -625,7 +625,7 @@ class SalesController {
     }
 
     public function storeWebsiteOrder(): void {
-        if (!hasPermission('website_orders', 'create') && !hasPermission('website', 'create')) {
+        if (!hasPermission('website_orders', 'create')) {
             Session::flash('error', 'Access denied: You do not have permission to create website orders.');
             Response::redirect(url('warehouse/website-orders/history'));
             return;
@@ -877,7 +877,7 @@ class SalesController {
     }
 
     public function viewWebsiteOrder(int $id): void {
-        if (!hasPermission('website_orders', 'view') && !hasPermission('website', 'view')) {
+        if (!hasPermission('website_orders', 'view')) {
             Session::flash('error', 'Access denied: You do not have permission to view website orders.');
             Response::redirect(url('warehouse/website-orders'));
             return;
@@ -924,8 +924,8 @@ class SalesController {
     }
 
     public function processWebsiteOrder(int $id): void {
-        if (!hasPermission('website_orders', 'edit') && !hasPermission('website_orders', 'process') && !hasPermission('website', 'edit')) {
-            Session::flash('error', 'Access denied: You do not have permission to process or edit website orders.');
+        if (!hasPermission('website_orders', 'process')) {
+            Session::flash('error', 'Access denied: You do not have permission to process Website orders.');
             Response::redirect(url('sales/website/view/' . $id));
             return;
         }
@@ -1366,8 +1366,8 @@ class SalesController {
     }
 
     public function processWhatsappOrder(int $id): void {
-        if (!hasPermission('whatsapp_orders', 'edit') && !hasPermission('whatsapp_orders', 'process') && !hasPermission('whatsapp', 'edit')) {
-            Session::flash('error', 'Access denied: You do not have permission to process or edit WhatsApp orders.');
+        if (!hasPermission('whatsapp_orders', 'process')) {
+            Session::flash('error', 'Access denied: You do not have permission to process WhatsApp orders.');
             Response::redirect(url('sales/whatsapp/view/' . $id));
             return;
         }

@@ -1,3 +1,4 @@
+<?php $canCreateOrder = hasPermission('whatsapp_orders', 'create'); ?>
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
         <h2 class="mb-1"><i class="bi bi-clock-history me-2 text-success"></i>WhatsApp Customer Orders History</h2>
@@ -7,9 +8,11 @@
         <a href="<?= url('warehouse/whatsapp-orders') ?>" class="btn btn-outline-secondary">
             <i class="bi bi-speedometer2 me-1"></i> Dashboard
         </a>
+        <?php if ($canCreateOrder): ?>
         <a href="<?= url('sales/whatsapp/create') ?>" class="btn btn-success">
             <i class="bi bi-cart-plus me-1"></i> Create WhatsApp Order
         </a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -130,12 +133,14 @@
                         <td colspan="8" class="text-center py-5 text-muted">
                             <i class="bi bi-chat-left-dots fs-1 d-block mb-2 text-success opacity-50"></i>
                             <div class="fw-semibold">No WhatsApp customer orders found.</div>
-                            <small class="text-muted">Try adjusting your search criteria or click below to create a new order.</small>
+                            <small class="text-muted">Try adjusting your search criteria<?= $canCreateOrder ? ' or click below to create a new order' : '' ?>.</small>
+                            <?php if ($canCreateOrder): ?>
                             <div class="mt-3">
                                 <a href="<?= url('sales/whatsapp/create') ?>" class="btn btn-sm btn-success">
                                     <i class="bi bi-plus-lg me-1"></i> Create WhatsApp Order
                                 </a>
                             </div>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php else: foreach ($orders as $o): 

@@ -76,7 +76,7 @@ class WebsiteController {
      * Website Channel Dashboard & Orders List
      */
     public function index(): void {
-        if (!hasPermission('website_dashboard', 'view') && !hasPermission('website_orders', 'view')) {
+        if (!hasPermission('website_dashboard', 'view')) {
             Session::flash('error', 'Access denied. You do not have permission to view the Website dashboard.');
             Response::redirect(url('admin/dashboard'));
             return;
@@ -913,7 +913,7 @@ class WebsiteController {
      * Stock Allocations List & Stock Inventory for Website Orders (Dual Tab)
      */
     public function websiteAllocations(): void {
-        if (!hasPermission('website_inventory.view') && !hasPermission('website.view')) {
+        if (!hasPermission('website_inventory', 'view')) {
             Session::flash('error', 'Access denied. You do not have permission to view Website stock allocations & inventory.');
             Response::redirect(url('warehouse/website-orders'));
             return;
@@ -1184,7 +1184,7 @@ class WebsiteController {
      * Website Product Stock Details & Full Lifecycle History with Piece QR & Serial Tags
      */
      public function websiteInventoryDetail(int $id): void {
-         if (!hasPermission('website_inventory.view') && !hasPermission('website.view')) {
+         if (!hasPermission('website_inventory', 'view')) {
              Session::flash('error', 'Access denied. You do not have permission to view Website stock details.');
              Response::redirect(url('warehouse/website-orders/allocations'));
              return;
@@ -2038,7 +2038,7 @@ class WebsiteController {
      * Orders History for Website Channel
      */
     public function websiteOrdersHistory(): void {
-        if (!hasPermission('website_orders.view') && !hasPermission('website.view')) {
+        if (!hasPermission('website_orders', 'view')) {
             Session::flash('error', 'Access denied. You do not have permission to view Website orders history.');
             Response::redirect(url('warehouse/website-orders'));
             return;
@@ -3599,7 +3599,7 @@ class WebsiteController {
     }
 
     public function processWebsiteReturn(): void {
-        if (!hasPermission('website_returns', 'create')) {
+        if (!hasPermission('website_returns', 'create') && !hasPermission('website_returns', 'process')) {
             Session::flash('error', 'Access denied. You do not have permission to process Website returns.');
             Response::redirect(url('warehouse/website-orders/returns'));
             return;
@@ -4272,9 +4272,23 @@ class WebsiteController {
             Response::redirect(url('warehouse/website-orders/expenses'));
             return;
         }
+
+        CSRF::verify();
         require_once BASE_PATH . '/app/Services/ExpenseService.php';
+        $expense = ExpenseService::getVoucherDetails($id);
+        $channel = $this->getChannel();
+        if (!$expense || ($expense['location_type'] ?? '') !== 'WEBSITE' || (int)($expense['location_id'] ?? 0) !== (int)$channel['id']) {
+            Session::flash('error', 'Website expense record not found.');
+            Response::redirect(url('warehouse/website-orders/expenses'));
+            return;
+        }
+
         $userId = Session::userId() ?? 1;
-        ExpenseService::deleteExpense($id, $userId);
+        if (!ExpenseService::deleteExpense($id, $userId)) {
+            Session::flash('error', 'Website expense could not be deleted.');
+            Response::redirect(url('warehouse/website-orders/expenses'));
+            return;
+        }
         Session::flash('success', "Expense record deleted successfully.");
         Response::redirect(url('warehouse/website-orders/expenses'));
     }
@@ -4289,7 +4303,7 @@ class WebsiteController {
      * Website Returns to Warehouse List & Dispatch Dashboard
      */
     public function returnToWarehouseList(): void {
-        if (!hasPermission('website_return_to_wh.view') && !hasPermission('website.view')) {
+        if (!hasPermission('website_return_to_wh', 'view')) {
             Session::flash('error', 'Access denied. You do not have permission to view Website warehouse returns.');
             Response::redirect(url('warehouse/website-orders'));
             return;
@@ -4455,7 +4469,7 @@ class WebsiteController {
      * View Return to Warehouse Details Page for Website Channel
      */
     public function viewReturnToWarehouse(string $id): void {
-        if (!hasPermission('website_return_to_wh.view') && !hasPermission('website.view')) {
+        if (!hasPermission('website_return_to_wh', 'view')) {
             Session::flash('error', 'Access denied. You do not have permission to view Website warehouse returns.');
             Response::redirect(url('warehouse/website-orders'));
             return;
@@ -4483,7 +4497,7 @@ class WebsiteController {
      * Print Delivery Gate Pass / Return Challan for Website Return to Warehouse
      */
     public function printReturnToWarehouseGatePass(string $id): void {
-        if (!hasPermission('website_return_to_wh.gatepass') && !hasPermission('website_return_to_wh.view') && !hasPermission('website.view')) {
+        if (!hasPermission('website_return_to_wh.gatepass')) {
             Session::flash('error', 'Access denied. You do not have permission to print gate pass.');
             Response::redirect(url('warehouse/website-orders/return-to-warehouse'));
             return;
@@ -4502,7 +4516,7 @@ class WebsiteController {
      * Print Carton QR Shipping Label for Website Return to Warehouse
      */
     public function printReturnToWarehouseLabel(string $id): void {
-        if (!hasPermission('website_return_to_wh.print') && !hasPermission('website_return_to_wh.view') && !hasPermission('website.view')) {
+        if (!hasPermission('website_return_to_wh.print')) {
             Session::flash('error', 'Access denied. You do not have permission to print return labels.');
             Response::redirect(url('warehouse/website-orders/return-to-warehouse'));
             return;

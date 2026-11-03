@@ -7,6 +7,8 @@ $filters = $filters ?? [];
 $startDate = $startDate ?? date('Y-m-01');
 $endDate = $endDate ?? date('Y-m-d');
 $staffUsers = $staffUsers ?? [];
+$canCreateExpense = hasPermission('whatsapp_expenses', 'create');
+$canDeleteExpense = hasPermission('whatsapp_expenses', 'delete');
 
 ?>
 
@@ -23,9 +25,11 @@ $staffUsers = $staffUsers ?? [];
             <a href="<?= url('warehouse/whatsapp-orders') ?>" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
                 <i class="bi bi-arrow-left me-1"></i> Orders Hub
             </a>
+            <?php if ($canCreateExpense): ?>
             <button type="button" class="btn text-white btn-sm rounded-pill px-3 shadow-sm" style="background-color: #25D366; font-weight: 600;" data-bs-toggle="modal" data-bs-target="#recordWaExpenseModal">
                 <i class="bi bi-plus-circle me-1"></i> Record Channel Expense
             </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -220,9 +224,14 @@ $staffUsers = $staffUsers ?? [];
                                         <a href="<?= url('warehouse/whatsapp-orders/expenses/voucher/' . $exp['id']) ?>" target="_blank" class="btn btn-outline-success" title="Print WhatsApp Voucher">
                                             <i class="bi bi-printer"></i>
                                         </a>
-                                        <button type="button" class="btn btn-outline-danger" onclick="deleteWaExpense(<?= $exp['id'] ?>, '<?= e($exp['expense_number']) ?>')" title="Delete Expense">
+                                        <?php if ($canDeleteExpense): ?>
+                                        <form method="POST" action="<?= url('warehouse/whatsapp-orders/expenses/delete/' . (int)$exp['id']) ?>" class="d-inline js-delete-wa-expense" data-expense-number="<?= e($exp['expense_number']) ?>">
+                                            <?= csrf_field() ?>
+                                            <button type="submit" class="btn btn-outline-danger" title="Delete Expense">
                                             <i class="bi bi-trash"></i>
-                                        </button>
+                                            </button>
+                                        </form>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
@@ -235,6 +244,7 @@ $staffUsers = $staffUsers ?? [];
 </div>
 
 <!-- Quick Record WhatsApp Operating Expense Modal -->
+<?php if ($canCreateExpense): ?>
 <div class="modal fade" id="recordWaExpenseModal" tabindex="-1" aria-labelledby="recordWaExpenseModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content rounded-4 border-0 shadow">
@@ -352,15 +362,19 @@ $staffUsers = $staffUsers ?? [];
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <script>
-function deleteWaExpense(id, number) {
-    if (confirm(`Are you sure you want to delete expense voucher ${number}? This will remove it permanently.`)) {
-        window.location.href = `<?= url('warehouse/whatsapp-orders/expenses/delete/') ?>${id}`;
-    }
-}
-
 document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.js-delete-wa-expense').forEach(function(form) {
+        form.addEventListener('submit', function(event) {
+            const number = form.dataset.expenseNumber;
+            if (!confirm(`Are you sure you want to delete expense voucher ${number}? This will remove it permanently.`)) {
+                event.preventDefault();
+            }
+        });
+    });
+
     const form = document.getElementById('waExpenseForm');
     const phoneInput = document.getElementById('waVendorPhone');
     const amountInput = document.getElementById('waAmount');

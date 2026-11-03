@@ -111,13 +111,15 @@
                     <th>Total Value</th>
                     <th>Status</th>
                     <th>Date</th>
+                    <?php if (hasPermission('website_orders', 'view')): ?>
                     <th class="text-end">Actions</th>
+                    <?php endif; ?>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($allocations)): ?>
                     <tr>
-                        <td colspan="7" class="text-center py-4 text-muted">
+                        <td colspan="<?= hasPermission('website_orders', 'view') ? 7 : 6 ?>" class="text-center py-4 text-muted">
                             <i class="bi bi-inbox fs-2 d-block mb-2 text-primary"></i>
                             No Website inventory recorded yet.
                         </td>
@@ -163,9 +165,11 @@
             <h5 class="mb-0 fw-bold"><i class="bi bi-cart-check me-2 text-success"></i>Recent Website Customer Orders</h5>
             <small class="text-muted">Latest customer sales orders placed via Website store</small>
         </div>
+        <?php if (hasPermission('website_orders', 'view')): ?>
         <a href="<?= url('warehouse/website-orders/history') ?>" class="btn btn-sm btn-outline-primary fw-semibold">
             View All Orders (<?= number_format($orderCount ?? count($orders ?? $recentSales ?? [])) ?>) <i class="bi bi-arrow-right ms-1"></i>
         </a>
+        <?php endif; ?>
     </div>
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
@@ -226,11 +230,13 @@
                             </span>
                         </td>
                         <td><small class="text-muted"><?= date('d M Y, h:i A', strtotime((string)$oDate)) ?></small></td>
+                        <?php if (hasPermission('website_orders', 'view')): ?>
                         <td class="text-end">
                             <a href="<?= url('sales/website/view/' . ($o['id'] ?? '')) ?>" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-eye"></i> View Order
                             </a>
                         </td>
+                        <?php endif; ?>
                     </tr>
                 <?php endforeach; endif; ?>
             </tbody>

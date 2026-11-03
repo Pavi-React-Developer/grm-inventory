@@ -71,7 +71,7 @@
             <h2 class="mb-0">
                 <i class="bi bi-exclamation-octagon-fill me-2 <?= $damage['status'] === 'REWORK' ? 'text-warning-emphasis' : 'text-danger' ?>"></i>Case #<?= e($damage['damage_number']) ?>
             </h2>
-            <?php if (!empty($damage['batch_number'])): ?>
+            <?php if (!empty($damage['batch_number']) && hasPermission('inward', 'view')): ?>
                 <a href="<?= url('warehouse/inward/view/' . ($damage['batch_id'] ?? $damage['reference_id'])) ?>" class="badge bg-info-subtle text-info-emphasis border border-info-subtle fs-6 px-3 py-2 text-decoration-none shadow-sm font-monospace" title="View Inward Batch Verification">
                     <i class="bi bi-box-seam me-1"></i>Origin Batch: <strong><?= e($damage['batch_number']) ?></strong>
                 </a>
@@ -179,9 +179,11 @@
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h6 class="card-title mb-0 fw-bold"><i class="bi bi-gear-wide-connected me-2 text-warning"></i>Origin Manufacturing Batch &amp; Facility</h6>
                     <?php if (!empty($damage['batch_id'])): ?>
+                        <?php if (hasPermission('inward', 'view')): ?>
                         <a href="<?= url('warehouse/inward/view/' . $damage['batch_id']) ?>" class="btn btn-xs btn-outline-primary py-1 px-2.5 font-monospace fs-7">
                             <i class="bi bi-box-arrow-up-right me-1"></i>Open Inward Batch
                         </a>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
                 <div class="card-body">
@@ -364,12 +366,14 @@
                             Items are currently with <strong><?= e($damage['production_unit_name'] ?? 'the production unit') ?></strong> for stitching/fabric rework. When garments are returned back repaired to the warehouse, staff can click below to immediately restore them back to active salable inventory:
                         </p>
                         <div class="d-flex gap-2 flex-wrap">
+                            <?php if (hasPermission('damage', 'resolve')): ?>
                             <button type="button" class="btn btn-sm btn-success fw-semibold shadow-sm d-inline-flex align-items-center gap-1" onclick="quickApplyStatus('REPAIRED', 'Factory rework completed successfully. Garments inspected and restocked back to active warehouse inventory.')">
                                 <i class="bi bi-check2-circle"></i> Rework Completed &amp; Restock (+<?= (int)$damage['quantity'] ?> pcs)
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" onclick="quickApplyStatus('WRITTEN_OFF', 'Factory confirmed garments cannot be repaired. Total loss written off.')">
                                 <i class="bi bi-trash3"></i> Irreparable (Write Off)
                             </button>
+                            <?php endif; ?>
                         </div>
                     </div>
                 <?php elseif ($statusVal === 'LOGGED'): ?>
@@ -382,19 +386,21 @@
                             Defects quarantined during inward/storage inspection. Quick actions for warehouse staff:
                         </p>
                         <div class="d-flex gap-2 flex-wrap">
+                            <?php if (hasPermission('damage', 'resolve')): ?>
                             <button type="button" class="btn btn-sm btn-warning text-dark fw-semibold shadow-sm d-inline-flex align-items-center gap-1" onclick="quickApplyStatus('REWORK', 'Dispatched to factory for stitching/fabric rework.')">
                                 <i class="bi bi-arrow-repeat"></i> Dispatch to Factory Rework
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-success fw-semibold d-inline-flex align-items-center gap-1" onclick="quickApplyStatus('RESTOCKED', 'Minor defect cleared. Restocked directly to active available inventory.')">
                                 <i class="bi bi-check2-circle"></i> Restock to Available
                             </button>
+                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endif; ?>
 
                 <hr>
 
-                <?php if (hasPermission('damage', 'resolve') || hasPermission('damage', 'edit') || hasPermission('damage', 'create') || hasPermission('damages', 'create')): ?>
+                <?php if (hasPermission('damage', 'resolve')): ?>
                 <form id="damageStatusForm" method="POST" action="<?= url('warehouse/damage/update-status/' . $damage['id']) ?>" enctype="multipart/form-data">
                     <?= CSRF::input() ?>
                     <div id="hiddenFormSelectedTags"></div>
@@ -542,14 +548,18 @@
                     <i class="bi bi-dash-square me-1"></i>Deselect All
                 </button>
             </div>
-            <button type="button" class="btn btn-sm btn-warning text-dark fw-bold shadow-sm d-inline-flex align-items-center gap-1" onclick="sendSelectedToRework()">
-                <i class="bi bi-arrow-repeat"></i>
-                <span>Send Picked to Factory Rework (<span class="selected-count-span"><?= count($damagedTagList) ?></span>)</span>
-            </button>
+            <?php if (hasPermission('damage', 'resolve')): ?>
+                <button type="button" class="btn btn-sm btn-warning text-dark fw-bold shadow-sm d-inline-flex align-items-center gap-1" onclick="sendSelectedToRework()">
+                    <i class="bi bi-arrow-repeat"></i>
+                    <span>Send Picked to Factory Rework (<span class="selected-count-span"><?= count($damagedTagList) ?></span>)</span>
+                </button>
+            <?php endif; ?>
+            <?php if (hasPermission('wh_labels', 'print')): ?>
             <button type="button" class="btn btn-sm btn-outline-danger shadow-sm d-inline-flex align-items-center gap-1" onclick="printAllDamagedLabels()">
                 <i class="bi bi-printer"></i>
                 <span>Print All (<?= count($damagedTagList) ?> pcs)</span>
             </button>
+            <?php endif; ?>
         </div>
     </div>
     <div class="card-body p-3">
@@ -601,9 +611,11 @@
                             <button type="button" class="btn btn-xs btn-outline-secondary py-0.5 px-2 text-truncate" onclick="copyDmgCodePayload('<?= e($cardPayload) ?>')" style="font-size: 0.70rem;" title="Copy Scannable Payload">
                                 <i class="bi bi-clipboard me-1"></i>Copy QR
                             </button>
-                            <button type="button" class="btn btn-xs btn-outline-danger py-0.5 px-2" onclick="printSingleDamagedLabel('<?= e($tagCode) ?>', '<?= e($damage['sku']) ?>', <?= $mrpVal ?>, <?= $effectiveUnitPrice ?>)" style="font-size: 0.70rem;">
-                                <i class="bi bi-printer me-1"></i>Print Sticker
-                            </button>
+                            <?php if (hasPermission('wh_labels', 'print')): ?>
+                                <button type="button" class="btn btn-xs btn-outline-danger py-0.5 px-2" onclick="printSingleDamagedLabel('<?= e($tagCode) ?>', '<?= e($damage['sku']) ?>', <?= $mrpVal ?>, <?= $effectiveUnitPrice ?>)" style="font-size: 0.70rem;">
+                                    <i class="bi bi-printer me-1"></i>Print Sticker
+                                </button>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

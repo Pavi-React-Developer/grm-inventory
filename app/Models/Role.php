@@ -242,6 +242,16 @@ class Role {
         $allPerms = self::getAllPermissions();
         $permsMap = [];
         foreach ($allPerms as $p) {
+            if (
+                ($p['module'] === 'whatsapp_orders' && in_array($p['action'], ['edit', 'delete'], true))
+                || ($p['module'] === 'whatsapp_damage' && $p['action'] === 'delete')
+                || ($p['module'] === 'website_orders' && in_array($p['action'], ['edit', 'delete'], true))
+                || ($p['module'] === 'website_inward' && $p['action'] === 'create')
+                || ($p['module'] === 'website_inventory' && $p['action'] === 'edit')
+                || ($p['module'] === 'website_damage' && $p['action'] === 'delete')
+            ) {
+                continue;
+            }
             $permsMap[$p['module']][$p['action']] = $p;
         }
 
@@ -292,7 +302,7 @@ class Role {
                 'submodules' => [
                     'warehouse'          => ['name' => 'Dashboard', 'icon' => 'bi-speedometer2', 'desc' => 'Storage capacity, bay occupancy, and dispatch workflows', 'department' => 'WAREHOUSE'],
                     'inward'             => ['name' => 'Inward / GRN', 'icon' => 'bi-box-arrow-in-down', 'desc' => 'Goods receipt notes, production receipts, and seller inwarding', 'department' => 'WAREHOUSE'],
-                    'stock'              => ['name' => 'Stock', 'icon' => 'bi-grid-3x3-gap', 'desc' => 'Bin/rack storage, live SKU quantities, and count audits', 'department' => 'WAREHOUSE'],
+                    'stock'              => ['name' => 'Stock', 'icon' => 'bi-grid-3x3-gap', 'desc' => 'Bin/rack storage, live SKU quantities, count audits, and price editing', 'department' => 'WAREHOUSE'],
                     'wh_sellers'         => ['name' => 'Suppliers', 'icon' => 'bi-truck-front', 'desc' => 'Fabric/apparel suppliers, procurement logs, and vendor ledgers', 'department' => 'WAREHOUSE'],
                     'wh_catalog'         => ['name' => 'Catalog', 'icon' => 'bi-card-list', 'desc' => 'Master SKU codes, wholesale pricing, and barcode mappings', 'department' => 'WAREHOUSE'],
                     'wh_labels'          => ['name' => 'QR Labels', 'icon' => 'bi-qr-code', 'desc' => 'Shelf labels, bulk carton QR stickers, and barcode printing', 'department' => 'WAREHOUSE'],
@@ -355,7 +365,7 @@ class Role {
                     'shop_damage'         => ['name' => 'Damage Management', 'icon' => 'bi-exclamation-octagon', 'desc' => 'Store shelf defects, damaged garments, salvage logs, and write-offs', 'department' => 'SHOP'],
                     'pos'                 => ['name' => 'POS / Billing', 'icon' => 'bi-receipt-cutoff', 'desc' => 'High-speed barcode checkout, discounts, Cash/UPI/Card billing', 'department' => 'SHOP'],
                     'sales'               => ['name' => 'Selled Products', 'icon' => 'bi-file-earmark-text', 'desc' => 'Customer receipts, invoice reprinting, and billing search', 'department' => 'SHOP'],
-                    'customers'           => ['name' => 'Customer Details', 'icon' => 'bi-people', 'desc' => 'Shopper directory, purchase histories, and loyalty perks', 'department' => 'SHOP'],
+                    'customers'           => ['name' => 'Customer Details', 'icon' => 'bi-people', 'desc' => 'Shopper directory and purchase histories; create adds customer profiles, edit updates profiles', 'department' => 'SHOP'],
                     'shop_returns'        => ['name' => 'Customer Returns & Exchanges', 'icon' => 'bi-arrow-left-right', 'desc' => 'Customer return slips, item exchanges, and credit note refunds', 'department' => 'SHOP'],
                     'return_to_warehouse' => ['name' => 'Return to Warehouse', 'icon' => 'bi-box-arrow-up-right', 'desc' => 'Defective goods, slow-moving items, and seasonal returns to warehouse', 'department' => 'SHOP'],
                 ]
@@ -429,6 +439,23 @@ class Role {
         }
 
         return $modules;
+    }
+
+    public static function getCrudPermissionsByAction(array $permissions): array {
+        $columns = [
+            'view' => [],
+            'create' => [],
+            'edit' => [],
+            'delete' => [],
+        ];
+
+        foreach ($permissions as $action => $permission) {
+            if (isset($columns[$action])) {
+                $columns[$action][$action] = $permission;
+            }
+        }
+
+        return $columns;
     }
 
     /**

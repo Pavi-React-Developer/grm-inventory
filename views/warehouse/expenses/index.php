@@ -41,14 +41,16 @@ $endDate = $endDate ?? date('Y-m-d');
     </div>
     
     <div class="d-flex align-items-center gap-2 flex-wrap">
-        <?php if (hasPermission('warehouse_expenses', 'create') || hasPermission('expenses', 'create')): ?>
+        <?php if (hasPermission('warehouse_expenses', 'create')): ?>
         <button type="button" class="btn btn-primary fw-semibold shadow-xs" data-bs-toggle="modal" data-bs-target="#recordExpenseModal">
             <i class="bi bi-plus-circle me-1.5"></i>Record Warehouse Expense
         </button>
         <?php endif; ?>
-        <a href="<?= url('reports/warehouse') ?>" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-bar-chart me-1"></i>Warehouse Reports
-        </a>
+        <?php if (hasPermission('reports', 'view')): ?>
+            <a href="<?= url('reports/warehouse') ?>" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-bar-chart me-1"></i>Warehouse Reports
+            </a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -300,10 +302,12 @@ $endDate = $endDate ?? date('Y-m-d');
                                                 <i class="bi bi-paperclip"></i>
                                             </a>
                                         <?php endif; ?>
-                                        <a href="<?= url("warehouse/expenses/voucher/{$exp['id']}") ?>" target="_blank" class="btn btn-xs btn-outline-primary" title="Print Payment Voucher">
-                                            <i class="bi bi-printer"></i>
-                                        </a>
-                                        <?php if (hasPermission('warehouse_expenses', 'delete') || hasPermission('expenses', 'delete')): ?>
+                                        <?php if (hasPermission('warehouse_expenses', 'voucher')): ?>
+                                            <a href="<?= url("warehouse/expenses/voucher/{$exp['id']}") ?>" target="_blank" class="btn btn-xs btn-outline-primary" title="Print Payment Voucher">
+                                                <i class="bi bi-printer"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                        <?php if (hasPermission('warehouse_expenses', 'delete')): ?>
                                         <form method="POST" action="<?= url("warehouse/expenses/delete/{$exp['id']}") ?>" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this expense voucher?');">
                                             <?= CSRF::field() ?>
                                             <button type="submit" class="btn btn-xs btn-outline-danger" title="Delete">

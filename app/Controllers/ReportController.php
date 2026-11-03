@@ -422,6 +422,7 @@ class ReportController {
      * 9. PRINT / PDF EXPORT READY VIEW
      */
     public function printReport(string $type): void {
+        $this->authorizeReportAction($type, 'print');
         $filter = $this->resolveDateFilter();
         $data = $this->collectReportDataForExport($type, $filter);
 
@@ -436,6 +437,7 @@ class ReportController {
      * 10. UNIFIED CSV DATA EXPORT ENGINE
      */
     public function exportReport(string $type): void {
+        $this->authorizeReportAction($type, 'export');
         $filter = $this->resolveDateFilter();
         $data = $this->collectReportDataForExport($type, $filter);
 
@@ -487,6 +489,35 @@ class ReportController {
 
         fclose($output);
         exit;
+    }
+
+    private function authorizeReportAction(string $type, string $action): void {
+        $permissionModules = [
+            'overview' => 'reports_overview',
+            'profitability' => 'reports_profitability',
+            'sales' => 'reports_sales',
+            'sales_pos' => 'reports_sales',
+            'sales_warehouse' => 'reports_sales',
+            'website' => 'reports_website',
+            'sales_website' => 'reports_sales',
+            'whatsapp' => 'reports_whatsapp',
+            'sales_whatsapp' => 'reports_sales',
+            'online' => 'reports_online',
+            'production' => 'reports_production',
+            'warehouse' => 'reports_warehouse',
+            'purchase' => 'reports_purchase',
+            'shop' => 'reports_shop',
+            'inventory' => 'reports_inventory',
+        ];
+
+        if (!isset($permissionModules[$type])) {
+            Response::error(404, 'Unknown report type.');
+        }
+
+        $module = $permissionModules[$type];
+        if (!hasPermission($module, $action)) {
+            Response::error(403, 'You do not have permission to ' . $action . ' this report.');
+        }
     }
 
     // =========================================================================

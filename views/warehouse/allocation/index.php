@@ -9,7 +9,7 @@
         </p>
     </div>
     <div class="d-flex gap-2">
-        <?php if (hasPermission('allocation', 'create') || hasPermission('allocations', 'create')): ?>
+        <?php if (hasPermission('allocation', 'create')): ?>
         <a href="<?= url('warehouse/allocation/create') ?>" class="btn btn-primary">
             <i class="bi bi-plus-lg me-1"></i> New Allocation
         </a>
@@ -96,7 +96,7 @@
                             <span class="badge <?= $badgeClass ?> px-2.5 py-1"><?= htmlspecialchars($alc['status']) ?></span>
                         </td>
                         <td class="text-end text-nowrap">
-                            <?php if ($alc['status'] === 'REQUESTED' && (hasPermission('allocation', 'approve') || hasPermission('allocations', 'approve') || hasPermission('allocation', 'create'))): ?>
+                            <?php if ($alc['status'] === 'REQUESTED' && hasPermission('allocation', 'approve')): ?>
                                 <form method="POST" action="<?= url('warehouse/allocation/approve/' . $alc['id']) ?>" class="d-inline">
                                     <?= CSRF::field() ?>
                                     <button type="submit" class="btn btn-sm btn-success me-1">
@@ -105,7 +105,7 @@
                                 </form>
                             <?php endif; ?>
 
-                            <?php if (in_array($alc['status'], ['APPROVED', 'PACKING', 'PICKING']) && (hasPermission('allocation_outward', 'create') || hasPermission('allocation', 'dispatch') || hasPermission('allocations', 'create'))): ?>
+                            <?php if (in_array($alc['status'], ['APPROVED', 'PACKING', 'PICKING']) && hasPermission('allocation_outward', 'create')): ?>
                                 <a href="<?= url('warehouse/allocation/outward') ?>" class="btn btn-sm btn-primary me-1">
                                     <i class="bi bi-truck me-1"></i> Dispatch Outward
                                 </a>

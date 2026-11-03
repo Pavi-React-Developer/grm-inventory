@@ -9,6 +9,14 @@ $mrp = (float)($item['mrp'] ?? 0);
 $sellingPrice = (float)($item['selling_price'] ?? 0);
 $cost = (float)($item['production_cost'] > 0 ? $item['production_cost'] : ($item['purchase_price'] ?? 0));
 $discount = ($mrp > $sellingPrice && $mrp > 0) ? round((($mrp - $sellingPrice) / $mrp) * 100) : 0;
+$canAdjustPrice = hasPermission('website_inventory', 'adjust');
+$canReportDamage = hasPermission('website_damage', 'create');
+$canViewDamage = hasPermission('website_damage', 'view');
+$canViewInward = hasPermission('website_inward', 'view');
+$canViewOrders = hasPermission('website_orders', 'view');
+$canViewReturns = hasPermission('website_returns', 'view');
+$canPrintReturn = hasPermission('website_returns', 'print');
+$canViewReturnToWarehouse = hasPermission('website_return_to_wh', 'view');
 
 $returnsHistory = $returnsHistory ?? [];
 $exchangesHistory = $exchangesHistory ?? [];
@@ -150,11 +158,13 @@ usort($pieceTags, static function ($a, $b) {
                     <div class="card border-0 shadow-sm rounded-4 h-100 p-3 bg-white border-start border-success border-4 position-relative">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <small class="text-muted fw-semibold d-block text-uppercase" style="font-size: 11px;">Selling Price</small>
+                            <?php if ($canAdjustPrice): ?>
                             <button type="button" class="btn btn-sm btn-link text-muted p-0 text-decoration-none" 
                                     onclick="openEditPriceModal(<?= (int)$item['variant_id'] ?>, <?= htmlspecialchars(json_encode($item['sku']), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($item['product_name']), ENT_QUOTES, 'UTF-8') ?>, <?= (float)$sellingPrice ?>, <?= (float)$mrp ?>, <?= (float)$cost ?>)" 
                                     title="Quick Edit Selling Price & MRP">
                                 <i class="bi bi-pencil-square fs-6 text-success"></i>
                             </button>
+                            <?php endif; ?>
                         </div>
                         <h3 class="fw-bold text-success mb-0 mt-1" id="detailPageSellingPrice">₹<?= number_format($sellingPrice, 2) ?></h3>
                         <small class="text-muted text-decoration-line-through <?= $mrp > $sellingPrice ? '' : 'd-none' ?>" id="detailPageMrp">MRP: ₹<?= number_format($mrp, 2) ?></small>
@@ -214,30 +224,38 @@ usort($pieceTags, static function ($a, $b) {
                     </button>
                 </li>
                 <!-- 3. Warehouse Inward Allocations -->
+                <?php if ($canViewInward): ?>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold text-muted" id="tab-inward-tab" data-bs-toggle="tab" data-bs-target="#tab-inward" type="button" role="tab">
                         <i class="bi bi-truck me-1"></i> Warehouse Inwards (<?= count($inwardHistory) ?>)
                     </button>
                 </li>
+                <?php endif; ?>
                 <!-- 4. Website Sales Orders -->
+                <?php if ($canViewOrders): ?>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold text-muted" id="tab-sales-tab" data-bs-toggle="tab" data-bs-target="#tab-sales" type="button" role="tab">
                         <i class="bi bi-receipt me-1"></i> Website Sales (<?= count($salesHistory) ?>)
                     </button>
                 </li>
+                <?php endif; ?>
                 <!-- 5. Returns & Exchanges -->
+                <?php if ($canViewReturns): ?>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold text-muted" id="tab-returns-tab" data-bs-toggle="tab" data-bs-target="#tab-returns" type="button" role="tab">
                         <i class="bi bi-arrow-left-right me-1 text-info"></i> Returns &amp; Exchanges (<?= count($returnsHistory ?? []) + count($exchangesHistory ?? []) ?>)
                     </button>
                 </li>
+                <?php endif; ?>
                 <!-- 6. Damage & Quarantine Log -->
+                <?php if ($canViewDamage): ?>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold text-muted" id="tab-damage-tab" data-bs-toggle="tab" data-bs-target="#tab-damage" type="button" role="tab">
                         <i class="bi bi-shield-x me-1"></i> Damage &amp; Quarantine (<?= count($damageHistory) ?>)
                     </button>
                 </li>
-                <?php if (!empty($warehouseReturnsHistory)): ?>
+                <?php endif; ?>
+                <?php if ($canViewReturnToWarehouse && !empty($warehouseReturnsHistory)): ?>
                 <!-- 7. Warehouse Outward Returns -->
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold text-muted" id="tab-wh-returns-tab" data-bs-toggle="tab" data-bs-target="#tab-wh-returns" type="button" role="tab">
@@ -404,9 +422,11 @@ usort($pieceTags, static function ($a, $b) {
                                                             <small class="text-success fw-semibold"><i class="bi bi-check2-all me-1"></i>Ready for Website Orders</small>
                                                         <?php endif; ?>
                                                         <div class="d-flex gap-1">
+                                                            <?php if ($canReportDamage): ?>
                                                             <a href="<?= url('warehouse/website-orders/damage/create?variant_id=' . $item['variant_id'] . '&tag_code=' . urlencode($pt['tag_code']) . '&allocation_id=' . ($pt['allocation_id'] ?? '')) ?>" class="btn btn-xs btn-outline-danger px-2 py-1" title="Quarantine as Damaged">
                                                                 <i class="bi bi-shield-x"></i> Report Damage
                                                             </a>
+                                                            <?php endif; ?>
                                                             <button type="button" class="btn btn-xs btn-outline-primary px-2 py-1" title="Print Tag Sticker" onclick="printSinglePieceTag(<?= htmlspecialchars(json_encode($pt)) ?>)">
                                                                 <i class="bi bi-printer"></i>
                                                             </button>
@@ -418,11 +438,11 @@ usort($pieceTags, static function ($a, $b) {
                                                             <i class="bi bi-exclamation-triangle-fill me-1"></i>
                                                             <?= htmlspecialchars($pt['meta']['damage_reason'] ?? $pt['meta']['defect_type'] ?? 'Defect Quarantined') ?>
                                                         </div>
-                                                        <?php if (!empty($pt['meta']['damage_id'])): ?>
+                                                        <?php if ($canViewDamage && !empty($pt['meta']['damage_id'])): ?>
                                                             <a href="<?= url('warehouse/website-orders/damage/view/' . $pt['meta']['damage_id']) ?>" class="btn btn-xs btn-outline-danger px-2 py-1">
                                                                 <i class="bi bi-eye"></i> View Damage
                                                             </a>
-                                                        <?php elseif (!empty($pt['meta']['outward_id'])): ?>
+                                                        <?php elseif ($canViewDamage && !empty($pt['meta']['outward_id'])): ?>
                                                             <a href="<?= url('warehouse/website-orders/damage/outward/view/' . $pt['meta']['outward_id']) ?>" class="btn btn-xs btn-outline-danger px-2 py-1">
                                                                 <i class="bi bi-truck"></i> Return Batch
                                                             </a>
@@ -454,7 +474,7 @@ usort($pieceTags, static function ($a, $b) {
                                                 <?php elseif ($st === 'IN_TRANSIT'): ?>
                                                     <div class="d-flex justify-content-between align-items-center">
                                                         <small class="text-warning-emphasis"><i class="bi bi-hourglass-split me-1"></i>Awaiting Inward Confirmation</small>
-                                                        <?php if (!empty($pt['allocation_id'])): ?>
+                                                        <?php if ($canViewInward && !empty($pt['allocation_id'])): ?>
                                                             <a href="<?= url('warehouse/website-orders/inward/view/' . $pt['allocation_id']) ?>" class="btn btn-xs btn-outline-warning px-2 py-1">
                                                                 Receive
                                                             </a>
@@ -549,15 +569,15 @@ usort($pieceTags, static function ($a, $b) {
                                                     <button type="button" class="btn btn-xs btn-outline-primary px-2 py-1" title="Print Tag Label" onclick="printSinglePieceTag(<?= htmlspecialchars(json_encode($pt)) ?>)">
                                                         <i class="bi bi-printer"></i>
                                                     </button>
-                                                    <?php if ($isRestocked && !empty($pt['meta']['return_id'])): ?>
+                                                    <?php if ($canPrintReturn && $isRestocked && !empty($pt['meta']['return_id'])): ?>
                                                         <a href="<?= url('warehouse/website-orders/returns/invoice/' . $pt['meta']['return_id']) ?>" class="btn btn-xs btn-outline-success px-2 py-1" title="View Return Slip">
                                                             <i class="bi bi-receipt"></i>
                                                         </a>
-                                                    <?php elseif ($isExchanged && !empty($pt['meta']['exchange_id'])): ?>
+                                                    <?php elseif ($canPrintReturn && $isExchanged && !empty($pt['meta']['exchange_id'])): ?>
                                                         <a href="<?= url('warehouse/website-orders/returns/invoice/' . ($pt['meta']['return_id'] ?? $pt['meta']['exchange_id'])) ?>" class="btn btn-xs btn-outline-primary px-2 py-1" title="View Exchange Slip">
                                                             <i class="bi bi-receipt"></i>
                                                         </a>
-                                                    <?php elseif ($st === 'AVAILABLE'): ?>
+                                                    <?php elseif ($canReportDamage && $st === 'AVAILABLE'): ?>
                                                         <a href="<?= url('warehouse/website-orders/damage/create?variant_id=' . $item['variant_id'] . '&tag_code=' . urlencode($pt['tag_code']) . '&allocation_id=' . ($pt['allocation_id'] ?? '')) ?>" class="btn btn-xs btn-outline-danger px-2 py-1" title="Report Damage">
                                                             <i class="bi bi-shield-x"></i>
                                                         </a>
@@ -653,6 +673,7 @@ usort($pieceTags, static function ($a, $b) {
                 <!-- ========================================================================= -->
                 <!-- TAB 3: WAREHOUSE INWARD ALLOCATIONS -->
                 <!-- ========================================================================= -->
+                <?php if ($canViewInward): ?>
                 <div class="tab-pane fade" id="tab-inward" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Inward Dispatches from Central Warehouse</h6>
@@ -721,10 +742,12 @@ usort($pieceTags, static function ($a, $b) {
                         </table>
                     </div>
                 </div>
+                <?php endif; ?>
 
                 <!-- ========================================================================= -->
                 <!-- TAB 4: WEBSITE SALES ORDERS -->
                 <!-- ========================================================================= -->
+                <?php if ($canViewOrders): ?>
                 <div class="tab-pane fade" id="tab-sales" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-cart-check me-2 text-primary"></i>Direct Website Sales &amp; Dispatch Orders</h6>
@@ -793,10 +816,12 @@ usort($pieceTags, static function ($a, $b) {
                         </table>
                     </div>
                 </div>
+                <?php endif; ?>
 
                 <!-- ========================================================================= -->
                 <!-- TAB 5: DAMAGE & QUARANTINE LOG -->
                 <!-- ========================================================================= -->
+                <?php if ($canViewDamage): ?>
                 <div class="tab-pane fade" id="tab-damage" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-shield-x me-2 text-danger"></i>Quarantined Damage Logs &amp; Return Batches</h6>
@@ -852,7 +877,7 @@ usort($pieceTags, static function ($a, $b) {
                                             </span>
                                         </td>
                                         <td>
-                                            <?php if (!empty($dmg['outward_batch_id'])): ?>
+                                            <?php if ($canViewDamage && !empty($dmg['outward_batch_id'])): ?>
                                                 <a href="<?= url('warehouse/website-orders/damage/outward/view/' . $dmg['outward_batch_id']) ?>" class="badge bg-danger text-decoration-none">
                                                     <?= htmlspecialchars($dmg['outward_batch_number'] ?? ('Batch #' . $dmg['outward_batch_id'])) ?>
                                                 </a>
@@ -869,10 +894,12 @@ usort($pieceTags, static function ($a, $b) {
                         </table>
                     </div>
                 </div>
+                <?php endif; ?>
 
                 <!-- ========================================================================= -->
                 <!-- TAB 5: RETURNS & EXCHANGES -->
                 <!-- ========================================================================= -->
+                <?php if ($canViewReturns): ?>
                 <div class="tab-pane fade" id="tab-returns" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-arrow-left-right me-2 text-info"></i>Website Customer Returns &amp; Product Exchanges</h6>
@@ -999,11 +1026,11 @@ usort($pieceTags, static function ($a, $b) {
                                             </span>
                                         </td>
                                         <td class="text-end">
-                                            <?php if (!empty($ev['return_id'])): ?>
+                                            <?php if ($canPrintReturn && !empty($ev['return_id'])): ?>
                                                 <a href="<?= url('warehouse/website-orders/returns/invoice/' . $ev['return_id']) ?>" class="btn btn-xs btn-outline-primary px-2 py-1" title="Print Return/Exchange Slip">
                                                     <i class="bi bi-printer me-1"></i> Slip
                                                 </a>
-                                            <?php else: ?>
+                                            <?php elseif ($canViewReturns): ?>
                                                 <a href="<?= url('warehouse/website-orders/returns') ?>" class="btn btn-xs btn-outline-secondary px-2 py-1">
                                                     <i class="bi bi-eye"></i> View
                                                 </a>
@@ -1015,8 +1042,9 @@ usort($pieceTags, static function ($a, $b) {
                         </table>
                     </div>
                 </div>
+                <?php endif; ?>
 
-                <?php if (!empty($warehouseReturnsHistory)): ?>
+                <?php if ($canViewReturnToWarehouse && !empty($warehouseReturnsHistory)): ?>
                 <!-- ========================================================================= -->
                 <!-- TAB 7: WAREHOUSE OUTWARD RETURNS -->
                 <!-- ========================================================================= -->
@@ -1327,6 +1355,7 @@ function triggerBrowserPrint() {
 <!-- ========================================================================= -->
 <!-- MODAL: EDIT PRODUCT RETAIL PRICE & MRP (WEBSITE CHANNEL) -->
 <!-- ========================================================================= -->
+<?php if ($canAdjustPrice): ?>
 <div class="modal fade" id="editPriceModal" tabindex="-1" aria-labelledby="editPriceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
@@ -1434,11 +1463,14 @@ function triggerBrowserPrint() {
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <script>
 let currentEditPriceModal = null;
+const canAdjustPrice = <?= $canAdjustPrice ? 'true' : 'false' ?>;
 
 window.openEditPriceModal = function(variantId, sku, productName, sellingPrice, mrp, costPrice = 0) {
+    if (!canAdjustPrice) return;
     document.getElementById('editPriceVariantId').value = variantId;
     document.getElementById('editPriceModalSku').textContent = `SKU: ${sku}`;
     document.getElementById('editPriceBadgeSku').textContent = sku;
@@ -1505,6 +1537,7 @@ window.calculatePriceAnalytics = function() {
 
 window.handlePriceFormSubmit = function(event) {
     event.preventDefault();
+    if (!canAdjustPrice) return;
     const form = document.getElementById('editPriceForm');
     const btn = document.getElementById('btnSavePrice');
     const alertBox = document.getElementById('editPriceAlertContainer');

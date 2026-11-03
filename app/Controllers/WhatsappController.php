@@ -4146,10 +4146,53 @@ class WhatsappController {
         ]);
     }
 
-    public function deleteExpense(int $id): void {
+    public function confirmDeleteExpense(int $id): void {
         require_once BASE_PATH . '/app/Services/ExpenseService.php';
+        $expense = ExpenseService::getVoucherDetails($id);
+        $channel = $this->getChannel();
+        if (!$expense || ($expense['location_type'] ?? '') !== 'WHATSAPP' || (int)($expense['location_id'] ?? 0) !== (int)$channel['id']) {
+            Session::flash('error', 'WhatsApp expense record not found.');
+            Response::redirect(url('warehouse/whatsapp-orders/expenses'));
+            return;
+        }
+
+        Response::view('whatsapp_orders.expenses.delete_confirm', [
+            'pageTitle' => 'Confirm WhatsApp Expense Deletion',
+            'activeModule' => 'whatsapp',
+            'activeMenu' => 'wh-whatsapp-expenses',
+            'breadcrumb' => [
+                ['label' => 'WhatsApp Orders', 'url' => url('warehouse/whatsapp-orders')],
+                ['label' => 'Channel Expenses', 'url' => url('warehouse/whatsapp-orders/expenses')],
+                ['label' => 'Confirm Deletion'],
+            ],
+            'expense' => $expense,
+        ]);
+    }
+
+    public function deleteExpense(int $id): void {
+        if (!hasPermission('whatsapp_expenses', 'delete')) {
+            Session::flash('error', 'Access denied. You do not have permission to delete WhatsApp expenses.');
+            Response::redirect(url('warehouse/whatsapp-orders/expenses'));
+            return;
+        }
+
+        CSRF::verify();
+        require_once BASE_PATH . '/app/Services/ExpenseService.php';
+        $expense = ExpenseService::getVoucherDetails($id);
+        $channel = $this->getChannel();
+        if (!$expense || ($expense['location_type'] ?? '') !== 'WHATSAPP' || (int)($expense['location_id'] ?? 0) !== (int)$channel['id']) {
+            Session::flash('error', 'WhatsApp expense record not found.');
+            Response::redirect(url('warehouse/whatsapp-orders/expenses'));
+            return;
+        }
+
         $userId = Session::userId() ?? 1;
-        ExpenseService::deleteExpense($id, $userId);
+        if (!ExpenseService::deleteExpense($id, $userId)) {
+            Session::flash('error', 'WhatsApp expense could not be deleted.');
+            Response::redirect(url('warehouse/whatsapp-orders/expenses'));
+            return;
+        }
+
         Session::flash('success', "Expense record deleted successfully.");
         Response::redirect(url('warehouse/whatsapp-orders/expenses'));
     }

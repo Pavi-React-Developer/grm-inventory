@@ -294,27 +294,11 @@ function hasPermission(string $module, ?string $action = null): bool {
     if (in_array($key, $userPermissions, true)) {
         return true;
     }
+    if ($module === 'allocation' && in_array('allocations.' . $action, $userPermissions, true)) {
+        return true;
+    }
 
-    // Secondary fallback alias checks for grouped module views & returns
-    if ($module === 'website' && $action === 'view') {
-        foreach ($userPermissions as $p) {
-            if (str_starts_with($p, 'website_') && str_ends_with($p, '.view')) {
-                return true;
-            }
-        }
-    }
-    if ($module === 'whatsapp' && $action === 'view') {
-        foreach ($userPermissions as $p) {
-            if (str_starts_with($p, 'whatsapp_') && str_ends_with($p, '.view')) {
-                return true;
-            }
-        }
-    }
-    if ($module === 'website_return_to_wh') {
-        if (in_array('website_returns.' . $action, $userPermissions, true) || in_array('website_return_to_wh.' . $action, $userPermissions, true)) {
-            return true;
-        }
-    }
+    // Secondary fallback alias checks for returns
     if ($module === 'whatsapp_return_to_wh') {
         if (in_array('whatsapp_returns.' . $action, $userPermissions, true) || in_array('whatsapp_return_to_wh.' . $action, $userPermissions, true)) {
             return true;
@@ -474,4 +458,3 @@ function getScopedShops(bool $activeOnly = true): array {
     $sql = "SELECT * FROM shops" . ($activeOnly ? " WHERE is_active = 1" : "") . " ORDER BY name ASC";
     return Database::fetchAll($sql);
 }
-

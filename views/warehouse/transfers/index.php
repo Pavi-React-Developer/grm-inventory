@@ -4,7 +4,7 @@
         <p class="text-muted small mb-0">Manage stock transfers between physical warehouses and retail stores with outward vehicle & driver tracking.</p>
     </div>
     <div>
-        <?php if (hasPermission('transfers', 'create') || hasPermission('transfer', 'create') || hasPermission('transfers', 'edit')): ?>
+        <?php if (hasPermission('warehouse', 'create')): ?>
         <a href="<?= url('warehouse/transfers/create') ?>" class="btn btn-info text-white">
             <i class="bi bi-plus-lg me-1"></i> New Transfer Request
         </a>
@@ -79,12 +79,12 @@
                                     <i class="bi bi-printer me-1"></i> Gate Pass
                                 </button>
 
-                                <?php if ($trf['status'] === 'REQUESTED' && (hasPermission('transfers', 'approve') || hasPermission('transfers', 'create') || hasPermission('transfer', 'create'))): ?>
+                                <?php if ($trf['status'] === 'REQUESTED' && hasPermission('warehouse', 'approve')): ?>
                                     <form method="POST" action="<?= url('warehouse/transfers/approve/' . $trf['id']) ?>" class="d-inline">
                                         <?= CSRF::field() ?>
                                         <button type="submit" class="btn btn-sm btn-outline-info">Approve & Dispatch</button>
                                     </form>
-                                <?php elseif (in_array($trf['status'], ['APPROVED', 'DISPATCHED', 'IN_TRANSIT']) && (hasPermission('transfers', 'receive') || hasPermission('transfers', 'create') || hasPermission('transfer', 'create'))): ?>
+                                <?php elseif (in_array($trf['status'], ['APPROVED', 'DISPATCHED', 'IN_TRANSIT']) && hasPermission('warehouse', 'receive')): ?>
                                     <form method="POST" action="<?= url('warehouse/transfers/receive/' . $trf['id']) ?>" class="d-inline">
                                         <?= CSRF::field() ?>
                                         <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Confirm receipt of transfer goods into destination warehouse?');">

@@ -9,6 +9,8 @@ $currCategory = (int)($filters['category_id'] ?? 0);
 $currSort = $filters['sort'] ?? 'name_asc';
 $currSearch = $filters['search'] ?? '';
 $currProductType = $filters['product_type'] ?? 'normal';
+$canRequestStock = hasPermission('website_inventory', 'adjust');
+$canAdjustPrice = hasPermission('website_inventory', 'adjust');
 $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series Products', 'bi-boxes'], 'complementary' => ['Complementary Products', 'bi-gift-fill']];
 ?>
 
@@ -166,12 +168,14 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
             <?php endforeach; ?>
         </ul>
         <div class="d-flex align-items-center gap-2 flex-wrap">
+            <?php if ($canAdjustPrice): ?>
             <button type="button" class="btn btn-outline-success shadow-sm fw-semibold btnTogglePriceEdit" onclick="togglePriceEditMode()">
                 <i class="bi bi-pencil-square me-1"></i> <span class="btnPriceEditLabel">Edit Price</span>
             </button>
             <button type="button" class="btn btn-success shadow-sm fw-semibold btnHeaderApplyPrice d-none" onclick="openBulkPriceModal()">
                 <i class="bi bi-check-circle-fill me-1"></i> Change Price (<span class="headerSelectedPriceCount">0</span>)
             </button>
+            <?php endif; ?>
             <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 fs-6">
                 <i class="bi bi-boxes me-1"></i> <?= number_format($summary['total_units'] ?? 0) ?> pcs Available
             </span>
@@ -254,9 +258,11 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
+                            <?php if ($canAdjustPrice): ?>
                             <th class="price-checkbox-col" style="display: none; width: 44px; text-align: center;">
                                 <input type="checkbox" class="form-check-input select-all-price-chk" onchange="toggleSelectAllPriceCheckboxes(this.checked)" title="Select all on this page">
                             </th>
+                            <?php endif; ?>
                             <th style="width: 45px;">#</th>
                             <th>Product &amp; Variant Specification</th>
                             <th>Category</th>
@@ -272,15 +278,17 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
                     <tbody>
                         <?php if (empty($inventory)): ?>
                             <tr>
-                                <td colspan="11" class="text-center py-5 text-muted">
+                                <td colspan="<?= $canAdjustPrice ? 11 : 10 ?>" class="text-center py-5 text-muted">
                                     <i class="bi bi-box-seam fs-1 d-block mb-2 text-primary opacity-50"></i>
                                     <div class="fw-semibold">No stock products found matching criteria.</div>
                                     <small class="text-muted">Request stock from central warehouse to populate Website available inventory.</small>
+                                    <?php if ($canRequestStock): ?>
                                     <div class="mt-3">
                                         <a href="<?= url('warehouse/website-orders/requests/create') ?>" class="btn btn-sm btn-primary">
                                              <i class="bi bi-plus-lg me-1"></i> Request Warehouse Stock
                                         </a>
                                     </div>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php else: $idx = 1; foreach ($inventory as $it): 
@@ -301,6 +309,7 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
                             $img = !empty($it['variant_image']) ? $it['variant_image'] : (!empty($it['product_image']) ? $it['product_image'] : '');
                         ?>
                             <tr id="stock-row-<?= (int)$it['variant_id'] ?>">
+                                <?php if ($canAdjustPrice): ?>
                                 <td class="price-checkbox-col text-center" style="display: none;">
                                     <input type="checkbox" class="form-check-input price-item-checkbox" 
                                            value="<?= (int)$it['variant_id'] ?>" 
@@ -311,6 +320,7 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
                                            data-cost-price="<?= (float)(($it['production_cost'] ?? 0) > 0 ? $it['production_cost'] : ($it['purchase_price'] ?? 0)) ?>" 
                                            onchange="updatePriceSelectionState()">
                                 </td>
+                                <?php endif; ?>
                                 <td class="text-muted small fw-semibold"><?= $idx++ ?></td>
 
                                 <!-- Product Info -->
@@ -489,11 +499,13 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
                                     <i class="bi bi-inbox fs-1 d-block mb-2 text-primary opacity-50"></i>
                                     <div class="fw-semibold">No Website allocation records found.</div>
                                     <small class="text-muted">Dispatches from Central Warehouse to Website channel appear here.</small>
+                                    <?php if ($canRequestStock): ?>
                                     <div class="mt-3">
                                         <a href="<?= url('warehouse/website-orders/requests/create') ?>" class="btn btn-sm btn-primary">
                                             <i class="bi bi-plus-lg me-1"></i> New Stock Request
                                         </a>
                                     </div>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php else: foreach ($allocations as $a): 
@@ -566,6 +578,7 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
 </div>
 
 <!-- Floating Bulk Price Action Toolbar (Active when items are selected) -->
+<?php if ($canAdjustPrice): ?>
 <div id="priceEditFloatingBar" class="card shadow-lg border-0 position-fixed bottom-0 start-50 translate-middle-x mb-4 px-4 py-2 z-3 d-none align-items-center flex-row gap-3 rounded-pill bg-dark text-white border border-light border-opacity-25" style="backdrop-filter: blur(12px); z-index: 1060; max-width: 92vw; box-shadow: 0 10px 25px rgba(0,0,0,0.3) !important;">
     <div class="d-flex align-items-center gap-2">
         <span class="badge bg-success rounded-circle p-1 d-flex align-items-center justify-content-center" style="width: 24px; height: 24px;">
@@ -587,10 +600,12 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
         </button>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- MODAL: EDIT PRODUCT RETAIL PRICE & MRP (WEBSITE CHANNEL) -->
 <!-- ========================================================================= -->
+<?php if ($canAdjustPrice): ?>
 <div class="modal fade" id="editPriceModal" tabindex="-1" aria-labelledby="editPriceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width: 540px;">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
@@ -707,10 +722,12 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <script>
 let isPriceEditMode = false;
 let currentEditPriceModal = null;
+const canAdjustPrice = <?= $canAdjustPrice ? 'true' : 'false' ?>;
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -718,6 +735,7 @@ function escapeHtml(str) {
 }
 
 function togglePriceEditMode(forceState) {
+    if (!canAdjustPrice) return;
     if (typeof forceState === 'boolean') {
         isPriceEditMode = forceState;
     } else {
@@ -821,6 +839,7 @@ function clearPriceSelection() {
 }
 
 function openBulkPriceModal() {
+    if (!canAdjustPrice) return;
     const selected = getSelectedPriceCheckboxes();
     if (selected.length === 0) {
         alert('Please select at least one product using the checkboxes.');
@@ -918,6 +937,7 @@ function openBulkPriceModal() {
 }
 
 window.openEditPriceModal = function(variantId, sku, productName, sellingPrice, mrp, costPrice = 0) {
+    if (!canAdjustPrice) return;
     if (typeof variantId === 'object' && variantId !== null) {
         const obj = variantId;
         variantId = obj.variantId || obj.variant_id;
@@ -1010,6 +1030,7 @@ window.calculatePriceAnalytics = function() {
 
 window.handlePriceFormSubmit = function(event) {
     event.preventDefault();
+    if (!canAdjustPrice) return;
     const form = document.getElementById('editPriceForm');
     const btn = document.getElementById('btnSavePrice');
     const alertBox = document.getElementById('editPriceAlertContainer');

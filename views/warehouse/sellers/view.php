@@ -253,7 +253,7 @@
                                 <i class="bi bi-journal-plus fs-1 text-muted d-block mb-3"></i>
                                 <h6 class="text-muted">No catalog products linked to this supplier yet.</h6>
                                 <p class="text-muted small">Add products to the catalog for this supplier first. QR codes will be available once products are catalogued.</p>
-                                <?php if (hasPermission('wh_catalog', 'create') || hasPermission('wh_sellers', 'edit')): ?>
+                                <?php if (hasPermission('wh_sellers', 'create')): ?>
                                 <a href="<?= url('warehouse/catalog/create?seller_id=' . $seller['id']) ?>" class="btn btn-sm btn-primary">
                                     <i class="bi bi-plus-circle me-1"></i> Add First Product to Catalog
                                 </a>
@@ -261,7 +261,7 @@
                             </div>
                         <?php else: ?>
                             <!-- <div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                <?php if (hasPermission('wh_catalog', 'create') || hasPermission('wh_sellers', 'edit')): ?>
+                                <?php if (hasPermission('wh_sellers', 'create')): ?>
                                 <a href="<?= url('warehouse/catalog/create?seller_id=' . $seller['id']) ?>" class="btn btn-xs btn-outline-primary shadow-sm">
                                     <i class="bi bi-plus-circle me-1"></i> Add More to Catalog
                                 </a>
@@ -363,7 +363,7 @@
                                 <i class="bi bi-receipt fs-1 text-muted d-block mb-3"></i>
                                 <h6 class="text-muted">No purchase bills logged for this supplier yet.</h6>
                                 <p class="text-muted small">First add products to the catalog, then purchase bills will appear here.</p>
-                                <?php if (hasPermission('wh_catalog', 'create') || hasPermission('wh_sellers', 'edit')): ?>
+                                <?php if (hasPermission('wh_sellers', 'create')): ?>
                                 <a href="<?= url('warehouse/catalog/create?seller_id=' . $seller['id']) ?>" class="btn btn-sm btn-primary mt-2">
                                     <i class="bi bi-plus-circle me-1"></i> Add Products to Catalog First
                                 </a>

@@ -228,9 +228,11 @@
                                     <small class="text-muted"><?= date('h:i A', strtotime($row['created_at'])) ?></small>
                                 </td>
                                 <td class="text-end pe-3">
-                                    <a href="<?= url('warehouse/website-orders/returns/invoice/' . $row['id']) ?>" class="btn btn-sm btn-outline-primary" title="Print RMA Slip" target="_blank">
-                                        <i class="bi bi-printer me-1"></i> Slip
-                                    </a>
+                                    <?php if (hasPermission('website_returns', 'print')): ?>
+                                        <a href="<?= url('warehouse/website-orders/returns/invoice/' . $row['id']) ?>" class="btn btn-sm btn-outline-primary" title="Print RMA Slip" target="_blank">
+                                            <i class="bi bi-printer me-1"></i> Slip
+                                        </a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

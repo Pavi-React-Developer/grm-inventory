@@ -1,5 +1,8 @@
 <?php
 // views/website_orders/return_to_warehouse/index.php — Return to Warehouse Dispatches & Dashboard for Website Channel
+$canCreateReturn = hasPermission('website_return_to_wh', 'create');
+$canPrintGatePass = hasPermission('website_return_to_wh', 'gatepass');
+$canPrintReturnLabel = hasPermission('website_return_to_wh', 'print');
 ?>
 <div class="container-fluid py-4">
     <!-- Header Section -->
@@ -17,10 +20,12 @@
             <p class="text-muted small mb-0">Manage damaged goods dispatches, excess online inventory returns, seasonal stock transfers, and delivery gate passes to central warehouse.</p>
         </div>
         <div class="d-flex gap-2">
-            <a href="<?= url('warehouse/website-orders/stock') ?>" class="btn btn-outline-secondary rounded-pill px-3 fw-semibold">
-                <i class="bi bi-boxes me-1"></i> Website Stock Balances
-            </a>
-            <?php if (hasPermission('website_return_to_wh.create')): ?>
+            <?php if (hasPermission('website_inventory', 'view')): ?>
+                <a href="<?= url('warehouse/website-orders/allocations') ?>" class="btn btn-outline-secondary rounded-pill px-3 fw-semibold">
+                    <i class="bi bi-boxes me-1"></i> Website Stock Balances
+                </a>
+            <?php endif; ?>
+            <?php if ($canCreateReturn): ?>
             <a href="<?= url('warehouse/website-orders/return-to-warehouse/create') ?>" class="btn btn-danger rounded-pill px-4 shadow-sm fw-semibold">
                 <i class="bi bi-plus-circle me-1"></i> New Return Dispatch
             </a>
@@ -163,9 +168,11 @@
                                     <i class="bi bi-box-arrow-up fs-1 text-secondary d-block mb-2"></i>
                                     <h6>No Return-to-Warehouse dispatches found.</h6>
                                     <p class="small text-muted mb-3">Initiate a new return dispatch to send damaged or excess stock back to central storage.</p>
-                                    <a href="<?= url('warehouse/website-orders/return-to-warehouse/create') ?>" class="btn btn-sm btn-primary rounded-pill px-4">
-                                        <i class="bi bi-plus-circle me-1"></i> Create First Return Dispatch
-                                    </a>
+                                    <?php if ($canCreateReturn): ?>
+                                        <a href="<?= url('warehouse/website-orders/return-to-warehouse/create') ?>" class="btn btn-sm btn-primary rounded-pill px-4">
+                                            <i class="bi bi-plus-circle me-1"></i> Create First Return Dispatch
+                                        </a>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -216,12 +223,16 @@
                                         <a href="<?= url('warehouse/website-orders/return-to-warehouse/view/' . $r['id']) ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3" title="View Manifest Details">
                                             <i class="bi bi-eye-fill me-1"></i> View
                                         </a>
-                                        <a href="<?= url('warehouse/website-orders/return-to-warehouse/gatepass/' . $r['id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print Delivery Gate Pass">
-                                            <i class="bi bi-file-earmark-text"></i>
-                                        </a>
-                                        <a href="<?= url('warehouse/website-orders/return-to-warehouse/label/' . $r['id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print Carton QR Label">
-                                            <i class="bi bi-qr-code"></i>
-                                        </a>
+                                        <?php if ($canPrintGatePass): ?>
+                                            <a href="<?= url('warehouse/website-orders/return-to-warehouse/gatepass/' . $r['id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print Delivery Gate Pass">
+                                                <i class="bi bi-file-earmark-text"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                        <?php if ($canPrintReturnLabel): ?>
+                                            <a href="<?= url('warehouse/website-orders/return-to-warehouse/label/' . $r['id']) ?>" target="_blank" class="btn btn-sm btn-light border rounded-circle" title="Print Carton QR Label">
+                                                <i class="bi bi-qr-code"></i>
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>

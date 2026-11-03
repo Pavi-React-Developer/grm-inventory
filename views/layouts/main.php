@@ -58,6 +58,9 @@ if (!empty($authUser['shop_name'])) {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Custom CSS -->
     <link href="<?= asset('css/style.css') ?>?v=<?= file_exists(BASE_PATH . '/public/assets/css/style.css') ? filemtime(BASE_PATH . '/public/assets/css/style.css') : '1.1' ?>" rel="stylesheet">
+    <?php if (($activeModule ?? '') === 'reports'): ?>
+    <link href="<?= asset('css/reports.css') ?>?v=<?= file_exists(BASE_PATH . '/public/assets/css/reports.css') ? filemtime(BASE_PATH . '/public/assets/css/reports.css') : '1' ?>" rel="stylesheet">
+    <?php endif; ?>
     <!-- Modern Pagination Engine (Preloaded in head so all page scripts have instant access) -->
     <script src="<?= asset('js/pagination.js') ?>?v=<?= file_exists(BASE_PATH . '/public/assets/js/pagination.js') ? filemtime(BASE_PATH . '/public/assets/js/pagination.js') : '1.1' ?>"></script>
 </head>
@@ -216,7 +219,7 @@ if (!empty($authUser['shop_name'])) {
                             <?php if (hasPermission('purchases', 'view')): ?>
                             <li><a href="<?= url('warehouse/purchases') ?>" class="<?= in_array(($activeMenu ?? ''), ['purchases', 'wh-purchases']) ? 'active' : '' ?>">Direct Purchases</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('purchases_returns', 'view') || hasPermission('purchases', 'view')): ?>
+                            <?php if (hasPermission('purchases_returns', 'view')): ?>
                             <li><a href="<?= url('warehouse/purchases/returns') ?>" class="<?= ($activeMenu ?? '') === 'purchases-returns' ? 'active' : '' ?>">Purchases Returns &amp; Exchanges</a></li>
                             <?php endif; ?>
                             <?php if (hasPermission('allocation', 'view')): ?>
@@ -234,7 +237,7 @@ if (!empty($authUser['shop_name'])) {
                             <?php if (hasPermission('shop_requests', 'view')): ?>
                             <li><a href="<?= url('warehouse/shop-requests') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-shop-requests', 'shop-requests']) ? 'active' : '' ?>">Requests</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('warehouse_expenses', 'view') || hasPermission('warehouse', 'view')): ?>
+                            <?php if (hasPermission('warehouse_expenses', 'view')): ?>
                             <li><a href="<?= url('warehouse/expenses') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-expenses', 'warehouse-expenses']) ? 'active' : '' ?>"><i class="bi bi-cash-stack me-1"></i> Warehouse Expenses</a></li>
                             <?php endif; ?>
                         </ul>
@@ -251,8 +254,7 @@ if (!empty($authUser['shop_name'])) {
                         || hasPermission('whatsapp_returns', 'view')
                         || hasPermission('whatsapp_return_to_wh', 'view')
                         || hasPermission('whatsapp_expenses', 'view')
-                        || hasPermission('whatsapp', 'view')
-                        || hasPermission('sales_channels', 'view');
+                        || hasPermission('whatsapp_customers', 'view');
                     ?>
                     <?php if ($canViewWhatsapp): ?>
                     <li class="nav-item has-submenu">
@@ -262,28 +264,28 @@ if (!empty($authUser['shop_name'])) {
                             <i class="bi bi-chevron-down submenu-arrow"></i>
                         </a>
                         <ul class="submenu <?= in_array(($activeModule ?? ''), ['whatsapp', 'whatsapp-orders', 'wh-whatsapp']) ? 'show' : '' ?>">
-                            <?php if (hasPermission('whatsapp_dashboard', 'view') || hasPermission('whatsapp', 'view') || hasPermission('whatsapp_orders', 'view') || hasPermission('sales_channels', 'view')): ?>
+                            <?php if (hasPermission('whatsapp_dashboard', 'view')): ?>
                             <li><a href="<?= url('warehouse/whatsapp-orders') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-whatsapp', 'wh-whatsapp-dashboard', 'whatsapp-dashboard']) ? 'active' : '' ?>">Dashboard</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('whatsapp_inward', 'view') || hasPermission('whatsapp', 'view')): ?>
+                            <?php if (hasPermission('whatsapp_inward', 'view')): ?>
                             <li><a href="<?= url('warehouse/whatsapp-orders/inward') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-whatsapp-inward', 'whatsapp-inward']) ? 'active' : '' ?>">Inward / GRN</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('whatsapp_inventory', 'view') || hasPermission('whatsapp', 'view')): ?>
+                            <?php if (hasPermission('whatsapp_inventory', 'view')): ?>
                             <li><a href="<?= url('warehouse/whatsapp-orders/allocations') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-whatsapp-allocations', 'whatsapp-allocations']) ? 'active' : '' ?>">Inventory</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('whatsapp_orders', 'view') || hasPermission('whatsapp', 'view')): ?>
+                            <?php if (hasPermission('whatsapp_orders', 'view')): ?>
                             <li><a href="<?= url('warehouse/whatsapp-orders/history') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-whatsapp-history', 'whatsapp-history', 'wh-whatsapp-orders']) ? 'active' : '' ?>">Orders History</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('whatsapp_damage', 'view') || hasPermission('whatsapp', 'view')): ?>
+                            <?php if (hasPermission('whatsapp_damage', 'view')): ?>
                             <li><a href="<?= url('warehouse/whatsapp-orders/damage') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-whatsapp-damage', 'whatsapp-damage']) ? 'active' : '' ?>"><i class="bi bi-exclamation-octagon me-1"></i> Damage Management</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('whatsapp_returns', 'view') || hasPermission('whatsapp', 'view')): ?>
+                            <?php if (hasPermission('whatsapp_returns', 'view')): ?>
                             <li><a href="<?= url('warehouse/whatsapp-orders/returns') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-whatsapp-returns', 'whatsapp-returns']) ? 'active' : '' ?>">Returns &amp; Exchanges</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('whatsapp_returns', 'view') || hasPermission('whatsapp', 'view') || hasPermission('whatsapp_return_to_wh', 'view')): ?>
+                            <?php if (hasPermission('whatsapp_return_to_wh', 'view')): ?>
                             <li><a href="<?= url('warehouse/whatsapp-orders/return-to-warehouse') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-whatsapp-return-to-wh', 'whatsapp-return-to-wh']) ? 'active' : '' ?>"><i class="bi bi-arrow-return-left me-1"></i> Return to Warehouse</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('whatsapp_expenses', 'view') || hasPermission('whatsapp', 'view')): ?>
+                            <?php if (hasPermission('whatsapp_expenses', 'view')): ?>
                             <li><a href="<?= url('warehouse/whatsapp-orders/expenses') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-whatsapp-expenses', 'whatsapp-expenses']) ? 'active' : '' ?>"><i class="bi bi-cash-stack me-1"></i> Channel Expenses</a></li>
                             <?php endif; ?>
                         </ul>
@@ -299,8 +301,8 @@ if (!empty($authUser['shop_name'])) {
                         || hasPermission('website_damage', 'view')
                         || hasPermission('website_returns', 'view')
                         || hasPermission('website_return_to_wh', 'view')
-                        || hasPermission('website_expenses', 'view')
-                        || hasPermission('website', 'view');
+                        || hasPermission('website_customers', 'view')
+                        || hasPermission('website_expenses', 'view');
                     ?>
                     <?php if ($canViewWebsite): ?>
                     <li class="nav-item has-submenu">
@@ -310,28 +312,31 @@ if (!empty($authUser['shop_name'])) {
                             <i class="bi bi-chevron-down submenu-arrow"></i>
                         </a>
                         <ul class="submenu <?= in_array(($activeModule ?? ''), ['website', 'website-orders', 'wh-website']) ? 'show' : '' ?>">
-                            <?php if (hasPermission('website_dashboard', 'view') || hasPermission('website', 'view') || hasPermission('website_orders', 'view')): ?>
+                            <?php if (hasPermission('website_dashboard', 'view')): ?>
                             <li><a href="<?= url('warehouse/website-orders') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-website', 'wh-website-dashboard', 'website-dashboard']) ? 'active' : '' ?>">Dashboard</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('website_inward', 'view') || hasPermission('website', 'view')): ?>
+                            <?php if (hasPermission('website_inward', 'view')): ?>
                             <li><a href="<?= url('warehouse/website-orders/inward') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-website-inward', 'website-inward']) ? 'active' : '' ?>">Inward / GRN</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('website_inventory', 'view') || hasPermission('website', 'view')): ?>
+                            <?php if (hasPermission('website_inventory', 'view')): ?>
                             <li><a href="<?= url('warehouse/website-orders/allocations') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-website-allocations', 'website-allocations']) ? 'active' : '' ?>">Inventory</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('website_orders', 'view') || hasPermission('website', 'view')): ?>
+                            <?php if (hasPermission('website_orders', 'view')): ?>
                             <li><a href="<?= url('warehouse/website-orders/history') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-website-history', 'website-history', 'wh-website-orders']) ? 'active' : '' ?>">Orders History</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('website_damage', 'view') || hasPermission('website', 'view')): ?>
+                            <?php if (hasPermission('website_damage', 'view')): ?>
                             <li><a href="<?= url('warehouse/website-orders/damage') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-website-damage', 'website-damage']) ? 'active' : '' ?>"><i class="bi bi-exclamation-octagon me-1"></i> Damage Management</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('website_returns', 'view') || hasPermission('website', 'view')): ?>
+                            <?php if (hasPermission('website_returns', 'view')): ?>
                             <li><a href="<?= url('warehouse/website-orders/returns') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-website-returns', 'website-returns']) ? 'active' : '' ?>">Returns &amp; Exchanges</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('website_returns', 'view') || hasPermission('website', 'view') || hasPermission('website_return_to_wh', 'view')): ?>
+                            <?php if (hasPermission('website_return_to_wh', 'view')): ?>
                             <li><a href="<?= url('warehouse/website-orders/return-to-warehouse') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-website-return-to-wh', 'website-return-to-wh']) ? 'active' : '' ?>"><i class="bi bi-arrow-return-left me-1"></i> Return to Warehouse</a></li>
                             <?php endif; ?>
-                            <?php if (hasPermission('website_expenses', 'view') || hasPermission('website', 'view')): ?>
+                            <?php if (hasPermission('website_customers', 'view')): ?>
+                            <li><a href="<?= url('warehouse/website-orders/customers') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-website-customers', 'website-customers']) ? 'active' : '' ?>">Customers</a></li>
+                            <?php endif; ?>
+                            <?php if (hasPermission('website_expenses', 'view')): ?>
                             <li><a href="<?= url('warehouse/website-orders/expenses') ?>" class="<?= in_array(($activeMenu ?? ''), ['wh-website-expenses', 'website-expenses']) ? 'active' : '' ?>"><i class="bi bi-cash-stack me-1"></i> Channel Expenses</a></li>
                             <?php endif; ?>
                         </ul>
@@ -549,7 +554,7 @@ if (!empty($authUser['shop_name'])) {
         <!-- ============================================ -->
         <!-- MAIN CONTENT -->
         <!-- ============================================ -->
-        <main class="main-content">
+        <main class="main-content <?= ($activeModule ?? '') === 'reports' ? 'reports-content' : '' ?>">
             <!-- Top Navbar -->
             <header class="top-navbar">
                 <div class="navbar-left">

@@ -40,7 +40,6 @@ $definitions = array_merge($definitions, [
     // WhatsApp Channel Hub
     ['module' => 'whatsapp_orders', 'action' => 'view', 'desc' => 'View WhatsApp B2B Orders and history'],
     ['module' => 'whatsapp_orders', 'action' => 'create', 'desc' => 'Create new WhatsApp B2B order'],
-    ['module' => 'whatsapp_orders', 'action' => 'delete', 'desc' => 'Delete / cancel WhatsApp order'],
     ['module' => 'whatsapp_orders', 'action' => 'process', 'desc' => 'Process and dispatch WhatsApp order'],
 
     ['module' => 'whatsapp_inward', 'action' => 'view', 'desc' => 'View WhatsApp stock inward and receipts'],
@@ -53,7 +52,6 @@ $definitions = array_merge($definitions, [
 
     ['module' => 'whatsapp_damage', 'action' => 'view', 'desc' => 'View WhatsApp defective and damaged items'],
     ['module' => 'whatsapp_damage', 'action' => 'create', 'desc' => 'Log new WhatsApp damage entry'],
-    ['module' => 'whatsapp_damage', 'action' => 'delete', 'desc' => 'Delete WhatsApp damage record'],
     ['module' => 'whatsapp_damage', 'action' => 'outward', 'desc' => 'Dispatch damaged goods outward'],
     ['module' => 'whatsapp_damage', 'action' => 'print', 'desc' => 'Print damage gate pass and carton labels'],
 
@@ -71,20 +69,16 @@ $definitions = array_merge($definitions, [
     // Website eCommerce Hub
     ['module' => 'website_orders', 'action' => 'view', 'desc' => 'View eCommerce website orders'],
     ['module' => 'website_orders', 'action' => 'create', 'desc' => 'Create eCommerce order manually'],
-    ['module' => 'website_orders', 'action' => 'delete', 'desc' => 'Delete / cancel website order'],
     ['module' => 'website_orders', 'action' => 'process', 'desc' => 'Process website order and packing'],
 
     ['module' => 'website_inward', 'action' => 'view', 'desc' => 'View website stock inward and receipts'],
-    ['module' => 'website_inward', 'action' => 'create', 'desc' => 'Create website inward receipt'],
     ['module' => 'website_inward', 'action' => 'receive', 'desc' => 'Receive and confirm website inward stock'],
 
     ['module' => 'website_inventory', 'action' => 'view', 'desc' => 'View website dedicated inventory'],
-    ['module' => 'website_inventory', 'action' => 'edit', 'desc' => 'Edit Website inventory details & stock prices'],
     ['module' => 'website_inventory', 'action' => 'adjust', 'desc' => 'Adjust website stock levels'],
 
     ['module' => 'website_damage', 'action' => 'view', 'desc' => 'View website damaged goods'],
     ['module' => 'website_damage', 'action' => 'create', 'desc' => 'Log website damage entry'],
-    ['module' => 'website_damage', 'action' => 'delete', 'desc' => 'Delete website damage record'],
     ['module' => 'website_damage', 'action' => 'outward', 'desc' => 'Dispatch website damaged goods outward'],
     ['module' => 'website_damage', 'action' => 'print', 'desc' => 'Print website damage gate pass and labels'],
 
@@ -199,10 +193,11 @@ $definitions = array_merge($definitions, [
     ['module' => 'website_return_to_wh', 'action' => 'gatepass', 'desc' => 'Print Website return-to-warehouse gate pass'],
     ['module' => 'website_return_to_wh', 'action' => 'print', 'desc' => 'Print Website return-to-warehouse labels'],
     ['module' => 'warehouse', 'action' => 'create', 'desc' => 'Create warehouse transfer'],
+    ['module' => 'warehouse', 'action' => 'edit', 'desc' => 'Update warehouse details'],
+    ['module' => 'warehouse', 'action' => 'delete', 'desc' => 'Delete warehouse'],
     ['module' => 'warehouse', 'action' => 'approve', 'desc' => 'Approve warehouse transfer'],
     ['module' => 'warehouse', 'action' => 'receive', 'desc' => 'Receive warehouse transfer'],
-    ['module' => 'website_orders', 'action' => 'edit', 'desc' => 'Update website order processing details'],
-    ['module' => 'whatsapp_orders', 'action' => 'edit', 'desc' => 'Update WhatsApp order processing details'],
+    ['module' => 'stock', 'action' => 'edit', 'desc' => 'Edit warehouse stock prices (MRP and selling price)'],
     ['module' => 'assets', 'action' => 'print', 'desc' => 'Print asset labels'],
 ]);
 

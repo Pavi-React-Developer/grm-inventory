@@ -25,7 +25,7 @@ $allocBackUrl = $isShopReq ? url('warehouse/shop-requests') : url('warehouse/all
         </p>
     </div>
     <div class="d-flex gap-2">
-        <?php if (!$isShopReq && in_array($allocation['status'], ['APPROVED', 'PICKING', 'PACKING'])): ?>
+        <?php if (!$isShopReq && in_array($allocation['status'], ['APPROVED', 'PICKING', 'PACKING']) && hasPermission('allocation_outward', 'create')): ?>
             <a href="<?= url('warehouse/allocation/outward') ?>" class="btn btn-primary">
                 <i class="bi bi-truck me-1"></i> Dispatch Outward
             </a>
@@ -125,9 +125,13 @@ $allocBackUrl = $isShopReq ? url('warehouse/shop-requests') : url('warehouse/all
                     <h5 class="fw-bold text-success mb-2"><i class="bi bi-check-circle-fill me-2"></i>Outward Dispatch Completed</h5>
                     <p class="text-muted small mb-3">This shop stock requisition has been dispatched. Reserved warehouse inventory was deducted upon dispatch confirmation.</p>
                     <div>
-                        <a href="<?= url('warehouse/allocation/gatepass/' . $allocation['id']) ?>" target="_blank" class="btn btn-primary">
-                            <i class="bi bi-qr-code-scan me-1"></i> Print Gate Pass &amp; Box Sticker
-                        </a>
+                        <?php if (hasPermission('allocation_outward', 'gatepass')): ?>
+                            <?php if (hasPermission('allocation_outward', 'gatepass')): ?>
+                                <a href="<?= url('warehouse/allocation/gatepass/' . $allocation['id']) ?>" target="_blank" class="btn btn-primary">
+                                    <i class="bi bi-qr-code-scan me-1"></i> Print Gate Pass &amp; Box Sticker
+                                </a>
+                            <?php endif; ?>
+                        <?php endif; ?>
                     </div>
                 </div>
             <?php endif; ?>
@@ -178,9 +182,11 @@ $allocBackUrl = $isShopReq ? url('warehouse/shop-requests') : url('warehouse/all
                         <span>Allocated Stock Piece QR Codes</span> 
                         <span class="badge bg-primary-subtle text-primary fw-semibold px-2.5 py-1 fs-6 rounded-pill"><?= count($pieceQRs ?? []) ?> Pieces</span>
                     </h5>
-                    <a href="<?= url('warehouse/allocation/gatepass/' . $allocation['id']) ?>" target="_blank" class="btn btn-sm btn-outline-primary px-3 rounded-pill">
-                        <i class="bi bi-printer me-1"></i> Print Labels
-                    </a>
+                    <?php if (hasPermission('allocation_outward', 'gatepass')): ?>
+                        <a href="<?= url('warehouse/allocation/gatepass/' . $allocation['id']) ?>" target="_blank" class="btn btn-sm btn-outline-primary px-3 rounded-pill">
+                            <i class="bi bi-printer me-1"></i> Print Labels
+                        </a>
+                    <?php endif; ?>
                 </div>
                 
                 <?php if (empty($pieceQRs)): ?>

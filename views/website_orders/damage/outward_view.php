@@ -1,5 +1,6 @@
 <?php
 // views/website_orders/damage/outward_view.php — Damaged Outward Batch Details
+$canPrintDamageOutward = hasPermission('website_damage', 'print');
 ?>
 
 <div class="container-fluid px-4 py-3">
@@ -34,12 +35,14 @@
             <a href="<?= url('warehouse/website-orders/damage/outward') ?>" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i> Back to Outwards
             </a>
-            <a href="<?= url('warehouse/website-orders/damage/outward/gatepass/' . $batch['id']) ?>" target="_blank" class="btn btn-dark">
-                <i class="bi bi-printer me-1"></i> Print Gate Pass
-            </a>
-            <a href="<?= url('warehouse/website-orders/damage/outward/label/' . $batch['id']) ?>" target="_blank" class="btn btn-danger">
-                <i class="bi bi-qr-code me-1"></i> Print Carton QR Label
-            </a>
+            <?php if ($canPrintDamageOutward): ?>
+                <a href="<?= url('warehouse/website-orders/damage/outward/gatepass/' . $batch['id']) ?>" target="_blank" class="btn btn-dark">
+                    <i class="bi bi-printer me-1"></i> Print Gate Pass
+                </a>
+                <a href="<?= url('warehouse/website-orders/damage/outward/label/' . $batch['id']) ?>" target="_blank" class="btn btn-danger">
+                    <i class="bi bi-qr-code me-1"></i> Print Carton QR Label
+                </a>
+            <?php endif; ?>
         </div>
     </div>
 

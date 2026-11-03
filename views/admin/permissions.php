@@ -7,7 +7,10 @@ $rolePermIds = array_map('intval', $rolePermissionIds ?? []);
 $totalPossiblePerms = 0;
 foreach ($hierarchicalModules as $m) {
     foreach ($m['submodules'] as $s) {
-        $totalPossiblePerms += count($s['permissions'] ?? []);
+        $totalPossiblePerms += count(array_intersect_key(
+            $s['permissions'] ?? [],
+            array_flip(['view', 'create', 'edit', 'delete'])
+        ));
     }
 }
 ?>
@@ -119,10 +122,13 @@ foreach ($hierarchicalModules as $m) {
                 $modTotalPerms = 0;
                 $modActivePerms = 0;
                 foreach ($submodules as $sub) {
-                    foreach ($sub['permissions'] ?? [] as $p) {
-                        $modTotalPerms++;
-                        if (in_array((int)$p['id'], $rolePermIds, true)) {
-                            $modActivePerms++;
+                    $crudPermissions = Role::getCrudPermissionsByAction($sub['permissions'] ?? []);
+                    foreach ($crudPermissions as $actionPermissions) {
+                        foreach ($actionPermissions as $p) {
+                            $modTotalPerms++;
+                            if (in_array((int)$p['id'], $rolePermIds, true)) {
+                                $modActivePerms++;
+                            }
                         }
                     }
                 }
@@ -171,22 +177,19 @@ foreach ($hierarchicalModules as $m) {
                                 <thead class="table-light">
                                     <tr class="text-uppercase small text-muted font-monospace">
                                         <th class="ps-4 py-3" style="min-width: 260px; width: 34%;">Submodule & Description</th>
-                                        <th class="text-center py-3" style="width: 11%;">
+                                        <th class="text-center py-3" style="width: 14%;">
                                             <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">View</span>
                                         </th>
-                                        <th class="text-center py-3" style="width: 11%;">
+                                        <th class="text-center py-3" style="width: 14%;">
                                             <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">Create</span>
                                         </th>
-                                        <th class="text-center py-3" style="width: 11%;">
+                                        <th class="text-center py-3" style="width: 14%;">
                                             <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1">Edit</span>
                                         </th>
-                                        <th class="text-center py-3" style="width: 11%;">
+                                        <th class="text-center py-3" style="width: 14%;">
                                             <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1">Delete</span>
                                         </th>
-                                        <th class="text-center py-3" style="width: 13%;">
-                                            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-2 py-1">Special / Action</span>
-                                        </th>
-                                        <th class="text-center pe-4 py-3" style="width: 9%;">
+                                        <th class="text-center pe-4 py-3" style="width: 10%;">
                                             <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-1">Row All</span>
                                         </th>
                                     </tr>
@@ -199,19 +202,7 @@ foreach ($hierarchicalModules as $m) {
                                         $subIcon = $sub['icon'] ?? 'bi-circle';
                                         $subDesc = $sub['desc'] ?? '';
 
-                                        // Standard CRUD
-                                        $viewPerm   = $subPerms['view'] ?? null;
-                                        $createPerm = $subPerms['create'] ?? null;
-                                        $editPerm   = $subPerms['edit'] ?? null;
-                                        $deletePerm = $subPerms['delete'] ?? null;
-
-                                        // Extra / Special permissions (e.g. approve, export, adjust, download, print)
-                                        $specialActions = [];
-                                        foreach ($subPerms as $act => $p) {
-                                            if (!in_array($act, ['view', 'create', 'edit', 'delete'], true)) {
-                                                $specialActions[$act] = $p;
-                                            }
-                                        }
+                                        $crudColumns = Role::getCrudPermissionsByAction($subPerms);
                                         ?>
                                         <tr class="submodule-row" data-submodule-key="<?= e($subKey) ?>" data-module-key="<?= e($modKey) ?>">
                                             <!-- Submodule Title & Info -->
@@ -227,145 +218,34 @@ foreach ($hierarchicalModules as $m) {
                                                 </div>
                                             </td>
 
-                                            <!-- 1. VIEW -->
-                                            <td class="text-center py-3">
-                                                <?php if ($viewPerm): ?>
-                                                    <?php $isChecked = in_array((int)$viewPerm['id'], $rolePermIds, true); ?>
-                                                    <div class="form-check d-inline-block mb-0">
-                                                        <input class="form-check-input perm-checkbox perm-view mod-<?= e($modKey) ?> row-<?= e($subKey) ?>" 
-                                                               type="checkbox" 
-                                                               name="permissions[]" 
-                                                               value="<?= $viewPerm['id'] ?>" 
-                                                               id="perm_<?= $viewPerm['id'] ?>" 
-                                                               data-module="<?= e($modKey) ?>"
-                                                               data-submodule="<?= e($subKey) ?>"
-                                                               data-action="view"
-                                                               <?= $isChecked ? 'checked' : '' ?>
-                                                               title="View access for <?= e($subName) ?>">
-                                                    </div>
-                                                <?php else: ?>
-                                                    <span class="text-muted small opacity-50">—</span>
-                                                <?php endif; ?>
-                                            </td>
-
-                                            <!-- 2. CREATE -->
-                                            <td class="text-center py-3">
-                                                <?php if ($createPerm): ?>
-                                                    <?php $isChecked = in_array((int)$createPerm['id'], $rolePermIds, true); ?>
-                                                    <div class="form-check d-inline-block mb-0">
-                                                        <input class="form-check-input perm-checkbox perm-create mod-<?= e($modKey) ?> row-<?= e($subKey) ?>" 
-                                                               type="checkbox" 
-                                                               name="permissions[]" 
-                                                               value="<?= $createPerm['id'] ?>" 
-                                                               id="perm_<?= $createPerm['id'] ?>" 
-                                                               data-module="<?= e($modKey) ?>"
-                                                               data-submodule="<?= e($subKey) ?>"
-                                                               data-action="create"
-                                                               <?= $isChecked ? 'checked' : '' ?>
-                                                               title="Create access for <?= e($subName) ?>">
-                                                    </div>
-                                                <?php else: ?>
-                                                    <span class="text-muted small opacity-50">—</span>
-                                                <?php endif; ?>
-                                            </td>
-
-                                            <!-- 3. EDIT -->
-                                            <td class="text-center py-3">
-                                                <?php if ($editPerm): ?>
-                                                    <?php $isChecked = in_array((int)$editPerm['id'], $rolePermIds, true); ?>
-                                                    <div class="form-check d-inline-block mb-0">
-                                                        <input class="form-check-input perm-checkbox perm-edit mod-<?= e($modKey) ?> row-<?= e($subKey) ?>" 
-                                                               type="checkbox" 
-                                                               name="permissions[]" 
-                                                               value="<?= $editPerm['id'] ?>" 
-                                                               id="perm_<?= $editPerm['id'] ?>" 
-                                                               data-module="<?= e($modKey) ?>"
-                                                               data-submodule="<?= e($subKey) ?>"
-                                                               data-action="edit"
-                                                               <?= $isChecked ? 'checked' : '' ?>
-                                                               title="Edit access for <?= e($subName) ?>">
-                                                    </div>
-                                                <?php else: ?>
-                                                    <span class="text-muted small opacity-50">—</span>
-                                                <?php endif; ?>
-                                            </td>
-
-                                            <!-- 4. DELETE -->
-                                            <td class="text-center py-3">
-                                                <?php if ($deletePerm): ?>
-                                                    <?php $isChecked = in_array((int)$deletePerm['id'], $rolePermIds, true); ?>
-                                                    <div class="form-check d-inline-block mb-0">
-                                                        <input class="form-check-input perm-checkbox perm-delete mod-<?= e($modKey) ?> row-<?= e($subKey) ?>" 
-                                                               type="checkbox" 
-                                                               name="permissions[]" 
-                                                               value="<?= $deletePerm['id'] ?>" 
-                                                               id="perm_<?= $deletePerm['id'] ?>" 
-                                                               data-module="<?= e($modKey) ?>"
-                                                               data-submodule="<?= e($subKey) ?>"
-                                                               data-action="delete"
-                                                               <?= $isChecked ? 'checked' : '' ?>
-                                                               title="Delete access for <?= e($subName) ?>">
-                                                    </div>
-                                                <?php else: ?>
-                                                    <span class="text-muted small opacity-50">—</span>
-                                                <?php endif; ?>
-                                            </td>
-
-                                            <!-- 5. SPECIAL / EXTRA ACTIONS -->
-                                            <td class="text-center py-3">
-                                                <?php if (!empty($specialActions)): ?>
-                                                    <div class="d-flex flex-wrap align-items-center justify-content-center gap-1.5">
-                                                        <?php foreach ($specialActions as $sAct => $sPerm): ?>
-                                                            <?php 
-                                                            $isChecked = in_array((int)$sPerm['id'], $rolePermIds, true);
-                                                            $badgeStyle = match($sAct) {
-                                                                'approve'     => 'text-purple border-purple bg-purple-subtle',
-                                                                'export'      => 'text-indigo border-indigo bg-indigo-subtle',
-                                                                'print'       => 'text-teal border-teal bg-teal-subtle',
-                                                                'adjust'      => 'text-warning border-warning bg-warning-subtle',
-                                                                'edit_price'  => 'text-success border-success bg-success-subtle',
-                                                                'request'     => 'text-warning-emphasis border-warning bg-warning-subtle',
-                                                                'download'    => 'text-primary border-primary bg-primary-subtle',
-                                                                'receive'     => 'text-success border-success bg-success-subtle',
-                                                                'process'     => 'text-info border-info bg-info-subtle',
-                                                                'voucher'     => 'text-primary border-primary bg-primary-subtle',
-                                                                'dispatch'    => 'text-info border-info bg-info-subtle',
-                                                                'outward'     => 'text-warning border-warning bg-warning-subtle',
-                                                                'verify'      => 'text-success border-success bg-success-subtle',
-                                                                'restore'     => 'text-danger border-danger bg-danger-subtle',
-                                                                'scan'        => 'text-teal border-teal bg-teal-subtle',
-                                                                'gatepass'    => 'text-dark border-dark bg-dark-subtle',
-                                                                'pick'        => 'text-primary border-primary bg-primary-subtle',
-                                                                'pack'        => 'text-teal border-teal bg-teal-subtle',
-                                                                'inspect'     => 'text-purple border-purple bg-purple-subtle',
-                                                                'classify'    => 'text-indigo border-indigo bg-indigo-subtle',
-                                                                'resolve'     => 'text-success border-success bg-success-subtle',
-                                                                'close_shift' => 'text-danger border-danger bg-danger-subtle',
-                                                                'mark_read'   => 'text-secondary border-secondary bg-secondary-subtle',
-                                                                default       => 'text-dark border-secondary bg-light'
-                                                            };
-                                                            ?>
-                                                            <label class="form-check-label badge border cursor-pointer d-inline-flex align-items-center gap-1 px-2 py-1 <?= $badgeStyle ?>" 
-                                                                   for="perm_<?= $sPerm['id'] ?>" 
-                                                                   title="<?= e($sPerm['description'] ?? ucfirst($sAct)) ?>">
-                                                                <input class="form-check-input mt-0 perm-checkbox perm-special mod-<?= e($modKey) ?> row-<?= e($subKey) ?>" 
-                                                                       type="checkbox" 
-                                                                       name="permissions[]" 
-                                                                       value="<?= $sPerm['id'] ?>" 
-                                                                       id="perm_<?= $sPerm['id'] ?>" 
-                                                                       data-module="<?= e($modKey) ?>"
-                                                                       data-submodule="<?= e($subKey) ?>"
-                                                                       data-action="<?= e($sAct) ?>"
-                                                                       <?= $isChecked ? 'checked' : '' ?>
-                                                                       style="cursor: pointer; width: 0.9em; height: 0.9em;">
-                                                                <span class="text-capitalize small fw-semibold"><?= e($sAct) ?></span>
-                                                            </label>
-                                                        <?php endforeach; ?>
-                                                    </div>
-                                                <?php else: ?>
-                                                    <span class="text-muted small opacity-50">—</span>
-                                                <?php endif; ?>
-                                            </td>
+                                            <?php foreach (['view', 'create', 'edit', 'delete'] as $crudAction): ?>
+                                                <td class="text-center py-3">
+                                                    <?php $columnPermissions = $crudColumns[$crudAction]; ?>
+                                                    <?php if (!empty($columnPermissions)): ?>
+                                                        <div class="d-flex flex-column align-items-center gap-1">
+                                                            <?php foreach ($columnPermissions as $permissionAction => $permission): ?>
+                                                                <?php $isChecked = in_array((int)$permission['id'], $rolePermIds, true); ?>
+                                                                <label class="form-check-label d-inline-flex align-items-center justify-content-center gap-1 small" title="<?= e($permission['description'] ?? ucfirst($permissionAction)) ?>">
+                                                                    <input class="form-check-input mt-0 perm-checkbox perm-<?= e($crudAction) ?> mod-<?= e($modKey) ?> row-<?= e($subKey) ?>"
+                                                                           type="checkbox"
+                                                                           name="permissions[]"
+                                                                           value="<?= $permission['id'] ?>"
+                                                                           id="perm_<?= $permission['id'] ?>"
+                                                                           data-module="<?= e($modKey) ?>"
+                                                                           data-submodule="<?= e($subKey) ?>"
+                                                                           data-action="<?= e($permissionAction) ?>"
+                                                                           <?= $isChecked ? 'checked' : '' ?>>
+                                                                    <?php if ($permissionAction !== $crudAction): ?>
+                                                                        <span class="text-capitalize"><?= e(str_replace('_', ' ', $permissionAction)) ?></span>
+                                                                    <?php endif; ?>
+                                                                </label>
+                                                            <?php endforeach; ?>
+                                                        </div>
+                                                    <?php else: ?>
+                                                        <span class="text-muted small opacity-50">—</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                            <?php endforeach; ?>
 
                                             <!-- 6. ROW MASTER TOGGLE -->
                                             <td class="text-center pe-4 py-3">

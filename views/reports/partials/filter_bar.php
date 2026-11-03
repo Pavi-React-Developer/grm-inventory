@@ -8,6 +8,26 @@ $curMonth      = (int)($filter['month'] ?? date('m'));
 $curFromDate   = $filter['from_date'] ?? date('Y-m-01');
 $curToDate     = $filter['to_date'] ?? date('Y-m-d');
 $currentReportType = $reportType ?? 'overview';
+$reportPermissionModules = [
+    'overview' => 'reports_overview',
+    'profitability' => 'reports_profitability',
+    'sales' => 'reports_sales',
+    'sales_pos' => 'reports_sales',
+    'sales_warehouse' => 'reports_sales',
+    'sales_website' => 'reports_sales',
+    'sales_whatsapp' => 'reports_sales',
+    'website' => 'reports_website',
+    'whatsapp' => 'reports_whatsapp',
+    'online' => 'reports_online',
+    'production' => 'reports_production',
+    'warehouse' => 'reports_warehouse',
+    'purchase' => 'reports_purchase',
+    'shop' => 'reports_shop',
+    'inventory' => 'reports_inventory',
+];
+$reportPermissionModule = $reportPermissionModules[$currentReportType] ?? 'reports_overview';
+$canExportReport = hasPermission($reportPermissionModule, 'export');
+$canPrintReport = hasPermission($reportPermissionModule, 'print');
 
 $yearsList = [date('Y') + 1, date('Y'), date('Y') - 1, date('Y') - 2];
 $monthsList = [
@@ -71,22 +91,28 @@ $monthsList = [
 
             <!-- Action Buttons aligned with inputs -->
             <div class="col-xl ms-auto d-flex align-items-center justify-content-sm-end gap-2 mt-2 mt-xl-0 flex-wrap">
-                <!-- Download PDF Button (Seamless direct download) -->
-                <button type="button" id="btnDownloadPdfFilter" onclick="triggerPdfDownload()" class="btn btn-sm btn-outline-danger fw-semibold shadow-xs" title="Download official PDF report">
+                <?php if ($canPrintReport): ?>
+                <a href="<?= url("reports/print/{$currentReportType}?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>"
+                   target="_blank" rel="noopener" class="btn btn-sm btn-outline-danger fw-semibold shadow-xs" title="Download official PDF report">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>Download PDF
-                </button>
+                </a>
+                <?php endif; ?>
 
                 <!-- Export CSV Button -->
+                <?php if ($canExportReport): ?>
                 <a href="<?= url("reports/export/{$currentReportType}?" . http_build_query($_GET)) ?>" 
                    class="btn btn-sm btn-outline-success fw-semibold shadow-xs" title="Export this report to Excel/CSV">
                     <i class="bi bi-file-earmark-excel me-1"></i>Export CSV
                 </a>
+                <?php endif; ?>
 
                 <!-- Print Document Button -->
+                <?php if ($canPrintReport): ?>
                 <a href="<?= url("reports/print/{$currentReportType}?" . http_build_query($_GET)) ?>" 
-                   target="_blank" class="btn btn-sm btn-outline-secondary fw-semibold shadow-xs" title="Open printable document view">
+                   target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary fw-semibold shadow-xs" title="Open printable document view">
                     <i class="bi bi-printer me-1"></i>Print
                 </a>
+                <?php endif; ?>
             </div>
         </form>
 
@@ -182,65 +208,13 @@ function autoSubmitCustomDate() {
     }
 }
 
-let currentPdfBtn = null;
-let currentBtnHtml = '';
-
-// Preload the iframe silently so it's ready when the user clicks
-document.addEventListener('DOMContentLoaded', function() {
-    let iframe = document.getElementById('pdfHiddenIframe');
-    if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'pdfHiddenIframe';
-        iframe.style.position = 'absolute';
-        iframe.style.left = '-9999px';
-        iframe.style.top = '-9999px';
-        iframe.style.width = '1200px';
-        iframe.style.height = '1200px';
-        iframe.src = '<?= url("reports/print/{$currentReportType}?" . http_build_query(array_merge($_GET, ['pdf' => '0']))) ?>';
-        document.body.appendChild(iframe);
+function triggerPdfDownload(url) {
+    if (!url) return;
+    const pdfWindow = window.open(url, '_blank');
+    if (!pdfWindow) {
+        alert('Your browser blocked the PDF window. Allow pop-ups for this site and try again.');
+        return;
     }
-    
-    // Listen for completion
-    window.addEventListener('message', function(e) {
-        if (e.data === 'PDF_GENERATED' || e.data === 'PDF_FAILED') {
-            const btn = currentPdfBtn || document.getElementById('btnDownloadPdfFilter');
-            if (btn) {
-                btn.innerHTML = currentPdfBtn ? currentBtnHtml : '<i class="bi bi-file-earmark-pdf-fill me-1"></i>Download PDF';
-                btn.disabled = false;
-                btn.classList.remove('disabled');
-            }
-            if(e.data === 'PDF_FAILED') {
-                alert('Failed to generate PDF. Please try the Print Document option.');
-            }
-        }
-    });
-});
-
-function triggerPdfDownload(url = null, btnElement = null) {
-    currentPdfBtn = btnElement || document.getElementById('btnDownloadPdfFilter');
-    if (!currentPdfBtn) return;
-    
-    currentBtnHtml = currentPdfBtn.innerHTML;
-    currentPdfBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
-    currentPdfBtn.disabled = true;
-    currentPdfBtn.classList.add('disabled');
-    
-    const iframe = document.getElementById('pdfHiddenIframe');
-    if (url && iframe) {
-        // Load the new url. The url contains pdf=1 so it will auto-trigger inside the iframe.
-        iframe.src = url;
-    } else if (iframe && iframe.contentWindow) {
-        // Trigger the already preloaded main report
-        iframe.contentWindow.postMessage('START_PDF', '*');
-    }
-    
-    // Failsafe timeout
-    setTimeout(() => {
-        if (currentPdfBtn && currentPdfBtn.disabled) {
-            currentPdfBtn.innerHTML = currentBtnHtml;
-            currentPdfBtn.disabled = false;
-            currentPdfBtn.classList.remove('disabled');
-        }
-    }, 10000);
+    pdfWindow.opener = null;
 }
 </script>

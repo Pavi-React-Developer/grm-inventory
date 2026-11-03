@@ -4,10 +4,12 @@
         <span class="text-muted small">Dispatch finished allocation boxes to retail shops and sales channels with vehicle tracking</span>
     </div>
     <div class="d-flex gap-2">
+        <?php if (hasPermission('allocation', 'view')): ?>
         <a href="<?= url('warehouse/allocation') ?>" class="btn btn-outline-secondary">
             <i class="bi bi-list-ul me-1"></i> View Requisitions
         </a>
-        <?php if (!empty($approvedAllocations) && (hasPermission('allocation_outward', 'create') || hasPermission('allocation', 'dispatch') || hasPermission('allocations', 'create'))): ?>
+        <?php endif; ?>
+        <?php if (!empty($approvedAllocations) && hasPermission('allocation_outward', 'create')): ?>
             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newAllocationOutwardModal">
                 <i class="bi bi-plus-circle me-1"></i> New Dispatch Outward
             </button>
@@ -22,7 +24,7 @@
             <i class="bi bi-info-circle-fill me-2 fs-5 text-info"></i>
             <strong><?= count($approvedAllocations) ?> Approved / Packed Allocation(s)</strong> ready for dispatch to shops or channels.
         </div>
-        <?php if (hasPermission('allocation_outward', 'create') || hasPermission('allocation', 'dispatch') || hasPermission('allocations', 'create')): ?>
+        <?php if (hasPermission('allocation_outward', 'create')): ?>
         <button type="button" class="btn btn-sm btn-info text-white fw-bold" data-bs-toggle="modal" data-bs-target="#newAllocationOutwardModal">
             Dispatch Outward Now &rarr;
         </button>
@@ -72,7 +74,7 @@
                 <?= count($approvedAllocations ?? []) ?> Batches Ready
             </span>
         </div>
-        <?php if (!empty($approvedAllocations) && (hasPermission('allocation_outward', 'create') || hasPermission('allocation', 'dispatch') || hasPermission('allocations', 'create'))): ?>
+        <?php if (!empty($approvedAllocations) && hasPermission('allocation_outward', 'create')): ?>
             <button type="button" class="btn btn-primary btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#newAllocationOutwardModal">
                 <i class="bi bi-plus-circle me-1"></i> Dispatch Batch
             </button>
@@ -132,7 +134,7 @@
                                 </td>
                                 <td class="text-end">
                                     <div class="d-flex justify-content-end gap-1">
-                                        <?php if (hasPermission('allocation_outward', 'create') || hasPermission('allocation', 'dispatch') || hasPermission('allocations', 'create')): ?>
+                                        <?php if (hasPermission('allocation_outward', 'create')): ?>
                                         <button type="button" 
                                                 class="btn btn-sm btn-primary fw-bold dispatch-batch-btn shadow-sm" 
                                                 data-allocation-id="<?= $ab['id'] ?>" 
@@ -206,9 +208,11 @@
                                 </td>
                                 <td class="text-end">
                                     <div class="d-flex justify-content-end gap-1">
-                                        <a href="<?= url('warehouse/allocation/gatepass/' . $o['allocation_id']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary">
-                                            <i class="bi bi-qr-code-scan me-1"></i> QR Sticker / Pass
-                                        </a>
+                                        <?php if (hasPermission('allocation_outward', 'gatepass')): ?>
+                                            <a href="<?= url('warehouse/allocation/gatepass/' . $o['allocation_id']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                                <i class="bi bi-qr-code-scan me-1"></i> QR Sticker / Pass
+                                            </a>
+                                        <?php endif; ?>
 
                                     </div>
                                 </td>

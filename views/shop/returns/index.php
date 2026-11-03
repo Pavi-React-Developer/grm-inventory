@@ -4,9 +4,11 @@
         <span class="text-muted">Process retail POS returns, size &amp; color exchanges, and refunds for Shop customers</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <?php if (hasPermission('shop_returns', 'create')): ?>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newReturnModal">
             <i class="bi bi-plus-circle me-1"></i> New Return / Exchange
         </button>
+        <?php endif; ?>
     </div>
 </div>
 

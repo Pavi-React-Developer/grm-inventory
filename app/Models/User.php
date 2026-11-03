@@ -37,6 +37,9 @@ class User {
                 PRIMARY KEY (user_id, permission_id),
                 INDEX idx_user_perms (user_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            Database::execute("CREATE TABLE IF NOT EXISTS user_permission_overrides (
+                user_id INT UNSIGNED NOT NULL PRIMARY KEY
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         } catch (Throwable $e) {}
     }
 
@@ -265,10 +268,19 @@ class User {
     public static function savePermissions(int $userId, array $permissionIds): void {
         self::ensureSchema();
         Database::execute("DELETE FROM user_permissions WHERE user_id = ?", [$userId]);
-        $cleanIds = array_filter(array_map('intval', $permissionIds));
+        $cleanIds = array_values(array_unique(array_filter(array_map('intval', $permissionIds))));
+        if (!empty($cleanIds)) {
+            $placeholders = implode(',', array_fill(0, count($cleanIds), '?'));
+            $rows = Database::fetchAll(
+                "SELECT id FROM permissions WHERE id IN ($placeholders)",
+                $cleanIds
+            );
+            $cleanIds = array_map('intval', array_column($rows, 'id'));
+        }
         foreach ($cleanIds as $pid) {
             Database::execute("INSERT IGNORE INTO user_permissions (user_id, permission_id) VALUES (?, ?)", [$userId, $pid]);
         }
+        Database::execute("INSERT IGNORE INTO user_permission_overrides (user_id) VALUES (?)", [$userId]);
     }
 
     /**
@@ -304,6 +316,9 @@ class User {
         if (!empty($customRows)) {
             return array_column($customRows, 'permission_key');
         }
+        if (self::hasPermissionOverride($userId)) {
+            return [];
+        }
 
         // Fallback to role permissions
         $rows = Database::fetchAll(
@@ -329,6 +344,9 @@ class User {
         if (!empty($customRows)) {
             return array_map('intval', array_column($customRows, 'permission_id'));
         }
+        if (self::hasPermissionOverride($userId)) {
+            return [];
+        }
 
         $roleRows = Database::fetchAll(
             "SELECT rp.permission_id 
@@ -338,6 +356,13 @@ class User {
             [$userId]
         );
         return array_map('intval', array_column($roleRows, 'permission_id'));
+    }
+
+    private static function hasPermissionOverride(int $userId): bool {
+        return (bool)Database::fetchOne(
+            "SELECT user_id FROM user_permission_overrides WHERE user_id = ?",
+            [$userId]
+        );
     }
 
     /**

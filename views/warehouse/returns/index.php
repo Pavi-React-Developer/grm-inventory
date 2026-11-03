@@ -4,15 +4,21 @@
        
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="<?= url('warehouse/dashboard') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-speedometer2 me-1"></i> Dashboard
-        </a>
-        <a href="<?= url('warehouse/damage') ?>" class="btn btn-outline-danger">
-            <i class="bi bi-exclamation-octagon me-1"></i> Warehouse Damage
-        </a>
-        <a href="<?= url('warehouse/labels?tab=return_tags') ?>" class="btn btn-outline-primary">
-            <i class="bi bi-qr-code me-1"></i> Return QR Suite
-        </a>
+        <?php if (hasPermission('warehouse', 'view')): ?>
+            <a href="<?= url('warehouse/dashboard') ?>" class="btn btn-outline-secondary">
+                <i class="bi bi-speedometer2 me-1"></i> Dashboard
+            </a>
+        <?php endif; ?>
+        <?php if (hasPermission('damage', 'view')): ?>
+            <a href="<?= url('warehouse/damage') ?>" class="btn btn-outline-danger">
+                <i class="bi bi-exclamation-octagon me-1"></i> Warehouse Damage
+            </a>
+        <?php endif; ?>
+        <?php if (hasPermission('wh_labels', 'view')): ?>
+            <a href="<?= url('warehouse/labels?tab=return_tags') ?>" class="btn btn-outline-primary">
+                <i class="bi bi-qr-code me-1"></i> Return QR Suite
+            </a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -271,14 +277,21 @@
 
                         <!-- Actions -->
                         <td class="text-end">
-                            <?php 
-                            $canInspect = hasPermission('returns', 'inspect') || hasPermission('returns', 'create') || hasPermission('returns', 'edit');
+                            <?php
+                            $canInspect = hasPermission('returns', 'inspect');
+                            $canViewReturn = hasPermission('returns', 'view');
                             ?>
                             <div class="d-flex justify-content-end gap-1">
+                                <?php if ($canInspect): ?>
                                 <a href="<?= url('warehouse/returns/inspect/' . $ret['id']) ?>" class="btn btn-sm <?= ($isClassified || !$canInspect) ? 'btn-outline-primary' : 'btn-primary' ?>" title="<?= ($isClassified || !$canInspect) ? 'View return batch QC details' : 'Inspect and classify return batch' ?>">
                                     <i class="bi <?= ($isClassified || !$canInspect) ? 'bi-eye' : 'bi-clipboard-check' ?> me-1"></i>
                                     <?= ($isClassified || !$canInspect) ? 'View QC' : 'Inspect &amp; Classify' ?>
                                 </a>
+                                <?php elseif ($canViewReturn): ?>
+                                <a href="<?= url('warehouse/returns/view/' . $ret['id']) ?>" class="btn btn-sm btn-outline-primary" title="View return batch details">
+                                    <i class="bi bi-eye me-1"></i> View
+                                </a>
+                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>

@@ -50,7 +50,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
             <i class="bi bi-box-arrow-in-down me-1"></i> + Inward Production GRN
         </a>
         <?php endif; ?> -->
-        <?php if (hasPermission('wh_adjustments', 'view') || hasPermission('wh_adjustments', 'create')): ?>
+        <?php if (hasPermission('stock', 'view')): ?>
         <a href="<?= url('warehouse/adjustments') ?>" class="btn btn-outline-secondary">
             <i class="bi bi-sliders me-1"></i> Stock Adjustments
         </a>
@@ -134,6 +134,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
 
     <!-- 5. Damaged Stock -->
     <div class="col-sm-6 col-xl">
+        <?php if (hasPermission('damage', 'view')): ?>
         <a href="<?= url('warehouse/damage?warehouse_id=' . ($selectedWarehouseId ?? '') . '&status=LOGGED') ?>" class="text-decoration-none">
             <div class="card border-0 shadow-sm border-start border-danger border-4 h-100 bg-danger bg-opacity-10">
                 <div class="card-body p-3">
@@ -148,6 +149,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
                 </div>
             </div>
         </a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -341,7 +343,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
                 
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
-                <?php if (hasPermission('catalog', 'edit') || hasPermission('stock', 'edit') || hasPermission('warehouse', 'edit') || (Session::get('role') === 'ADMIN')): ?>
+                <?php if (hasPermission('stock', 'edit')): ?>
                 <button type="button" class="btn btn-outline-success shadow-sm fw-semibold btnTogglePriceEdit" onclick="togglePriceEditMode()">
                     <i class="bi bi-pencil-square me-1"></i> <span class="btnPriceEditLabel">Edit Price</span>
                 </button>
@@ -371,9 +373,11 @@ if (!function_exists('renderCategoryTypeBadge')) {
                         <i class="bi bi-gear fs-1 text-muted d-block mb-3"></i>
                         <h5 class="text-muted">No In-House Production Stock Records Found</h5>
                         <p class="text-muted small">Perform a Production Inward GRN verification to credit manufactured garments into this warehouse.</p>
-                        <a href="<?= url('warehouse/inward') ?>" class="btn btn-primary px-4 py-2">
-                            <i class="bi bi-box-arrow-in-down me-1"></i> Verify Production Inward Batch
-                        </a>
+                        <?php if (hasPermission('inward', 'view')): ?>
+                            <a href="<?= url('warehouse/inward') ?>" class="btn btn-primary px-4 py-2">
+                                <i class="bi bi-box-arrow-in-down me-1"></i> Verify Production Inward Batch
+                            </a>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
             <?php else: ?>
@@ -491,7 +495,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
                 
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
-                <?php if (hasPermission('catalog', 'edit') || hasPermission('stock', 'edit') || hasPermission('warehouse', 'edit') || (Session::get('role') === 'ADMIN')): ?>
+                <?php if (hasPermission('stock', 'edit')): ?>
                 <button type="button" class="btn btn-outline-success shadow-sm fw-semibold btnTogglePriceEdit" onclick="togglePriceEditMode()">
                     <i class="bi bi-pencil-square me-1"></i> <span class="btnPriceEditLabel">Edit Price</span>
                 </button>
@@ -513,9 +517,11 @@ if (!function_exists('renderCategoryTypeBadge')) {
                     <i class="bi bi-shop fs-1 text-muted d-block mb-3"></i>
                     <h5 class="text-muted">No Third-Party Product Stock Found</h5>
                     <p class="text-muted small">Go to the Warehouse Catalog and click <strong>"Update Inventory"</strong> on any product style to inward stock.</p>
-                    <a href="<?= url('warehouse/catalog') ?>" class="btn btn-warning px-4 py-2 text-dark fw-semibold">
-                        <i class="bi bi-journal-bookmark me-1"></i> Open Warehouse Catalog
-                    </a>
+                    <?php if (hasPermission('wh_catalog', 'view')): ?>
+                        <a href="<?= url('warehouse/catalog') ?>" class="btn btn-warning px-4 py-2 text-dark fw-semibold">
+                            <i class="bi bi-journal-bookmark me-1"></i> Open Warehouse Catalog
+                        </a>
+                    <?php endif; ?>
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
@@ -641,7 +647,7 @@ if (!function_exists('renderCategoryTypeBadge')) {
                 <small class="text-muted">Separate inventory for complementary items, gifts, and promotional products</small>
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
-                <?php if (hasPermission('catalog', 'edit') || hasPermission('stock', 'edit') || hasPermission('warehouse', 'edit') || (Session::get('role') === 'ADMIN')): ?>
+                <?php if (hasPermission('stock', 'edit')): ?>
                 <button type="button" class="btn btn-outline-success shadow-sm fw-semibold btnTogglePriceEdit" onclick="togglePriceEditMode()">
                     <i class="bi bi-pencil-square me-1"></i> <span class="btnPriceEditLabel">Edit Price</span>
                 </button>
@@ -668,9 +674,11 @@ if (!function_exists('renderCategoryTypeBadge')) {
                     <i class="bi bi-gift fs-1 text-muted d-block mb-3"></i>
                     <h5 class="text-muted">No Complementary Product Stock Found</h5>
                     <p class="text-muted small">Add a new complementary product from the warehouse catalog or mark existing catalog styles as complementary.</p>
-                    <a href="<?= url('warehouse/catalog/create') ?>" class="btn btn-warning px-4 py-2 text-dark fw-semibold">
-                        <i class="bi bi-plus-circle me-1"></i> Add Complementary Product
-                    </a>
+                    <?php if (hasPermission('wh_catalog', 'create')): ?>
+                        <a href="<?= url('warehouse/catalog/create') ?>" class="btn btn-warning px-4 py-2 text-dark fw-semibold">
+                            <i class="bi bi-plus-circle me-1"></i> Add Complementary Product
+                        </a>
+                    <?php endif; ?>
                 </div>
             <?php else: ?>
                 <div class="table-responsive">

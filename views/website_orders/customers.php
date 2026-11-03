@@ -33,9 +33,11 @@ sort($uniqueCities);
             <small class="text-muted">Manage website channel online buyers, order history, and customer lifetime value</small>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <a href="<?= url('warehouse/website-orders/new') ?>" class="btn btn-primary rounded-pill px-4 shadow-sm fw-semibold">
-                <i class="bi bi-plus-circle me-1"></i> New Online Order
-            </a>
+            <?php if (hasPermission('website_orders', 'create')): ?>
+                <a href="<?= url('sales/website/create') ?>" class="btn btn-primary rounded-pill px-4 shadow-sm fw-semibold">
+                    <i class="bi bi-plus-circle me-1"></i> New Online Order
+                </a>
+            <?php endif; ?>
             <a href="<?= url('warehouse/website-orders') ?>" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm fw-semibold">
                 <i class="bi bi-list-check me-1"></i> Orders Hub
             </a>

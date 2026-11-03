@@ -278,10 +278,12 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
                 <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1 font-monospace">
                     <?= $whPOS['count'] ?> Orders &bull; ₹<?= number_format($whPOS['total_amount'], 2) ?>
                 </span>
-                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_warehouse?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>', this)" 
+                <?php if ($canPrintReport): ?>
+                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_warehouse?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
                    class="btn btn-xs btn-outline-danger shadow-xs py-0.5 px-2" title="Download Warehouse Sales PDF">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF
                 </button>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -323,10 +325,12 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
                 <span class="badge bg-success-subtle text-success border border-success-subtle px-2.5 py-1 font-monospace">
                     <?= $shopPOS['count'] ?> Orders &bull; ₹<?= number_format($shopPOS['total_amount'], 2) ?>
                 </span>
-                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_pos?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>', this)" 
+                <?php if ($canPrintReport): ?>
+                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_pos?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
                    class="btn btn-xs btn-outline-danger shadow-xs py-0.5 px-2" title="Download Shop POS Sales PDF">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF
                 </button>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -371,10 +375,12 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
                 <a href="<?= url('reports/whatsapp') ?>?<?= http_build_query($_GET) ?>" class="btn btn-xs btn-outline-success shadow-xs py-0.5 px-2">
                     <i class="bi bi-whatsapp me-1"></i>Full Report &rarr;
                 </a>
-                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_whatsapp?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>', this)" 
+                <?php if ($canPrintReport): ?>
+                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_whatsapp?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
                    class="btn btn-xs btn-outline-danger shadow-xs py-0.5 px-2" title="Download WhatsApp Orders PDF">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF
                 </button>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -404,10 +410,12 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
                 <a href="<?= url('reports/website') ?>?<?= http_build_query($_GET) ?>" class="btn btn-xs btn-outline-info shadow-xs py-0.5 px-2">
                     <i class="bi bi-globe2 me-1"></i>Full Report &rarr;
                 </a>
-                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_website?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>', this)" 
+                <?php if ($canPrintReport): ?>
+                <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales_website?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
                    class="btn btn-xs btn-outline-danger shadow-xs py-0.5 px-2" title="Download Website Orders PDF">
                     <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF
                 </button>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -468,18 +476,24 @@ function renderChannelKPI(float $amount, float $paid, float $pending, int $count
             <div class="small text-muted">Showing <?= count($salesData['invoices']) ?> transactions across all channels for <?= e($filter['label']) ?></div>
         </div>
         <div class="d-flex flex-wrap gap-2">
-            <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>', this)" 
+            <?php if ($canPrintReport): ?>
+            <button type="button" onclick="triggerPdfDownload('<?= url("reports/print/sales?" . http_build_query(array_merge($_GET, ['pdf' => '1']))) ?>')"
                class="btn btn-sm btn-outline-danger">
                 <i class="bi bi-file-earmark-pdf-fill me-1"></i>Download PDF
             </button>
+            <?php endif; ?>
+            <?php if ($canExportReport): ?>
             <a href="<?= url('reports/export/sales') ?>?<?= http_build_query($_GET) ?>" 
                class="btn btn-sm btn-outline-success">
                 <i class="bi bi-file-earmark-excel me-1"></i>Export CSV
             </a>
+            <?php endif; ?>
+            <?php if ($canPrintReport): ?>
             <a href="<?= url('reports/print/sales') ?>?<?= http_build_query($_GET) ?>" 
                target="_blank" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-printer me-1"></i>Print Register
             </a>
+            <?php endif; ?>
         </div>
     </div>
 

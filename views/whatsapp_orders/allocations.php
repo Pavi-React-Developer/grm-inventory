@@ -7,6 +7,8 @@ $currCategory = (int)($filters['category_id'] ?? 0);
 $currSort = $filters['sort'] ?? 'name_asc';
 $currSearch = $filters['search'] ?? '';
 $currProductType = $filters['product_type'] ?? 'normal';
+$canRequestStock = hasPermission('whatsapp_orders', 'create');
+$canEditPrice = hasPermission('whatsapp_inventory', 'adjust');
 $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series Products', 'bi-boxes'], 'complementary' => ['Complementary Products', 'bi-gift-fill']];
 ?>
 
@@ -24,9 +26,11 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
         <span class="text-muted">Real-time WhatsApp stock balances, catalog specifications, piece-by-piece quarantine, and warehouse allocations.</span>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <?php if ($canRequestStock): ?>
         <a href="<?= url('warehouse/whatsapp-orders/requests/create') ?>" class="btn btn-primary rounded-pill px-3 shadow-sm fw-semibold">
             <i class="bi bi-plus-lg me-1"></i> Request Warehouse Stock
         </a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -169,12 +173,14 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
             <?php endforeach; ?>
         </ul>
         <div class="d-flex align-items-center gap-2 flex-wrap">
+            <?php if ($canEditPrice): ?>
             <button type="button" class="btn btn-outline-success shadow-sm fw-semibold btnTogglePriceEdit" onclick="togglePriceEditMode()">
                 <i class="bi bi-pencil-square me-1"></i> <span class="btnPriceEditLabel">Edit Price</span>
             </button>
             <button type="button" class="btn btn-success shadow-sm fw-semibold btnHeaderApplyPrice d-none" onclick="openBulkPriceModal()">
                 <i class="bi bi-check-circle-fill me-1"></i> Change Price (<span class="headerSelectedPriceCount">0</span>)
             </button>
+            <?php endif; ?>
             <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 fs-6">
                 <i class="bi bi-boxes me-1"></i> <?= number_format($summary['total_units'] ?? 0) ?> pcs Available
             </span>
@@ -279,11 +285,13 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
                                     <i class="bi bi-box-seam fs-1 d-block mb-2 text-success opacity-50"></i>
                                     <div class="fw-semibold">No stock products found matching criteria.</div>
                                     <small class="text-muted">Request stock from central warehouse to populate WhatsApp available inventory.</small>
+                                    <?php if ($canRequestStock): ?>
                                     <div class="mt-3">
                                         <a href="<?= url('warehouse/whatsapp-orders/requests/create') ?>" class="btn btn-sm btn-primary">
                                             <i class="bi bi-plus-lg me-1"></i> Request Warehouse Stock
                                         </a>
                                     </div>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php else: $idx = 1; foreach ($inventory as $it): 
@@ -510,11 +518,13 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
                                     <i class="bi bi-inbox fs-1 d-block mb-2 text-primary opacity-50"></i>
                                     <div class="fw-semibold">No WhatsApp allocation records found.</div>
                                     <small class="text-muted">Dispatches from Central Warehouse to WhatsApp channel appear here.</small>
+                                    <?php if ($canRequestStock): ?>
                                     <div class="mt-3">
                                         <a href="<?= url('warehouse/whatsapp-orders/requests/create') ?>" class="btn btn-sm btn-primary">
                                             <i class="bi bi-plus-lg me-1"></i> New Stock Request
                                         </a>
                                     </div>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php else: foreach ($allocations as $a): 
@@ -587,6 +597,7 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
 </div>
 
 <!-- Floating Bulk Price Action Toolbar (Active when items are selected) -->
+<?php if ($canEditPrice): ?>
 <div id="priceEditFloatingBar" class="card shadow-lg border-0 position-fixed bottom-0 start-50 translate-middle-x mb-4 px-4 py-2 z-3 d-none align-items-center flex-row gap-3 rounded-pill bg-dark text-white border border-light border-opacity-25" style="backdrop-filter: blur(12px); z-index: 1060; max-width: 92vw; box-shadow: 0 10px 25px rgba(0,0,0,0.3) !important;">
     <div class="d-flex align-items-center gap-2">
         <span class="badge bg-success rounded-circle p-1 d-flex align-items-center justify-content-center" style="width: 24px; height: 24px;">
@@ -608,10 +619,12 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
         </button>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- MODAL: EDIT PRODUCT RETAIL PRICE & MRP (WHATSAPP CHANNEL) -->
 <!-- ========================================================================= -->
+<?php if ($canEditPrice): ?>
 <div class="modal fade" id="editPriceModal" tabindex="-1" aria-labelledby="editPriceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width: 540px;">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
@@ -728,10 +741,12 @@ $productTabs = ['normal' => ['Normal Products', 'bi-tag'], 'series' => ['Series 
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <script>
 let isPriceEditMode = false;
 let currentEditPriceModal = null;
+const canEditPrice = <?= $canEditPrice ? 'true' : 'false' ?>;
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -739,6 +754,7 @@ function escapeHtml(str) {
 }
 
 function togglePriceEditMode(forceState) {
+    if (!canEditPrice) return;
     if (typeof forceState === 'boolean') {
         isPriceEditMode = forceState;
     } else {
@@ -842,6 +858,7 @@ function clearPriceSelection() {
 }
 
 function openBulkPriceModal() {
+    if (!canEditPrice) return;
     const selected = getSelectedPriceCheckboxes();
     if (selected.length === 0) {
         alert('Please select at least one product using the checkboxes.');
@@ -939,6 +956,7 @@ function openBulkPriceModal() {
 }
 
 window.openEditPriceModal = function(variantId, sku, productName, sellingPrice, mrp, costPrice = 0) {
+    if (!canEditPrice) return;
     if (typeof variantId === 'object' && variantId !== null) {
         const obj = variantId;
         variantId = obj.variantId || obj.variant_id;
@@ -1031,6 +1049,7 @@ window.calculatePriceAnalytics = function() {
 
 window.handlePriceFormSubmit = function(event) {
     event.preventDefault();
+    if (!canEditPrice) return;
     const form = document.getElementById('editPriceForm');
     const btn = document.getElementById('btnSavePrice');
     const alertBox = document.getElementById('editPriceAlertContainer');

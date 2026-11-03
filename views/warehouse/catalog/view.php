@@ -36,15 +36,19 @@
         </div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <?php if (hasPermission('wh_catalog', 'edit')): ?>
         <a href="<?= url('warehouse/catalog/edit/' . $product['id']) ?>" class="btn btn-primary">
             <i class="bi bi-pencil me-1"></i> Edit Style
         </a>
+        <?php endif; ?>
+        <?php if (hasPermission('wh_catalog', 'delete')): ?>
         <form method="POST" action="<?= url('warehouse/catalog/delete/' . $product['id']) ?>" class="d-inline mb-0" onsubmit="return confirm('Are you sure you want to delete this product style from the warehouse catalog?');">
             <?= CSRF::field() ?>
             <button type="submit" class="btn btn-outline-danger">
                 <i class="bi bi-trash me-1"></i> Delete
             </button>
         </form>
+        <?php endif; ?>
         <a href="<?= url('warehouse/catalog') ?>" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i> Back to Catalog
         </a>
@@ -311,7 +315,7 @@
                                             <?= number_format((int)$v['warehouse_stock']) ?> pcs
                                         </td>
                                         <td class="text-center">
-                                            <?php if ($isSeries): ?>
+                                            <?php if ($isSeries && hasPermission('wh_labels', 'print')): ?>
                                                 <button type="button" class="btn btn-sm btn-outline-warning text-dark fw-semibold" 
                                                         onclick='openMasterQRModal(<?= json_encode([
                                                             "sku" => $v["sku"],
@@ -327,9 +331,11 @@
                                                     <i class="bi bi-qr-code me-1"></i> Master QR
                                                 </button>
                                             <?php else: ?>
-                                                <a href="<?= url('warehouse/labels?tab=stock&variant_id=' . $v['id']) ?>" class="btn btn-sm btn-outline-secondary">
-                                                    <i class="bi bi-printer me-1"></i> Print Labels
-                                                </a>
+                                                <?php if (hasPermission('wh_labels', 'print')): ?>
+                                                    <a href="<?= url('warehouse/labels?tab=stock&variant_id=' . $v['id']) ?>" class="btn btn-sm btn-outline-secondary">
+                                                        <i class="bi bi-printer me-1"></i> Print Labels
+                                                    </a>
+                                                <?php endif; ?>
                                             <?php endif; ?>
                                         </td>
                                     </tr>
@@ -347,9 +353,11 @@
                 <h5 class="card-title mb-0 fw-bold text-dark">
                     <i class="bi bi-cart-check me-2 text-warning"></i> Recent Third-Party Vendor Purchases
                 </h5>
-                <a href="<?= url('warehouse/sellers/buy') ?>" class="btn btn-sm btn-warning text-dark fw-semibold">
-                    <i class="bi bi-plus-circle me-1"></i> New Purchase Order
-                </a>
+                <?php if (hasPermission('purchases', 'create')): ?>
+                    <a href="<?= url('warehouse/sellers/buy') ?>" class="btn btn-sm btn-warning text-dark fw-semibold">
+                        <i class="bi bi-plus-circle me-1"></i> New Purchase Order
+                    </a>
+                <?php endif; ?>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -458,9 +466,11 @@
             <div class="modal-footer bg-white border-top py-2 px-3 d-flex justify-content-between">
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-warning text-dark btn-sm fw-semibold" onclick="printMasterSeriesLabel()">
-                        <i class="bi bi-printer-fill me-1"></i> Print Master QR Sticker
-                    </button>
+                    <?php if (hasPermission('wh_labels', 'print')): ?>
+                        <button type="button" class="btn btn-warning text-dark btn-sm fw-semibold" onclick="printMasterSeriesLabel()">
+                            <i class="bi bi-printer-fill me-1"></i> Print Master QR Sticker
+                        </button>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

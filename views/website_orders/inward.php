@@ -1,5 +1,5 @@
 <?php
-$canReceive = hasPermission('website_inward', 'receive') || hasPermission('website_inward', 'create');
+$canReceive = hasPermission('website_inward', 'receive');
 ?>
 <style>
 /* Responsive Container & Layout Constraints */

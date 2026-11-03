@@ -72,7 +72,9 @@
                 <div>
                     <div class="text-muted small fw-semibold">Third-Party Sellers</div>
                     <h3 class="fw-bold mb-0 text-dark"><?= number_format($sellerStats['total_sellers'] ?? 0) ?></h3>
-                    <small class="text-muted"><a href="<?= url('warehouse/sellers') ?>" class="text-decoration-none">View All Sellers &rarr;</a></small>
+                    <?php if (hasPermission('wh_sellers', 'view')): ?>
+                        <small class="text-muted"><a href="<?= url('warehouse/sellers') ?>" class="text-decoration-none">View All Sellers &rarr;</a></small>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -82,6 +84,7 @@
 <!-- Row: Complementary Products & Sales Revenue -->
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl-6">
+        <?php if (hasPermission('stock', 'view')): ?>
         <a href="<?= url('warehouse/stock?tab=complementary') ?>" class="text-decoration-none">
             <div class="card border-0 shadow-sm rounded-3 p-3 h-100 bg-white border-start border-4 border-warning">
                 <div class="d-flex align-items-center">
@@ -104,8 +107,10 @@
                 </div>
             </div>
         </a>
+        <?php endif; ?>
     </div>
     <div class="col-sm-6 col-xl-6">
+        <?php if (hasPermission('stock', 'view')): ?>
         <a href="<?= url('warehouse/stock?tab=complementary') ?>" class="text-decoration-none">
             <div class="card border-0 shadow-sm rounded-3 p-3 h-100 bg-white border-start border-4 border-success">
                 <div class="d-flex align-items-center">
@@ -128,6 +133,7 @@
                 </div>
             </div>
         </a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -211,6 +217,7 @@
         </div>
     </div>
     <div class="col-sm-6 col-xl-3">
+        <?php if (hasPermission('allocation_outward', 'view')): ?>
         <a href="<?= url('warehouse/allocation/outward') ?>" class="text-decoration-none">
             <div class="card border-0 shadow-sm rounded-3 p-3 h-100 bg-white">
                 <div class="d-flex align-items-center">
@@ -225,6 +232,7 @@
                 </div>
             </div>
         </a>
+        <?php endif; ?>
     </div>
     <div class="col-sm-6 col-xl-3">
         <div class="card border-0 shadow-sm rounded-3 p-3 h-100 bg-white">
@@ -263,6 +271,7 @@
     </div>
     <div class="card-body">
         <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 g-3 text-center">
+            <?php if (hasPermission('inward', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/inward') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -272,6 +281,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('stock', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/stock') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -281,6 +292,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('wh_sellers', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/sellers') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -290,6 +303,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('wh_catalog', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/catalog') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -299,6 +314,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('purchases', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/purchases') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -308,6 +325,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('allocation', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/allocation') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -317,6 +336,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('allocation_outward', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/allocation/outward') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -326,6 +347,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('damage', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/damage') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -335,6 +358,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('returns', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/returns') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -344,6 +369,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('wh_labels', 'view')): ?>
             <div class="col">
                 <a href="<?= url('warehouse/labels') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition h-100">
@@ -353,6 +380,8 @@
                     </div>
                 </a>
             </div>
+            <?php endif; ?>
+            <?php if (hasPermission('returns', 'view')): ?>
             <div class="col-6 col-md-4 col-lg-3">
                 <a href="<?= url('warehouse/returns') ?>" class="text-decoration-none">
                     <div class="p-3 rounded bg-light border hover-shadow transition">
@@ -360,6 +389,7 @@
                         <div class="fw-bold text-dark mt-1">9. Returns &amp; QC</div>
                         <small class="text-muted">Shop &amp; channel returns</small>
                     </div>
+                    <?php endif; ?>
                 </a>
             </div>
         </div>
@@ -381,9 +411,11 @@
                     <i class="bi bi-hourglass-split me-1"></i> <?= (int)$pending_returns ?> Pending QC
                 </span>
             <?php endif; ?>
-            <a href="<?= url('warehouse/returns') ?>" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-semibold">
-                View All Returns <i class="bi bi-arrow-right ms-1"></i>
-            </a>
+            <?php if (hasPermission('returns', 'view')): ?>
+                <a href="<?= url('warehouse/returns') ?>" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-semibold">
+                    View All Returns <i class="bi bi-arrow-right ms-1"></i>
+                </a>
+            <?php endif; ?>
         </div>
     </div>
     <div class="card-body p-0">
@@ -456,12 +488,15 @@
                                 </td>
                                 <td class="text-end pe-3">
                                     <div class="d-flex justify-content-end gap-1">
-                                        <a href="<?= url('warehouse/returns/inspect/' . $ret['id']) ?>" class="btn btn-sm btn-danger rounded-pill px-3 shadow-sm fw-semibold" title="Inspect and classify returned pieces into available or damaged pool">
-                                            <i class="bi bi-search me-1"></i> Inspect &amp; QC
-                                        </a>
-                                        <a href="<?= url('shop/return-to-warehouse/view/' . $ret['id']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary rounded-circle p-1" style="width: 28px; height: 28px;" title="View Manifest &amp; Gate Pass">
-                                            <i class="bi bi-file-earmark-text"></i>
-                                        </a>
+                                        <?php if (hasPermission('returns', 'inspect')): ?>
+                                            <a href="<?= url('warehouse/returns/inspect/' . $ret['id']) ?>" class="btn btn-sm btn-danger rounded-pill px-3 shadow-sm fw-semibold" title="Inspect and classify returned pieces into available or damaged pool">
+                                                <i class="bi bi-search me-1"></i> Inspect &amp; QC
+                                            </a>
+                                        <?php elseif (hasPermission('returns', 'view')): ?>
+                                            <a href="<?= url('warehouse/returns/view/' . $ret['id']) ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm fw-semibold" title="View return details">
+                                                <i class="bi bi-eye me-1"></i> View
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
@@ -480,7 +515,9 @@
         <div class="card border-0 shadow-sm rounded-3 h-100">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 fw-semibold text-gray-800"><i class="bi bi-shop me-2 text-primary"></i>Recent Shop Allocations</h5>
-                <a href="<?= url('warehouse/allocation') ?>" class="btn btn-sm btn-link text-decoration-none">View All</a>
+                <?php if (hasPermission('allocation', 'view')): ?>
+                    <a href="<?= url('warehouse/allocation') ?>" class="btn btn-sm btn-link text-decoration-none">View All</a>
+                <?php endif; ?>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
@@ -507,7 +544,9 @@
                                     </span>
                                 </td>
                                 <td class="text-end">
-                                    <a href="<?= url('warehouse/allocation/view/' . $alc['id']) ?>" class="btn btn-sm btn-outline-primary">View</a>
+                                    <?php if (hasPermission('allocation', 'view')): ?>
+                                        <a href="<?= url('warehouse/allocation/view/' . $alc['id']) ?>" class="btn btn-sm btn-outline-primary">View</a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; endif; ?>
@@ -522,7 +561,9 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h6 class="card-title mb-0 fw-bold"><i class="bi bi-truck me-2 text-warning"></i>Inbound Dispatches Awaiting GRN</h6>
-                <a href="<?= url('warehouse/inward') ?>" class="btn btn-sm btn-link text-decoration-none">View All</a>
+                <?php if (hasPermission('inward', 'view')): ?>
+                    <a href="<?= url('warehouse/inward') ?>" class="btn btn-sm btn-link text-decoration-none">View All</a>
+                <?php endif; ?>
             </div>
             <div class="card-body p-0">
                 <?php if (empty($recentInwardQueue)): ?>
@@ -556,14 +597,10 @@
                                         <td><span class="badge bg-secondary"><?= e($inw['warehouse_name']) ?></span></td>
                                         <td><span class="badge bg-primary fs-6"><?= number_format($inw['total_qty']) ?> pcs</span></td>
                                         <td>
-                                            <?php if (hasPermission('inward', 'create') || hasPermission('inward', 'verify') || hasPermission('inward', 'edit')): ?>
-                                            <a href="<?= url('warehouse/inward/view/' . $inw['id']) ?>" class="btn btn-sm btn-success">
-                                                <i class="bi bi-check2-circle me-1"></i> Verify
-                                            </a>
-                                            <?php else: ?>
-                                            <a href="<?= url('warehouse/inward/view/' . $inw['id']) ?>" class="btn btn-sm btn-outline-primary">
-                                                <i class="bi bi-eye me-1"></i> View
-                                            </a>
+                                            <?php if (hasPermission('inward', 'view')): ?>
+                                                <a href="<?= url('warehouse/inward/view/' . $inw['id']) ?>" class="btn btn-sm <?= hasPermission('inward', 'verify') ? 'btn-success' : 'btn-outline-primary' ?>">
+                                                    <i class="bi <?= hasPermission('inward', 'verify') ? 'bi-check2-circle' : 'bi-eye' ?> me-1"></i><?= hasPermission('inward', 'verify') ? 'Verify' : 'View' ?>
+                                                </a>
                                             <?php endif; ?>
                                         </td>
                                     </tr>
@@ -583,7 +620,9 @@
         <div class="card border-0 shadow-sm rounded-3 h-100">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 fw-semibold text-gray-800"><i class="bi bi-truck me-2 text-primary"></i>Recent Outward Dispatches</h5>
-                <a href="<?= url('warehouse/allocation/outward') ?>" class="btn btn-sm btn-link text-decoration-none">View All</a>
+                <?php if (hasPermission('allocation_outward', 'view')): ?>
+                    <a href="<?= url('warehouse/allocation/outward') ?>" class="btn btn-sm btn-link text-decoration-none">View All</a>
+                <?php endif; ?>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
@@ -601,9 +640,13 @@
                         <?php else: foreach ($recentOutwards as $ow): ?>
                             <tr>
                                 <td class="fw-medium text-dark">
-                                    <a href="<?= url('warehouse/allocation/view/' . $ow['allocation_id']) ?>" class="text-decoration-none text-dark hover-primary">
+                                    <?php if (hasPermission('allocation', 'view')): ?>
+                                        <a href="<?= url('warehouse/allocation/view/' . $ow['allocation_id']) ?>" class="text-decoration-none text-dark hover-primary">
+                                            <?= htmlspecialchars($ow['outward_number'] ?? $ow['allocation_number']) ?>
+                                        </a>
+                                    <?php else: ?>
                                         <?= htmlspecialchars($ow['outward_number'] ?? $ow['allocation_number']) ?>
-                                    </a>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="small">
                                     <?= htmlspecialchars($ow['destination_name'] ?? $ow['shop_name'] ?? $ow['channel_name'] ?? 'Retail Shop / Channel') ?>
@@ -631,7 +674,9 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h6 class="card-title mb-0 fw-bold"><i class="bi bi-journal-text me-2 text-primary"></i>Recent Stock Movements</h6>
-                <a href="<?= url('warehouse/stock') ?>" class="btn btn-sm btn-link text-decoration-none">Full Ledger</a>
+                <?php if (hasPermission('stock', 'view')): ?>
+                    <a href="<?= url('warehouse/stock') ?>" class="btn btn-sm btn-link text-decoration-none">Full Ledger</a>
+                <?php endif; ?>
             </div>
             <div class="card-body p-0">
                 <?php if (empty($recentTransactions)): ?>

@@ -1,11 +1,11 @@
 <?php 
-$canClassify = hasPermission('returns', 'inspect') || hasPermission('returns', 'create') || hasPermission('returns', 'edit');
+$canClassify = hasPermission('returns', 'classify');
 $returnQrDate = !empty($return['created_at']) ? date('my', strtotime($return['created_at'])) : date('my');
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <div>
         <h2 class="h3 mb-1 text-gray-800">
-            <i class="bi bi-clipboard-check me-2 text-primary"></i>Inspect Return Batch #<?= htmlspecialchars($return['return_number']) ?>
+            <i class="bi bi-clipboard-check me-2 text-primary"></i><?= $canClassify ? 'Inspect Return Batch #' : 'Return Batch #' ?><?= htmlspecialchars($return['return_number']) ?>
         </h2>
         <div class="d-flex align-items-center gap-2 flex-wrap">
             <span class="badge bg-light text-dark border font-monospace">
@@ -108,10 +108,12 @@ $returnQrDate = !empty($return['created_at']) ? date('my', strtotime($return['cr
                             </select>
                         </td>
                         <td class="text-center">
-                            <a href="<?= url('warehouse/labels?source_type=returns&view=generate&tab=return_tags&return_id=' . $return['id'] . '&return_item_id=' . $item['id'] . '&return_variant_id=' . $item['variant_id']) ?>" 
-                               class="btn btn-sm btn-outline-danger" title="Generate Return QR Tag">
-                                <i class="bi bi-qr-code me-1"></i> Return Tag
-                            </a>
+                            <?php if (hasPermission('wh_labels', 'create')): ?>
+                                <a href="<?= url('warehouse/labels?source_type=returns&view=generate&tab=return_tags&return_id=' . $return['id'] . '&return_item_id=' . $item['id'] . '&return_variant_id=' . $item['variant_id']) ?>"
+                                   class="btn btn-sm btn-outline-danger" title="Generate Return QR Tag">
+                                    <i class="bi bi-qr-code me-1"></i> Return Tag
+                                </a>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -121,9 +123,11 @@ $returnQrDate = !empty($return['created_at']) ? date('my', strtotime($return['cr
 
     <div class="d-flex justify-content-between align-items-center">
         <div>
-            <a href="<?= url('warehouse/labels?source_type=returns&view=generate&tab=return_tags&return_id=' . $return['id']) ?>" class="btn btn-outline-danger">
-                <i class="bi bi-qr-code-scan me-1"></i> Open Return QR Suite
-            </a>
+            <?php if (hasPermission('wh_labels', 'create')): ?>
+                <a href="<?= url('warehouse/labels?source_type=returns&view=generate&tab=return_tags&return_id=' . $return['id']) ?>" class="btn btn-outline-danger">
+                    <i class="bi bi-qr-code-scan me-1"></i> Open Return QR Suite
+                </a>
+            <?php endif; ?>
         </div>
         <div class="d-flex gap-2 align-items-center">
             <a href="<?= url('warehouse/returns') ?>" class="btn btn-light">Back to List</a>
@@ -226,4 +230,3 @@ document.addEventListener('DOMContentLoaded', function () {
 
 });
 </script>
-

@@ -1361,7 +1361,15 @@ foreach ($qrBatches as $batch) {
                         <td class="font-monospace small"><?= e($returnItem['sku'] ?? '-') ?></td>
                         <td><span class="badge <?= strtoupper($returnItem['classification'] ?? '') === 'DAMAGED' ? 'bg-danger' : 'bg-success' ?>"><?= e($returnItem['classification'] ?? 'GOOD') ?></span></td>
                         <td><?= $returnQty ?> pcs</td>
-                        <td class="text-end"><a class="btn btn-sm btn-outline-danger" href="<?= url('warehouse/labels?source_type=returns&view=generate&return_id=' . (int)$returnItem['warehouse_return_id'] . '&return_item_id=' . (int)$returnItem['id'] . '&return_variant_id=' . (int)$returnItem['variant_id']) ?>"><i class="bi bi-qr-code me-1"></i>Return QR</a></td>
+                        <td class="text-end">
+                            <?php if (hasPermission('wh_labels', 'create')): ?>
+                                <a class="btn btn-sm btn-outline-danger" href="<?= url('warehouse/labels?source_type=returns&view=generate&return_id=' . (int)$returnItem['warehouse_return_id'] . '&return_item_id=' . (int)$returnItem['id'] . '&return_variant_id=' . (int)$returnItem['variant_id']) ?>">
+                                    <i class="bi bi-qr-code me-1"></i>Return QR
+                                </a>
+                            <?php else: ?>
+                                <span class="text-muted small">View only</span>
+                            <?php endif; ?>
+                        </td>
                     </tr>
                 <?php endforeach; endif; ?>
                 </tbody>
@@ -1562,9 +1570,11 @@ foreach ($qrBatches as $batch) {
                                                     <td class="text-end pe-3">
                                                         <div class="d-flex align-items-center justify-content-end gap-1.5 flex-wrap">
                                                             <?php if ($isPartial): ?>
+                                                                <?php if (hasPermission('wh_labels', 'create') && (hasPermission('inward', 'create') || hasPermission('inward', 'verify') || hasPermission('purchases', 'receive'))): ?>
                                                                 <a href="<?= $loadUrl ?>" class="btn btn-sm btn-success fw-bold px-2.5 py-1 shadow-2xs" title="Generate remaining QR labels and inward remaining pieces">
                                                                     <i class="bi bi-box-arrow-in-down me-1"></i>Inward Remaining (+<?= (int)$batch['remaining_qty'] ?>)
                                                                 </a>
+                                                                <?php endif; ?>
                                                                 <a href="<?= $loadUrl ?>" class="btn btn-sm btn-outline-primary fw-semibold px-2 py-1" title="View QR stickers from this batch">
                                                                     <i class="bi bi-eye me-1"></i>View
                                                                 </a>
@@ -1573,9 +1583,11 @@ foreach ($qrBatches as $batch) {
                                                                     <i class="bi bi-eye me-1"></i>View
                                                                 </a>
                                                             <?php else: ?>
+                                                                <?php if (hasPermission('wh_labels', 'create') && (hasPermission('inward', 'create') || hasPermission('inward', 'verify') || hasPermission('purchases', 'receive'))): ?>
                                                                 <a href="<?= $loadUrl ?>" class="btn btn-sm btn-success fw-bold px-2.5 py-1 shadow-2xs" title="Generate QR stickers and inward this product to inventory">
                                                                     <i class="bi bi-qr-code me-1"></i>Generate &amp; Inward (+<?= (int)$batch['total_qty'] ?>)
                                                                 </a>
+                                                                <?php endif; ?>
                                                             <?php endif; ?>
                                                         </div>
                                                     </td>
@@ -1715,9 +1727,11 @@ foreach ($qrBatches as $batch) {
                 </div>
 
                 <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary btn-sm w-100 fw-semibold py-2 shadow-sm">
-                        <i class="bi bi-qr-code me-1"></i> Generate QR Labels
-                    </button>
+                    <?php if (hasPermission('wh_labels', 'create')): ?>
+                        <button type="submit" class="btn btn-primary btn-sm w-100 fw-semibold py-2 shadow-sm">
+                            <i class="bi bi-qr-code me-1"></i> Generate QR Labels
+                        </button>
+                    <?php endif; ?>
                 </div>
 
             <?php elseif (in_array($currentSourceType, ['po', 'tp_purchase'])): ?>
@@ -1733,12 +1747,16 @@ foreach ($qrBatches as $batch) {
                             <p class="mb-3 text-secondary small">No third-party supplier products are catalogued yet. QR labels can only be generated for products that are properly added to the supplier catalog first.</p>
                             <p class="mb-2 text-secondary small fw-semibold">Correct workflow: <span class="badge bg-primary">1. Register Supplier</span> → <span class="badge bg-success">2. Add to Catalog</span> → <span class="badge bg-warning text-dark">3. Generate QR</span></p>
                             <div class="d-flex gap-2 flex-wrap">
-                                <a href="<?= url('warehouse/catalog/create') ?>" class="btn btn-warning btn-sm fw-bold shadow-sm">
-                                    <i class="bi bi-plus-circle me-1"></i> Add Products to Catalog
-                                </a>
-                                <a href="<?= url('warehouse/sellers') ?>" class="btn btn-outline-secondary btn-sm">
-                                    <i class="bi bi-shop-window me-1"></i> Go to Suppliers
-                                </a>
+                                <?php if (hasPermission('wh_catalog', 'create')): ?>
+                                    <a href="<?= url('warehouse/catalog/create') ?>" class="btn btn-warning btn-sm fw-bold shadow-sm">
+                                        <i class="bi bi-plus-circle me-1"></i> Add Products to Catalog
+                                    </a>
+                                <?php endif; ?>
+                                <?php if (hasPermission('wh_sellers', 'view')): ?>
+                                    <a href="<?= url('warehouse/sellers') ?>" class="btn btn-outline-secondary btn-sm">
+                                        <i class="bi bi-shop-window me-1"></i> Go to Suppliers
+                                    </a>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
@@ -1952,10 +1970,12 @@ foreach ($qrBatches as $batch) {
 
                 <!-- Generate Action Button -->
                 <div class="col-md-3 d-flex align-items-end">
-                    <button type="submit" id="btnSubmitGenerateLabels" class="btn <?= !empty($isZeroStockRestricted) ? 'btn-secondary opacity-75' : 'btn-primary' ?> btn-sm w-100 fw-semibold py-2 shadow-sm" <?= !empty($isZeroStockRestricted) ? 'disabled title="Cannot generate QR labels: product stock is 0 pcs."' : '' ?>>
-                        <i class="bi <?= !empty($isZeroStockRestricted) ? 'bi-slash-circle' : 'bi-qr-code' ?> me-1" id="btnSubmitIcon"></i> 
-                        <span id="btnSubmitLabelText"><?= !empty($isZeroStockRestricted) ? 'QR Restricted (0 Stock)' : 'Generate QR Labels' ?></span>
-                    </button>
+                    <?php if (hasPermission('wh_labels', 'create')): ?>
+                        <button type="submit" id="btnSubmitGenerateLabels" class="btn <?= !empty($isZeroStockRestricted) ? 'btn-secondary opacity-75' : 'btn-primary' ?> btn-sm w-100 fw-semibold py-2 shadow-sm" <?= !empty($isZeroStockRestricted) ? 'disabled title="Cannot generate QR labels: product stock is 0 pcs."' : '' ?>>
+                            <i class="bi <?= !empty($isZeroStockRestricted) ? 'bi-slash-circle' : 'bi-qr-code' ?> me-1" id="btnSubmitIcon"></i>
+                            <span id="btnSubmitLabelText"><?= !empty($isZeroStockRestricted) ? 'QR Restricted (0 Stock)' : 'Generate QR Labels' ?></span>
+                        </button>
+                    <?php endif; ?>
                 <?php endif; // end catalog gate else ?>
 
             <?php endif; // end source_type if ?>
@@ -2000,19 +2020,25 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                 <input type="text" id="filterTagInput" class="form-control" placeholder="Filter by Code or SKU..." onkeyup="filterRenderedStickers()">
             </div>
             <!-- Print Selected Stickers Button -->
-            <button type="button" class="btn btn-sm btn-primary fw-semibold shadow-sm" id="btnPrintSelectedStickers" onclick="printSelectedStickers()" disabled title="Print only the selected checked stickers">
-                <i class="bi bi-check2-circle me-1"></i> Print Selected (<span id="btnSelectedCount">0</span>)
-            </button>
+            <?php if (hasPermission('wh_labels', 'print')): ?>
+                <button type="button" class="btn btn-sm btn-primary fw-semibold shadow-sm" id="btnPrintSelectedStickers" onclick="printSelectedStickers()" disabled title="Print only the selected checked stickers">
+                    <i class="bi bi-check2-circle me-1"></i> Print Selected (<span id="btnSelectedCount">0</span>)
+                </button>
             <!-- Print All Stickers Button -->
             <button type="button" class="btn btn-sm btn-success fw-semibold shadow-sm" onclick="printAllGeneratedStickers()">
                 <i class="bi bi-printer me-1"></i> Print All Stickers
             </button>
+            <?php endif; ?>
+            <?php if (($currentSourceType === 'returns' && hasPermission('returns', 'classify')) || ($currentSourceType !== 'returns' && (hasPermission('inward', 'create') || hasPermission('inward', 'verify') || hasPermission('purchases', 'receive')))): ?>
             <button type="button" class="btn btn-sm btn-outline-success fw-semibold shadow-sm" id="btnQuickInwardSelected" onclick="confirmStickeredInwardAction(event)" disabled title="Select QR sticker(s) first to inward them into warehouse stock">
                 <i class="bi bi-box-arrow-in-down me-1"></i> Inward Selected QR
             </button>
+            <?php endif; ?>
+            <?php if (hasPermission('wh_labels', 'print')): ?>
             <button type="button" class="btn btn-sm btn-outline-dark fw-semibold shadow-sm" onclick="openPrinterSettingsModal()" title="Calibrate TSC TE244 printer alignment and dimensions">
                 <i class="bi bi-sliders me-1 text-warning"></i> Printer Settings
             </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -2225,7 +2251,7 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
 
         <div>
             <?php if ($isPoDraft): ?>
-                <?php if (hasPermission('purchases', 'receive') || hasPermission('inward', 'verify') || hasPermission('inward', 'create')): ?>
+                <?php if (hasPermission('purchases', 'receive')): ?>
                     <form method="POST" action="<?= url('warehouse/sellers/inward-bill/' . $selectedSourceId) ?>" onsubmit="return confirm('Confirm Stock Inward: This will officially add all products (+<?= $poTotalQty ?> pcs) from PO #<?= e($poInfo['po_number']) ?> into <?= e($poInfo['warehouse_name'] ?? 'Warehouse') ?> stock and generate GRN. Proceed?');">
                         <?= CSRF::field() ?>
                         <input type="hidden" name="warehouse_id" value="<?= (int)$poInfo['warehouse_id'] ?>">
@@ -2237,9 +2263,11 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                     <div class="alert alert-secondary py-1 px-3 mb-0 small">Admin permission required to confirm inward.</div>
                 <?php endif; ?>
             <?php else: ?>
-                <a href="<?= url('warehouse/sellers/view/' . ($poInfo['warehouse_supplier_id'] ?: $poInfo['seller_id'])) ?>" class="btn btn-outline-success fw-bold">
-                    <i class="bi bi-check-circle me-1"></i> View Supplier Inward Record
-                </a>
+                <?php if (hasPermission('wh_sellers', 'view')): ?>
+                    <a href="<?= url('warehouse/sellers/view/' . ($poInfo['warehouse_supplier_id'] ?: $poInfo['seller_id'])) ?>" class="btn btn-outline-success fw-bold">
+                        <i class="bi bi-check-circle me-1"></i> View Supplier Inward Record
+                    </a>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>
@@ -2337,7 +2365,7 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
                 </div>
             </div>
 
-            <?php if (hasPermission('inward', 'create') || hasPermission('stock', 'inward') || hasPermission('wh_labels', 'create')): ?>
+            <?php if (($currentSourceType === 'returns' && hasPermission('returns', 'classify')) || ($currentSourceType !== 'returns' && (hasPermission('inward', 'create') || hasPermission('inward', 'verify') || hasPermission('purchases', 'receive')))): ?>
             <div class="d-flex align-items-center gap-2">
                 <form id="formConfirmInward" onsubmit="confirmStickeredInwardAction(event)">
                     <?= CSRF::field() ?>
@@ -2403,9 +2431,11 @@ $hasSeriesGenerated = !empty($generatedItems) && !empty($generatedItems[0]['is_s
             </div>
             <div class="modal-footer bg-white border-top py-2">
                 <button type="button" class="btn btn-secondary px-4 fw-semibold" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-success px-4 fw-semibold shadow-sm" id="btnSinglePrintModal" onclick="printSinglePieceFromModal()">
-                    <i class="bi bi-printer-fill me-1"></i> Print This Tag
-                </button>
+                <?php if (hasPermission('wh_labels', 'print')): ?>
+                    <button type="button" class="btn btn-success px-4 fw-semibold shadow-sm" id="btnSinglePrintModal" onclick="printSinglePieceFromModal()">
+                        <i class="bi bi-printer-fill me-1"></i> Print This Tag
+                    </button>
+                <?php endif; ?>
             </div>
         </div>
     </div>

@@ -5,7 +5,7 @@
     $displayMis = (int)($totalMissing ?? 0);
     $displayPct = $totalExpected > 0 ? round(($displayRec / $totalExpected) * 100) : 0;
     $isFullyReceived = (in_array(strtoupper($batch['status'] ?? ''), ['COMPLETED', 'RECEIVED']) && $displayMis === 0);
-    $canReceive = hasPermission('website_inward', 'receive') || hasPermission('website_inward', 'create');
+    $canReceive = hasPermission('website_inward', 'receive');
 ?>
 
 <?php if (!$canReceive): ?>

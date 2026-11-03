@@ -1,3 +1,4 @@
+<?php $canReceivePurchase = hasPermission('purchases', 'receive'); ?>
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
         <h2 class="mb-1"><i class="bi bi-cart-check me-2 text-primary"></i>Warehouse Direct Customer Purchases</h2>
@@ -367,9 +368,11 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                                             title="View Customer Profile">
                                                         <i class="bi bi-person-lines-fill"></i>
                                                     </button>
-                                                    <a href="<?= url('warehouse/purchases/receive/' . ($firstInv['id'] ?? 0)) ?>" target="_blank" class="btn btn-outline-primary" title="Print Tax Invoice">
-                                                        <i class="bi bi-printer me-1"></i> Invoice
-                                                    </a>
+                                                    <?php if ($canReceivePurchase): ?>
+                                                        <a href="<?= url('warehouse/purchases/receive/' . ($firstInv['id'] ?? 0)) ?>" target="_blank" class="btn btn-outline-primary" title="Print Tax Invoice">
+                                                            <i class="bi bi-printer me-1"></i> Invoice
+                                                        </a>
+                                                    <?php endif; ?>
                                                     <?php if (hasPermission('purchases', 'edit')): ?>
                                                     <a href="<?= url('warehouse/purchases/edit/' . ($firstInv['id'] ?? 0)) ?>" class="btn btn-outline-secondary" title="Edit Purchase">
                                                         <i class="bi bi-pencil"></i>
@@ -407,9 +410,11 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                             </td>
                                             <td class="text-end pe-3">
                                                 <div class="btn-group btn-group-sm">
-                                                    <a href="<?= url('warehouse/purchases/receive/' . $po['id']) ?>" target="_blank" class="btn btn-outline-primary" title="Print Tax Invoice">
-                                                        <i class="bi bi-printer me-1"></i> Invoice
-                                                    </a>
+                                                    <?php if ($canReceivePurchase): ?>
+                                                        <a href="<?= url('warehouse/purchases/receive/' . $po['id']) ?>" target="_blank" class="btn btn-outline-primary" title="Print Tax Invoice">
+                                                            <i class="bi bi-printer me-1"></i> Invoice
+                                                        </a>
+                                                    <?php endif; ?>
                                                     <?php if (hasPermission('purchases', 'edit')): ?>
                                                     <a href="<?= url('warehouse/purchases/edit/' . $po['id']) ?>" class="btn btn-outline-secondary" title="Edit Purchase">
                                                         <i class="bi bi-pencil"></i>
@@ -518,9 +523,11 @@ $oneTimeCount = count($oneTimeCustomers ?? []) + count($unregisteredPurchases ??
                                                         <i class="bi bi-person-lines-fill"></i>
                                                     </button>
                                                 <?php endif; ?>
-                                                <a href="<?= url('warehouse/purchases/receive/' . $po['id']) ?>" target="_blank" class="btn btn-outline-primary" title="View Tax Invoice &amp; Receipt">
-                                                    <i class="bi bi-printer me-1"></i> Invoice
-                                                </a>
+                                                <?php if ($canReceivePurchase): ?>
+                                                    <a href="<?= url('warehouse/purchases/receive/' . $po['id']) ?>" target="_blank" class="btn btn-outline-primary" title="View Tax Invoice &amp; Receipt">
+                                                        <i class="bi bi-printer me-1"></i> Invoice
+                                                    </a>
+                                                <?php endif; ?>
                                                 <?php if (hasPermission('purchases', 'edit')): ?>
                                                 <a href="<?= url('warehouse/purchases/edit/' . $po['id']) ?>" class="btn btn-outline-secondary" title="Edit Purchase">
                                                     <i class="bi bi-pencil"></i>
@@ -868,6 +875,7 @@ function openCustomerInvoicesModal(button) {
         listEl.innerHTML = '<div class="text-muted text-center small py-3">No invoices found for this customer.</div>';
     } else {
         listEl.innerHTML = invoices.map(invoice => `
+            <?php if ($canReceivePurchase): ?>
             <a href="<?= url('warehouse/purchases/receive/') ?>${encodeURIComponent(invoice.id)}"
                target="_blank" rel="noopener"
                class="list-group-item list-group-item-action d-flex align-items-center justify-content-between gap-2 py-2">
@@ -877,6 +885,12 @@ function openCustomerInvoicesModal(button) {
                 </span>
                 <span class="badge rounded-pill bg-success-subtle text-success flex-shrink-0">₹${Number(invoice.total_amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
             </a>
+            <?php else: ?>
+            <div class="list-group-item d-flex align-items-center justify-content-between gap-2 py-2">
+                <span class="fw-semibold font-monospace text-primary small">${escapeHtml(invoice.po_number || 'Invoice')}</span>
+                <span class="badge rounded-pill bg-success-subtle text-success flex-shrink-0">₹${Number(invoice.total_amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </div>
+            <?php endif; ?>
         `).join('');
     }
 
@@ -1057,11 +1071,15 @@ function renderPurchasedProductsTable(products) {
 
                 return `
                     <div class="d-flex align-items-center gap-1.5 flex-wrap py-0.5">
+                        <?php if ($canReceivePurchase): ?>
                         <a href="<?= url('warehouse/purchases/receive/') ?>${ord.po_id}" target="_blank" 
                            class="badge bg-light text-primary border text-decoration-none font-monospace py-1 px-1.5" 
                            title="View Separate Invoice for Order Date: ${formatDate(ord.order_date)}">
                             <i class="bi bi-file-earmark-text me-0.5"></i>${escapeHtml(ord.po_number)} <span class="text-secondary">(${ord.quantity} pcs)</span>
                         </a>
+                        <?php else: ?>
+                        <span class="badge bg-light text-primary border font-monospace py-1 px-1.5">${escapeHtml(ord.po_number)} <span class="text-secondary">(${ord.quantity} pcs)</span></span>
+                        <?php endif; ?>
                         ${qrPills}
                     </div>
                 `;
@@ -1171,9 +1189,11 @@ function renderOrdersHistoryTable(orders) {
             </td>
             <td class="text-end pe-3">
                 <div class="btn-group btn-group-sm">
-                    <a href="<?= url('warehouse/purchases/receive/') ?>${ord.id}" target="_blank" class="btn btn-outline-primary" title="Print Separate Tax Invoice">
-                        <i class="bi bi-printer me-1"></i> Invoice
-                    </a>
+                    <?php if ($canReceivePurchase): ?>
+                        <a href="<?= url('warehouse/purchases/receive/') ?>${ord.id}" target="_blank" class="btn btn-outline-primary" title="Print Separate Tax Invoice">
+                            <i class="bi bi-printer me-1"></i> Invoice
+                        </a>
+                    <?php endif; ?>
                     <?php if (hasPermission('purchases', 'edit')): ?>
                     <a href="<?= url('warehouse/purchases/edit/') ?>${ord.id}" class="btn btn-outline-secondary" title="Edit Purchase">
                         <i class="bi bi-pencil"></i>

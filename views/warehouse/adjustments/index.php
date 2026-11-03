@@ -4,7 +4,7 @@
         <span class="text-muted">Reconcile physical inventory counts, record write-offs, and submit audit discrepancy requests</span>
     </div>
     <div class="d-flex gap-2">
-        <?php if (hasPermission('stock', 'adjust') || hasPermission('wh_adjustments', 'create') || hasPermission('stock', 'create')): ?>
+        <?php if (hasPermission('stock', 'adjust')): ?>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newAdjustmentModal">
             <i class="bi bi-plus-circle me-1"></i> Request Adjustment
         </button>
@@ -65,9 +65,11 @@
                 <i class="bi bi-check-circle fs-1 text-success d-block mb-3"></i>
                 <h5 class="text-muted">No Adjustment Requests Found</h5>
                 <p class="text-muted small">Submit an adjustment request whenever a physical audit variance is detected.</p>
-                <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newAdjustmentModal">
-                    Create First Adjustment
-                </button>
+                <?php if (hasPermission('stock', 'adjust')): ?>
+                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newAdjustmentModal">
+                        Create First Adjustment
+                    </button>
+                <?php endif; ?>
             </div>
         <?php else: ?>
             <div class="table-responsive">
@@ -129,7 +131,7 @@
                                     </span>
                                 </td>
                                 <td class="text-end">
-                                    <?php if ($adj['status'] === 'PENDING' && (hasPermission('stock', 'adjust') || hasPermission('wh_adjustments', 'approve') || hasPermission('wh_adjustments', 'create'))): ?>
+                                    <?php if ($adj['status'] === 'PENDING' && hasPermission('stock', 'adjust')): ?>
                                         <div class="d-inline-flex gap-1">
                                             <form method="POST" action="<?= url('warehouse/adjustments/approve/' . $adj['id']) ?>" class="d-inline">
                                                 <?= CSRF::input() ?>
@@ -161,6 +163,7 @@
     </div>
 </div>
 
+<?php if (hasPermission('stock', 'adjust')): ?>
 <!-- Modal: New Adjustment Request -->
 <div class="modal fade" id="newAdjustmentModal" tabindex="-1" aria-labelledby="newAdjustmentModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -385,3 +388,4 @@
         </form>
     </div>
 </div>
+<?php endif; ?>

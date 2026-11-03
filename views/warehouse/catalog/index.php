@@ -1,12 +1,19 @@
+<?php
+$canCreateCatalog = hasPermission('wh_catalog', 'create');
+$canEditCatalog = hasPermission('wh_catalog', 'edit');
+$canDeleteCatalog = hasPermission('wh_catalog', 'delete');
+?>
 <!-- PAGE HEADER -->
 <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
     <div>
         <h2 class="mb-1"><i class="bi bi-diagram-3-fill me-2 text-primary"></i>Product Catalog</h2>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <button type="button" class="btn btn-primary shadow-sm fw-semibold" onclick="openAddCategoryModal()">
-            <i class="bi bi-plus-circle me-1"></i> Add Category
-        </button>
+        <?php if ($canCreateCatalog): ?>
+            <button type="button" class="btn btn-primary shadow-sm fw-semibold" onclick="openAddCategoryModal()">
+                <i class="bi bi-plus-circle me-1"></i> Add Category
+            </button>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -170,9 +177,11 @@
                         <h6 class="card-title mb-0 fw-bold text-dark">Category</h6>
                         <span class="badge bg-secondary-subtle text-secondary rounded-pill" id="badgeCatCount">0</span>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 rounded-2 fw-semibold" onclick="openAddCategoryModal()">
-                        <i class="bi bi-plus-lg me-1"></i>Add
-                    </button>
+                    <?php if ($canCreateCatalog): ?>
+                        <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 rounded-2 fw-semibold" onclick="openAddCategoryModal()">
+                            <i class="bi bi-plus-lg me-1"></i>Add
+                        </button>
+                    <?php endif; ?>
                 </div>
                 <div class="px-2 pt-2 pb-1 border-bottom">
                     <div class="input-group input-group-sm">
@@ -198,9 +207,11 @@
                         <h6 class="card-title mb-0 fw-bold text-dark text-truncate" id="col2HeaderTitle">Sub Category</h6>
                         <span class="badge bg-secondary-subtle text-secondary rounded-pill" id="badgeSubCount">0</span>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 rounded-2 fw-semibold" id="btnAddSubcatBtn" onclick="openAddSubcatForSelected()" disabled>
-                        <i class="bi bi-plus-lg me-1"></i>Add
-                    </button>
+                    <?php if ($canCreateCatalog): ?>
+                        <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 rounded-2 fw-semibold" id="btnAddSubcatBtn" onclick="openAddSubcatForSelected()" disabled>
+                            <i class="bi bi-plus-lg me-1"></i>Add
+                        </button>
+                    <?php endif; ?>
                 </div>
                 <div class="px-2 pt-2 pb-1 border-bottom">
                     <div class="input-group input-group-sm">
@@ -228,9 +239,11 @@
                         </h6>
                         <span class="badge bg-secondary-subtle text-secondary rounded-pill" id="attrCountBadge">—</span>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 rounded-2 fw-semibold" id="btnAddAttrRow" onclick="addAttributeRow()" disabled>
-                        <i class="bi bi-plus-lg me-1"></i>Add
-                    </button>
+                    <?php if ($canEditCatalog): ?>
+                        <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 rounded-2 fw-semibold" id="btnAddAttrRow" onclick="addAttributeRow()" disabled>
+                            <i class="bi bi-plus-lg me-1"></i>Add
+                        </button>
+                    <?php endif; ?>
                 </div>
                 <!-- Scope + Save row -->
                 <div class="px-3 py-2 border-bottom bg-light d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -238,9 +251,11 @@
                         <i class="bi bi-shield-check text-success me-1"></i>
                         <span id="labelActiveBranchScope" class="fw-semibold text-primary" style="font-size:.78rem;">Select category to configure</span>
                     </span>
-                    <button type="button" class="btn btn-success fw-semibold" id="btnSaveAttrs" onclick="saveCategoryAttributes()" disabled style="font-size:.75rem;padding:3px 10px;">
-                        <i class="bi bi-check2-circle me-1"></i>Save
-                    </button>
+                    <?php if ($canEditCatalog): ?>
+                        <button type="button" class="btn btn-success fw-semibold" id="btnSaveAttrs" onclick="saveCategoryAttributes()" disabled style="font-size:.75rem;padding:3px 10px;">
+                            <i class="bi bi-check2-circle me-1"></i>Save
+                        </button>
+                    <?php endif; ?>
                 </div>
                 <!-- Quick-add chips -->
                 <!-- Attributes list container -->
@@ -882,6 +897,9 @@
 <script>
 const CSRF_TOKEN = '<?php echo addslashes(CSRF::token()); ?>';
 const APP_URL = '<?php echo addslashes(rtrim(url(''), '/')); ?>';
+const canCreateCatalog = <?= json_encode($canCreateCatalog) ?>;
+const canEditCatalog = <?= json_encode($canEditCatalog) ?>;
+const canDeleteCatalog = <?= json_encode($canDeleteCatalog) ?>;
 
 let categoryTreeData = [];
 let currentViewMode = localStorage.getItem('grm_catalog_view_mode') || 'list'; // 'list' or 'columns'
@@ -1176,7 +1194,7 @@ function renderCategoryListTable() {
                         ${subcats.slice(0, 4).map(s => {
                             const ssCount = (s.sub_subcategories || []).length;
                             return `
-                            <span class="badge bg-light text-primary border border-primary-subtle px-2 py-1" style="font-size:0.75rem; font-weight:600; cursor:pointer;" onclick="openFullEditCategoryModal(event, ${cat.id}, ${s.id})" title="Click to edit ${esc(s.name)} under ${esc(cat.name)}">
+                            <span class="badge bg-light text-primary border border-primary-subtle px-2 py-1" style="font-size:0.75rem; font-weight:600; cursor:${canEditCatalog ? 'pointer' : 'default'};" ${canEditCatalog ? `onclick="openFullEditCategoryModal(event, ${cat.id}, ${s.id})" title="Click to edit ${esc(s.name)} under ${esc(cat.name)}"` : ''}>
                                 <i class="bi bi-folder2 me-1"></i>${esc(s.name)}${ssCount > 0 ? ` <span class="badge bg-primary text-white rounded-pill ms-1" style="font-size:0.65rem;">${ssCount}</span>` : ''}
                             </span>
                             `;
@@ -1191,7 +1209,7 @@ function renderCategoryListTable() {
                 ${allSubSubs.length > 0 ? `
                     <div class="d-flex flex-wrap gap-1 align-items-center">
                         ${allSubSubs.slice(0, 4).map(ss => `
-                            <span class="badge bg-light text-success border border-success-subtle px-2 py-1" style="font-size:0.75rem; font-weight:600; cursor:pointer;" onclick="openFullEditCategoryModal(event, ${cat.id}, ${ss.subcategory_id || 0}, ${ss.id})" title="Click to edit ${esc(ss.name)}">
+                            <span class="badge bg-light text-success border border-success-subtle px-2 py-1" style="font-size:0.75rem; font-weight:600; cursor:${canEditCatalog ? 'pointer' : 'default'};" ${canEditCatalog ? `onclick="openFullEditCategoryModal(event, ${cat.id}, ${ss.subcategory_id || 0}, ${ss.id})" title="Click to edit ${esc(ss.name)}"` : ''}>
                                 <i class="bi bi-tag me-1"></i>${esc(ss.name)}
                             </span>
                         `).join('')}
@@ -1213,9 +1231,9 @@ function renderCategoryListTable() {
                         ${branchAttrs.length > 3 ? `<span class="badge bg-warning-subtle text-dark border border-warning" style="font-size:0.7rem;">+${branchAttrs.length - 3}</span>` : ''}
                     </div>
                 ` : `
-                    <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-warning fw-semibold" style="font-size:0.76rem;" onclick="openFullEditCategoryModal(event, ${cat.id})">
+                    ${canEditCatalog ? `<button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-warning fw-semibold" style="font-size:0.76rem;" onclick="openFullEditCategoryModal(event, ${cat.id})">
                         <i class="bi bi-plus-circle me-1"></i>Set attributes
-                    </button>
+                    </button>` : ''}
                 `}
             </td>
 
@@ -1225,12 +1243,12 @@ function renderCategoryListTable() {
                     <button type="button" class="icon-btn" onclick="openViewCategoryHierarchyModal(event, ${cat.id})" title="View Category Details">
                         <i class="bi bi-eye text-primary"></i>
                     </button>
-                    <button type="button" class="icon-btn" onclick="openFullEditCategoryModal(event, ${cat.id})" title="Edit Category &amp; Attributes (Full Form)">
+                    ${canEditCatalog ? `<button type="button" class="icon-btn" onclick="openFullEditCategoryModal(event, ${cat.id})" title="Edit Category &amp; Attributes (Full Form)">
                         <i class="bi bi-pencil"></i>
-                    </button>
-                    <button type="button" class="icon-btn danger" onclick="deleteCategory(event, ${cat.id}, '${esc(cat.name)}')" title="Delete Category">
+                    </button>` : ''}
+                    ${canDeleteCatalog ? `<button type="button" class="icon-btn danger" onclick="deleteCategory(event, ${cat.id}, '${esc(cat.name)}')" title="Delete Category">
                         <i class="bi bi-trash"></i>
-                    </button>
+                    </button>` : ''}
                 </div>
             </td>
         </tr>
@@ -1247,7 +1265,7 @@ function renderCategoriesList(tCat = null, tSub = null, tSsc = null) {
     const cnt = document.getElementById('categoriesListContainer');
     const badge = document.getElementById('badgeCatCount'); if (badge) badge.textContent = categoryTreeData.length;
     if (!categoryTreeData || !categoryTreeData.length) {
-        if (cnt) cnt.innerHTML = '<div class="text-center py-5 text-muted"><i class="bi bi-folder-x fs-1 opacity-50 d-block mb-2"></i><div class="fw-semibold">No Categories Configured</div><button class="btn btn-sm btn-primary mt-2" onclick="openAddCategoryModal()">+ Add Category</button></div>';
+        if (cnt) cnt.innerHTML = '<div class="text-center py-5 text-muted"><i class="bi bi-folder-x fs-1 opacity-50 d-block mb-2"></i><div class="fw-semibold">No Categories Configured</div>' + (canCreateCatalog ? '<button class="btn btn-sm btn-primary mt-2" onclick="openAddCategoryModal()">+ Add Category</button>' : '') + '</div>';
         resetSubCol(); resetAttrCol(); return;
     }
     if (cnt) {
@@ -1272,8 +1290,8 @@ function renderCategoriesList(tCat = null, tSub = null, tSsc = null) {
                 '</div></div>' +
                 '<div class="d-flex align-items-center gap-1 flex-shrink-0">' +
                 '<button type="button" class="icon-btn" onclick="openViewCategoryHierarchyModal(event,' + cat.id + ')" title="View Category Details"><i class="bi bi-eye text-primary"></i></button>' +
-                '<button type="button" class="icon-btn" onclick="openFullEditCategoryModal(event,' + cat.id + ')" title="Edit Category &amp; Attributes (Full Form)"><i class="bi bi-pencil"></i></button>' +
-                '<button type="button" class="icon-btn danger" onclick="deleteCategory(event,' + cat.id + ',\'' + safeName + '\')" title="Delete"><i class="bi bi-trash"></i></button>' +
+                (canEditCatalog ? '<button type="button" class="icon-btn" onclick="openFullEditCategoryModal(event,' + cat.id + ')" title="Edit Category &amp; Attributes (Full Form)"><i class="bi bi-pencil"></i></button>' : '') +
+                (canDeleteCatalog ? '<button type="button" class="icon-btn danger" onclick="deleteCategory(event,' + cat.id + ',\'' + safeName + '\')" title="Delete"><i class="bi bi-trash"></i></button>' : '') +
                 chevronHtml +
                 '</div></div></div>';
         });
@@ -1304,7 +1322,7 @@ function renderSubcategoriesList(subcats, tSub = null) {
     const cnt = document.getElementById('subcategoriesListContainer');
     const badge = document.getElementById('badgeSubCount'); if (badge) badge.textContent = subcats.length;
     if (!subcats || !subcats.length) {
-        if (cnt) cnt.innerHTML = '<div class="text-center py-5 text-muted"><i class="bi bi-folder-plus fs-2 opacity-50 d-block mb-2"></i><div class="small fw-semibold">No Subcategories in "' + esc(selectedCatName) + '"</div><button class="btn btn-sm btn-primary mt-2" onclick="openAddSubcatForSelected()">+ Add Subcategory</button></div>';
+        if (cnt) cnt.innerHTML = '<div class="text-center py-5 text-muted"><i class="bi bi-folder-plus fs-2 opacity-50 d-block mb-2"></i><div class="small fw-semibold">No Subcategories in "' + esc(selectedCatName) + '"</div>' + (canCreateCatalog ? '<button class="btn btn-sm btn-primary mt-2" onclick="openAddSubcatForSelected()">+ Add Subcategory</button>' : '') + '</div>';
         return;
     }
     if (cnt) {
@@ -1326,8 +1344,8 @@ function renderSubcategoriesList(subcats, tSub = null) {
                 '<div class="d-flex align-items-center gap-1"><span class="fw-bold text-truncate item-title" style="font-size:.82rem;">' + esc(sub.name) + '</span>' + codeHtml + '</div>' +
                 '</div></div>' +
                 '<div class="d-flex align-items-center gap-1 flex-shrink-0">' +
-                '<button type="button" class="icon-btn" onclick="openEditSubcategoryModal(event,' + sub.id + ',\'' + safeName + '\',' + selectedCatId + ',\'' + String(selectedCatName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" title="Edit"><i class="bi bi-pencil"></i></button>' +
-                '<button type="button" class="icon-btn danger" onclick="deleteSubcategory(event,' + sub.id + ',\'' + safeName + '\')" title="Delete"><i class="bi bi-trash"></i></button>' +
+                (canEditCatalog ? '<button type="button" class="icon-btn" onclick="openEditSubcategoryModal(event,' + sub.id + ',\'' + safeName + '\',' + selectedCatId + ',\'' + String(selectedCatName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" title="Edit"><i class="bi bi-pencil"></i></button>' : '') +
+                (canDeleteCatalog ? '<button type="button" class="icon-btn danger" onclick="deleteSubcategory(event,' + sub.id + ',\'' + safeName + '\')" title="Delete"><i class="bi bi-trash"></i></button>' : '') +
                 chevronHtml +
                 '</div></div></div>';
         });
@@ -1411,6 +1429,12 @@ function renderAttrRow(attr) {
     const list = document.getElementById('attributesInlineList');
     const div = document.createElement('div'); div.className = 'attr-row';
     const a = attr || { attr_name: '', attr_options: '', is_required: 0 };
+    if (!canEditCatalog) {
+        div.className = 'attr-row py-2 px-3 border-bottom';
+        div.innerHTML = '<div class="d-flex justify-content-between gap-2"><strong>' + esc(a.attr_name || '') + '</strong><span class="text-muted">' + esc(a.attr_options || '') + '</span></div>';
+        list.appendChild(div);
+        return;
+    }
     div.innerHTML = '<div class="attr-row-inner">' +
         '<div class="ar-name"><input type="text" class="form-control form-control-sm attr-name fw-semibold text-uppercase" value="' + esc(a.attr_name || '') + '" placeholder="Attribute Name" oninput="this.value=this.value.toUpperCase()" required></div>' +
         '<div class="ar-opts">' +
@@ -1428,6 +1452,7 @@ function updateAttrBadge() {
 }
 
 function addAttributeRow(preset = null) {
+    if (!canEditCatalog) return;
     const p = document.getElementById('noAttrsPlaceholder'); if (p) p.remove();
     const em = document.getElementById('attrEmptyState'); if (em) em.style.display = 'none';
     renderAttrRow(preset || { attr_name: '', attr_type: 'SELECT', attr_options: '', is_required: 0 });
@@ -1435,7 +1460,7 @@ function addAttributeRow(preset = null) {
 }
 
 function saveCategoryAttributes() {
-    if (!selectedNode) return;
+    if (!canEditCatalog || !selectedNode) return;
     const btn = document.getElementById('btnSaveAttrs');
     const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
     const attrs = [];

@@ -202,7 +202,7 @@
                                             <i class="bi bi-pencil"></i>
                                         </a>
                                         <?php endif; ?>
-                                        <?php if (hasPermission('wh_sellers', 'delete') || hasPermission('warehouse', 'delete') || true): ?>
+                                        <?php if (hasPermission('wh_sellers', 'delete')): ?>
                                         <form method="POST" action="<?= url('warehouse/sellers/delete/' . $s['id']) ?>" class="d-inline mb-0" onsubmit="return confirm('Are you sure you want to permanently delete supplier &quot;<?= e(addslashes($s['name'])) ?>&quot; from the database?');">
                                             <?= csrf_field() ?>
                                             <button type="submit" class="btn btn-outline-danger" title="Delete Supplier">

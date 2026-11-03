@@ -1,5 +1,7 @@
 <?php
 // views/website_orders/damage/outward_list.php — Website Damaged Stock Outward Batches
+$canDispatchDamageOutward = hasPermission('website_damage', 'outward');
+$canPrintDamageOutward = hasPermission('website_damage', 'print');
 ?>
 
 <div class="container-fluid px-4 py-3">
@@ -22,9 +24,11 @@
             <a href="<?= url('warehouse/website-orders/damage') ?>" class="btn btn-outline-secondary">
                 <i class="bi bi-exclamation-octagon me-1"></i> Damaged Items List
             </a>
-            <a href="<?= url('warehouse/website-orders/damage/outward/create') ?>" class="btn btn-danger">
-                <i class="bi bi-plus-circle me-1"></i> New Outward Batch
-            </a>
+            <?php if ($canDispatchDamageOutward): ?>
+                <a href="<?= url('warehouse/website-orders/damage/outward/create') ?>" class="btn btn-danger">
+                    <i class="bi bi-plus-circle me-1"></i> New Outward Batch
+                </a>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -95,9 +99,11 @@
                     <i class="bi bi-inbox fs-1 d-block mb-2 text-secondary opacity-50"></i>
                     <h6>No Damaged Stock Outward Batches Created Yet</h6>
                     <p class="small">When you have damaged stock in the Website section, bundle and dispatch them here.</p>
-                    <a href="<?= url('warehouse/website-orders/damage/outward/create') ?>" class="btn btn-sm btn-danger mt-2">
-                        <i class="bi bi-plus-circle me-1"></i> Create First Outward Batch
-                    </a>
+                    <?php if ($canDispatchDamageOutward): ?>
+                        <a href="<?= url('warehouse/website-orders/damage/outward/create') ?>" class="btn btn-sm btn-danger mt-2">
+                            <i class="bi bi-plus-circle me-1"></i> Create First Outward Batch
+                        </a>
+                    <?php endif; ?>
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
@@ -155,12 +161,14 @@
                                             <a href="<?= url('warehouse/website-orders/damage/outward/view/' . $batch['id']) ?>" class="btn btn-outline-secondary" title="View Details">
                                                 <i class="bi bi-eye"></i>
                                             </a>
-                                            <a href="<?= url('warehouse/website-orders/damage/outward/gatepass/' . $batch['id']) ?>" target="_blank" class="btn btn-outline-dark" title="Print Gate Pass">
-                                                <i class="bi bi-file-earmark-text"></i>
-                                            </a>
-                                            <a href="<?= url('warehouse/website-orders/damage/outward/label/' . $batch['id']) ?>" target="_blank" class="btn btn-outline-danger" title="Print Carton QR Label">
-                                                <i class="bi bi-qr-code"></i>
-                                            </a>
+                                            <?php if ($canPrintDamageOutward): ?>
+                                                <a href="<?= url('warehouse/website-orders/damage/outward/gatepass/' . $batch['id']) ?>" target="_blank" class="btn btn-outline-dark" title="Print Gate Pass">
+                                                    <i class="bi bi-file-earmark-text"></i>
+                                                </a>
+                                                <a href="<?= url('warehouse/website-orders/damage/outward/label/' . $batch['id']) ?>" target="_blank" class="btn btn-outline-danger" title="Print Carton QR Label">
+                                                    <i class="bi bi-qr-code"></i>
+                                                </a>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>
